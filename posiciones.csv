@@ -1,9 +1,6 @@
 Ticker,Sector,Precio_Entrada,Fecha_Entrada
-AAPL,Technology,175.30,2024-01-15
-MSFT,Technology,415.00,2024-01-15
-NVDA,Technology,620.50,2024-03-01
-XOM,Energy,112.50,2023-11-20
-JPM,Financial Services,198.20,2024-02-05
-UNH,Health Care,520.00,2023-10-10
-CAT,Industrials,310.75,2024-01-08
-AMZN,Consumer Discretionary,178.90,2024-04-22
+AAPL,Technology,175.30,2024-05-17
+MSFT,Technology,415.00,2024-05-17
+NVDA,Technology,620.50,2024-05-17
+XOM,Energy,112.50,2024-05-17
+JPM,Financial Services,198.20,2024-05-17
