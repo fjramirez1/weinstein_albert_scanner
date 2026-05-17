@@ -258,12 +258,14 @@ def evaluate_exit(
     precio_actual = float(close_desde_entrada.iloc[-1])
     resultado["Precio Actual"] = round(precio_actual, 2)
 
-    if barras_abierto < TRAILING_STOP_BARS:
+    # Se requiere disponer de 15 barras COMPLETAS previas al cierre actual
+    # para evaluar correctamente el trailing stop de 15 barras.
+    if barras_abierto <= TRAILING_STOP_BARS:
         resultado["S2 Trailing Stop"] = False
         resultado["Trailing Stop Ref"] = None
     else:
         history_before_current = close_desde_entrada.iloc[:-1]
-        if history_before_current.empty:
+        if len(history_before_current) < TRAILING_STOP_BARS:
             resultado["S2 Trailing Stop"] = False
             resultado["Trailing Stop Ref"] = None
         else:
