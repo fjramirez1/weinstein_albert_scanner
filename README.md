@@ -157,6 +157,10 @@ Notas importantes:
 - `weinstein_albert_scan_YYYYMMDD_HHMM.csv`
 - `<archivo_entrada>_salidas_YYYYMMDD_HHMM.csv`
 
+## Fuente de la estrategia
+
+La fuente de información de donde se ha sacado la estrategia de trading algorítmico es: https://youtu.be/reQWjzedlX0?si=xSsagVeCSqrX7miV
+
 ## Condiciones de la estrategia (según el video)
 
 ### ✅ Condiciones de Entrada (todas deben cumplirse / AND)
@@ -173,10 +177,6 @@ Notas importantes:
 - Pérdida de fuerza del valor (RSC Mansfield < −0.5) o
 - Activación del trailing stop (mínimo 15 barras) o
 - Coppock bajista (filtro de mercado)
-
-## Fuente de la estrategia
-
-La fuente de información de donde se ha sacado la estrategia de trading algorítmico es: https://youtu.be/reQWjzedlX0?si=xSsagVeCSqrX7miV
 
 ## Solución de problemas
 
