@@ -11,6 +11,8 @@
 ║                                                                      ║
 ║  Entrada : CSV con posiciones abiertas (ver formato abajo)           ║
 ║  Salida  : CSV con el estado de cada posición + motivo de salida     ║
+║  Operativa: Revisar en fin de semana mientras haya posiciones        ║
+║             abiertas                                                 ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
 FORMATO DEL CSV DE ENTRADA
@@ -21,16 +23,17 @@ que este script. Columnas requeridas:
     Ticker   → símbolo de la acción  (ej. AAPL, MSFT, NVDA)
     Sector   → nombre del sector     (ej. Technology, Energy…)
     Precio_Entrada → precio al que se compró (float, usado solo como ref.)
+    Fecha_Entrada  → fecha de apertura (YYYY-MM-DD)
 
 Ejemplo de contenido:
-    Ticker,Sector,Precio_Entrada
-    AAPL,Technology,175.30
-    MSFT,Technology,415.00
-    XOM,Energy,112.50
-    JPM,Financial Services,198.20
+    Ticker,Sector,Precio_Entrada,Fecha_Entrada
+    AAPL,Technology,175.30,2024-05-17
+    MSFT,Technology,415.00,2024-05-17
+    XOM,Energy,112.50,2024-05-17
+    JPM,Financial Services,198.20,2024-05-17
 
 Puedes copiar el CSV que generó el escáner de entradas y eliminar las
-columnas extra — solo se necesitan las tres indicadas.
+columnas extra — solo se necesitan las cuatro indicadas.
 
 DEPENDENCIAS
 ────────────
@@ -40,6 +43,10 @@ USO
 ───
     python weinstein_albert_exit_scanner.py
     python weinstein_albert_exit_scanner.py --input mis_posiciones.csv
+
+Este script forma parte de la rutina semanal de seguimiento de la
+estrategia: se revisa cuando la semana bursátil ya ha cerrado y existe
+al menos una posición abierta.
 """
 
 # ─────────────────────────────────────────────────────────────────────
@@ -82,6 +89,8 @@ DEFAULT_INPUT_CSV    = "posiciones.csv"
 
 # ─────────────────────────────────────────────────────────────────────
 # 2. DESCARGA DE DATOS
+# El cálculo se apoya en cierres semanales, así que la revisión de
+# posiciones está pensada para hacerse una vez por semana.
 # ─────────────────────────────────────────────────────────────────────
 
 def download_weekly(ticker: str, period: str = DOWNLOAD_PERIOD) -> pd.DataFrame | None:
@@ -172,8 +181,9 @@ def load_positions(csv_path: str) -> pd.DataFrame:
         sys.exit(1)
 
     df["Ticker"]        = df["Ticker"].str.strip().str.upper()
+    df["Precio_Entrada"] = pd.to_numeric(df["Precio_Entrada"], errors="coerce")
     df["Fecha_Entrada"] = pd.to_datetime(df["Fecha_Entrada"], errors="coerce")
-    df = df.dropna(subset=["Ticker", "Fecha_Entrada"]).reset_index(drop=True)
+    df = df.dropna(subset=["Ticker", "Precio_Entrada", "Fecha_Entrada"]).reset_index(drop=True)
     return df
 
 
@@ -185,7 +195,7 @@ def evaluate_exit(
     ticker:        str,
     fecha_entrada: pd.Timestamp,   # ← nuevo parámetro
     sp500_close:   pd.Series,
-    coppock_bull:  bool,
+    coppock_bearish: bool,
 ) -> dict:
     """
     Evalúa las 3 condiciones de salida para un ticker.
@@ -215,7 +225,7 @@ def evaluate_exit(
         resultado["Error"] = "Sin datos o histórico insuficiente"
         return resultado
 
-    close = data["Close"].squeeze()
+    close: pd.Series = data["Close"].copy()
 
     # ── S1: RSC Mansfield < -0.5 (sin cambios) ──────────────────────
     try:
@@ -232,28 +242,28 @@ def evaluate_exit(
         resultado["Error"] = f"Error calculando RSC: {exc}"
         return resultado
 
-    # ── S2: Trailing Stop — CORREGIDO ───────────────────────────────
-    # Filtrar el histórico desde la fecha de entrada real
+    # ── S2: Trailing Stop ────────────────────────────────────────────
+    # La condición solo puede evaluarse cuando la posición ya acumula
+    # al menos 15 velas semanales desde la fecha de entrada.
     close_desde_entrada = close.loc[close.index >= fecha_entrada]
-    barras_abierto      = len(close_desde_entrada)
+    barras_abierto = len(close_desde_entrada)
     resultado["Barras Abierto"] = barras_abierto
 
+    precio_actual = float(close_desde_entrada.iloc[-1])
+    resultado["Precio Actual"] = round(precio_actual, 2)
+
     if barras_abierto < TRAILING_STOP_BARS:
-        # ✅ La posición NO lleva 15 semanas abiertas → no activar trailing stop
-        resultado["S2 Trailing Stop"]  = False
+        resultado["S2 Trailing Stop"] = False
         resultado["Trailing Stop Ref"] = None
     else:
-        # Mínimo de los cierres semanales DESDE LA ENTRADA (excluimos vela actual)
-        trailing_min = float(close_desde_entrada.iloc[-2:].iloc[:-1]... )
-        precio_actual = float(close.iloc[-2])
-        s2_activado   = precio_actual < trailing_min
-
-        resultado["Precio Actual"]     = round(precio_actual, 2)
-        resultado["Trailing Stop Ref"] = round(trailing_min, 2)
-        resultado["S2 Trailing Stop"]  = s2_activado
-
-    if resultado["Precio Actual"] is None:
-        resultado["Precio Actual"] = round(float(close.iloc[-1]), 2)
+        history_before_current = close_desde_entrada.iloc[:-1]
+        if history_before_current.empty:
+            resultado["S2 Trailing Stop"] = False
+            resultado["Trailing Stop Ref"] = None
+        else:
+            trailing_min = float(history_before_current.tail(TRAILING_STOP_BARS).min())
+            resultado["Trailing Stop Ref"] = round(trailing_min, 2)
+            resultado["S2 Trailing Stop"] = precio_actual < trailing_min
 
     # ── Veredicto final: OR ──────────────────────────────────────────
     motivos = []
@@ -296,19 +306,18 @@ def run_exit_scanner(csv_path: str = DEFAULT_INPUT_CSV) -> pd.DataFrame:
         print("  ✗ ERROR: No se pudo descargar el S&P 500.")
         sys.exit(1)
 
-    sp500_close  = sp500_data["Close"].squeeze()
+    sp500_close: pd.Series = sp500_data["Close"].copy()
     copk         = coppock_curve(sp500_close)
-    coppock_now  = float(copk.iloc[-2])
-    coppock_prev = float(copk.iloc[-3])
-    coppock_bull    = coppock_now > coppock_prev     # para el scanner de ENTRADAS
-    coppock_bearish = coppock_now < coppock_prev     # para el scanner de SALIDAS (S3)
-    estado_mkt   = "↑ Alcista" if coppock_bull else "↓ BAJISTA"
+    coppock_now  = float(copk.iloc[-1])
+    coppock_prev = float(copk.iloc[-2])
+    coppock_bearish = coppock_now < coppock_prev
+    estado_mkt   = "↓ Bajista" if coppock_bearish else "↑ Alcista"
 
     print(f"  Coppock actual   : {coppock_now:+.4f}")
     print(f"  Coppock anterior : {coppock_prev:+.4f}")
     print(f"  Estado mercado   : {estado_mkt}")
 
-    if not coppock_bull:
+    if coppock_bearish:
         print("  ⚠️  S3 ACTIVA para TODAS las posiciones (Coppock bajista)")
 
     # ── Evaluar cada ticker
@@ -327,7 +336,7 @@ def run_exit_scanner(csv_path: str = DEFAULT_INPUT_CSV) -> pd.DataFrame:
             ticker        = ticker,
             fecha_entrada = fecha_entrada,
             sp500_close   = sp500_close,
-            coppock_bull  = coppock_bull,
+            coppock_bearish = coppock_bearish,
         )
 
         res["Sector"]         = sector

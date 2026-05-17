@@ -216,3 +216,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Generated scanner outputs
+weinstein_albert_scan_*.csv
+*_salidas_*.csv

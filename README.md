@@ -1,17 +1,37 @@
 # Weinstein Albert Scanner
 
-Repositorio con dos utilidades en Python para analizar acciones con una adaptación del método Weinstein:
+Repositorio con dos utilidades en Python para implementar, de forma operativa, una estrategia de trading algorítmico inspirada en el método Weinstein:
 
 - `weinstein_albert_scanner.py`: escáner de entrada que revisa los componentes del S&P 500 y genera candidatos que cumplen los filtros técnicos del sistema.
 - `weinstein_albert_exit_scanner.py`: escáner de salida que evalúa posiciones abiertas y marca si conviene salir por deterioro técnico o de mercado.
 
-Ambos scripts trabajan con datos semanales descargados desde `yfinance` y exportan sus resultados a archivos CSV en la misma carpeta del proyecto.
+La idea es trabajar con una rutina semanal: el sistema usa datos semanales descargados desde `yfinance`, produce salidas en CSV y se ejecuta cuando la semana bursátil ya ha cerrado. En la práctica, esto significa revisar entradas y salidas durante el fin de semana, no a lo largo de la sesión diaria.
+
+Este proyecto no es solo una utilidad de terminal. Es una pequeña capa de ejecución para una estrategia que separa claramente dos momentos:
+
+1. Búsqueda de nuevas entradas sobre el universo del S&P 500.
+2. Seguimiento de posiciones abiertas para decidir si se mantienen o se cierran.
+
+## Cómo funciona la estrategia
+
+La lógica del sistema está pensada para usarse así:
+
+1. Durante el fin de semana, una vez cerrada la semana bursátil de la Bolsa de Nueva York, se ejecuta el escáner de entrada para detectar acciones que cumplen los filtros.
+2. Si se abre una operación, se registra en `posiciones.csv` con su `Ticker`, `Sector`, `Precio_Entrada` y `Fecha_Entrada`.
+3. Mientras haya posiciones abiertas, se ejecuta también el escáner de salida cada fin de semana para comprobar si alguna posición debe cerrarse.
+
+Como las señales están calculadas con velas semanales, ejecutarlo a diario no aporta una lectura más fiel del método y puede introducir ruido innecesario.
 
 ## Qué hace cada script
 
 ### Escáner de entrada
 
 `weinstein_albert_scanner.py` descarga los componentes actuales del S&P 500, calcula indicadores como `WMA30`, `RSC Mansfield`, `VPM5` y la curva de `Coppock`, y filtra los valores que cumplen todas las condiciones de compra.
+
+Uso recomendado:
+
+- Ejecutarlo en fin de semana, después del cierre semanal de la bolsa.
+- Revisar el CSV de salida como lista de candidatos, no como órdenes automáticas.
 
 Salida principal:
 
@@ -25,6 +45,11 @@ Salida principal:
 - `RSC Mansfield` por debajo del umbral definido.
 - `Trailing stop` basado en los últimos cierres semanales desde la fecha de entrada.
 - `Coppock` bajista en el S&P 500.
+
+Uso recomendado:
+
+- Ejecutarlo en fin de semana mientras exista al menos una posición abierta.
+- Actualizar `posiciones.csv` cuando abras o cierres operaciones.
 
 Salida principal:
 
@@ -69,7 +94,7 @@ pip install yfinance pandas numpy requests
 
 ## Cómo ejecutar el escáner de entrada
 
-Con el entorno virtual activo:
+Con el entorno virtual activo y preferiblemente durante el fin de semana, después del cierre semanal de la NYSE:
 
 ```cmd
 python weinstein_albert_scanner.py
@@ -79,7 +104,7 @@ El proceso puede tardar varios minutos porque descarga datos semanales de muchos
 
 ## Cómo ejecutar el escáner de salida
 
-Este script usa por defecto `posiciones.csv` en la carpeta del proyecto:
+Este script usa por defecto `posiciones.csv` en la carpeta del proyecto y está pensado para revisarse cada fin de semana mientras haya posiciones abiertas:
 
 ```cmd
 python weinstein_albert_exit_scanner.py
@@ -117,9 +142,9 @@ Notas importantes:
 
 ## Flujo recomendado
 
-1. Ejecuta `weinstein_albert_scanner.py` para detectar candidatos de entrada.
-2. Guarda o adapta el CSV de posiciones abiertas con las columnas requeridas.
-3. Ejecuta `weinstein_albert_exit_scanner.py` para revisar si alguna posición debe cerrarse.
+1. Espera al cierre de la semana bursátil y ejecuta `weinstein_albert_scanner.py` para detectar candidatos de entrada.
+2. Si realizas una compra, registra la operación en `posiciones.csv` con la fecha de entrada.
+3. Cada fin de semana, mientras haya posiciones abiertas, ejecuta `weinstein_albert_exit_scanner.py` para decidir si alguna posición debe cerrarse.
 
 ## Salidas generadas
 
@@ -131,3 +156,9 @@ Notas importantes:
 - Si aparece un error de `python` no reconocido, verifica que Python esté instalado y agregado al `PATH`.
 - Si no se descargan datos, comprueba tu conexión a Internet.
 - Si el escáner de salida indica columnas faltantes, revisa que `posiciones.csv` incluya `Ticker`, `Sector`, `Precio_Entrada` y `Fecha_Entrada`.
+
+## Resumen operativo
+
+- Entrada: una vez por semana, al cierre del mercado de NY y preferiblemente durante el fin de semana.
+- Salida: una vez por semana, mientras existan posiciones abiertas.
+- Decisión: el CSV no sustituye el criterio del operador, pero sí estandariza la lectura de la estrategia y evita revisar el sistema todos los días.

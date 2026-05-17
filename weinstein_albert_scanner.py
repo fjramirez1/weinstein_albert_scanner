@@ -6,6 +6,8 @@
 ║           WMA30, VPM5, Coppock como filtro de mercado)               ║
 ║  Temporalidad : Semanal (1wk)                                        ║
 ║  Universo     : Componentes del S&P 500                              ║
+║  Operativa    : Ejecutar tras el cierre semanal, idealmente          ║
+║                 durante el fin de semana                             ║
 ║  Operador     : AND — todos los filtros deben cumplirse              ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -14,6 +16,10 @@ Dependencias:
 
 Uso:
     python weinstein_albert_scanner.py
+
+Este script forma parte de una estrategia de trading algorítmico:
+evalúa el universo del S&P 500 con datos semanales y devuelve solo
+los candidatos que cumplen todos los filtros de entrada.
 """
 
 # ─────────────────────────────────────────────────────────────────────
@@ -170,6 +176,8 @@ def get_sp500_tickers() -> pd.DataFrame:
 
 # ─────────────────────────────────────────────────────────────────────
 # 3. DESCARGA DE DATOS SEMANALES
+# El análisis está pensado para velas semanales ya cerradas; por eso
+# la ejecución práctica se hace una vez por semana, no a diario.
 # ─────────────────────────────────────────────────────────────────────
 
 def download_weekly(ticker: str, period: str = DOWNLOAD_PERIOD) -> pd.DataFrame | None:
