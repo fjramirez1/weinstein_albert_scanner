@@ -58,12 +58,18 @@ import warnings
 import sys
 from datetime import datetime
 from pathlib import Path
+import os
 
 import numpy as np
 import pandas as pd
 import yfinance as yf
 
 warnings.filterwarnings("ignore")
+
+# Allow a safe dry-run for testing runner scripts without downloading data
+if os.getenv("WEINSTEIN_DRY_RUN") == "1":
+    print("WEINSTEIN_DRY_RUN=1 detected — dry run, exiting without network calls.")
+    sys.exit(0)
 
 
 # ─────────────────────────────────────────────────────────────────────

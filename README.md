@@ -92,6 +92,12 @@ venv\Scripts\activate
 pip install yfinance pandas numpy requests
 ```
 
+También puedes instalar desde `requirements.txt` si existe:
+
+```bash
+pip install -r requirements.txt
+```
+
 ## Cómo ejecutar el escáner de entrada
 
 Con el entorno virtual activo y preferiblemente durante el fin de semana, después del cierre semanal de la NYSE:
@@ -151,6 +157,10 @@ Notas importantes:
 - `weinstein_albert_scan_YYYYMMDD_HHMM.csv`
 - `<archivo_entrada>_salidas_YYYYMMDD_HHMM.csv`
 
+## Fuente de la estrategia
+
+La fuente de información de donde se ha sacado la estrategia de trading algorítmico es: https://youtu.be/reQWjzedlX0?si=xSsagVeCSqrX7miV
+
 ## Solución de problemas
 
 - Si aparece un error de `python` no reconocido, verifica que Python esté instalado y agregado al `PATH`.
@@ -162,3 +172,25 @@ Notas importantes:
 - Entrada: una vez por semana, al cierre del mercado de NY y preferiblemente durante el fin de semana.
 - Salida: una vez por semana, mientras existan posiciones abiertas.
 - Decisión: el CSV no sustituye el criterio del operador, pero sí estandariza la lectura de la estrategia y evita revisar el sistema todos los días.
+
+## Uso con scripts de ayuda
+
+Se incluyen scripts de conveniencia en la carpeta `scripts/` para ejecutar los escáneres activando automáticamente el `venv` si existe.
+
+- Windows (CMD/PowerShell):
+
+```cmd
+scripts\run_entry.bat        # ejecuta el escáner de entrada
+scripts\run_exit.bat         # ejecuta el escáner de salida
+```
+
+- Unix/macOS (bash):
+
+```bash
+scripts/run_entry.sh "arg1 arg2"   # ejecuta el escáner de entrada
+scripts/run_exit.sh "arg1 arg2"    # ejecuta el escáner de salida
+```
+
+Los scripts aceptan argumentos adicionales que se pasarán al script Python.
+
+Si prefieres ejecutar manualmente, activa el entorno virtual y usa `python <script>.py` como se indica arriba.

@@ -220,3 +220,6 @@ __marimo__/
 # Generated scanner outputs
 weinstein_albert_scan_*.csv
 *_salidas_*.csv
+
+# Ignore agent customization file
+AGENTS.md
