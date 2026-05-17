@@ -157,6 +157,23 @@ Notas importantes:
 - `weinstein_albert_scan_YYYYMMDD_HHMM.csv`
 - `<archivo_entrada>_salidas_YYYYMMDD_HHMM.csv`
 
+## Condiciones de la estrategia (según el video)
+
+### ✅ Condiciones de Entrada (todas deben cumplirse / AND)
+
+- Fuerza del sector positiva (RSC Mansfield sector)
+- Volumen normalizado positivo (VPM5 > 0)
+- Fuerza del valor positiva (RSC Mansfield activo)
+- Distancia < 8 % respecto a la WMA30
+- Cierre > WMA30
+- Coppock alcista (filtro de mercado)
+
+### ❌ Condiciones de Salida (cualquiera activa la salida / OR)
+
+- Pérdida de fuerza del valor (RSC Mansfield < −0.5) o
+- Activación del trailing stop (mínimo 15 barras) o
+- Coppock bajista (filtro de mercado)
+
 ## Fuente de la estrategia
 
 La fuente de información de donde se ha sacado la estrategia de trading algorítmico es: https://youtu.be/reQWjzedlX0?si=xSsagVeCSqrX7miV
