@@ -155,32 +155,25 @@ def coppock_curve(price: pd.Series) -> pd.Series:
 # ─────────────────────────────────────────────────────────────────────
 
 def load_positions(csv_path: str) -> pd.DataFrame:
-    """
-    Carga el CSV de posiciones abiertas.
-    Columnas mínimas requeridas: Ticker, Sector, Precio_Entrada
-    """
     path = Path(csv_path)
     if not path.exists():
         print(f"\n  ✗ No se encontró el archivo: {csv_path}")
-        print(  "    Crea un archivo 'posiciones.csv' con columnas:")
-        print(  "    Ticker, Sector, Precio_Entrada")
-        print(  "\n    Ejemplo:")
-        print(  "    Ticker,Sector,Precio_Entrada")
-        print(  "    AAPL,Technology,175.30")
-        print(  "    MSFT,Technology,415.00")
+        print(  "    Columnas requeridas: Ticker, Sector, Precio_Entrada, Fecha_Entrada")
         sys.exit(1)
 
     df = pd.read_csv(csv_path)
     df.columns = [c.strip() for c in df.columns]
 
-    required = {"Ticker", "Sector", "Precio_Entrada"}
+    required = {"Ticker", "Sector", "Precio_Entrada", "Fecha_Entrada"}   # ← añadida
     missing  = required - set(df.columns)
     if missing:
         print(f"\n  ✗ Faltan columnas en el CSV: {missing}")
+        print(  "    Asegúrate de incluir Fecha_Entrada (formato YYYY-MM-DD)")
         sys.exit(1)
 
-    df["Ticker"] = df["Ticker"].str.strip().str.upper()
-    df = df.dropna(subset=["Ticker"]).reset_index(drop=True)
+    df["Ticker"]        = df["Ticker"].str.strip().str.upper()
+    df["Fecha_Entrada"] = pd.to_datetime(df["Fecha_Entrada"], errors="coerce")
+    df = df.dropna(subset=["Ticker", "Fecha_Entrada"]).reset_index(drop=True)
     return df
 
 
@@ -189,9 +182,10 @@ def load_positions(csv_path: str) -> pd.DataFrame:
 # ─────────────────────────────────────────────────────────────────────
 
 def evaluate_exit(
-    ticker:       str,
-    sp500_close:  pd.Series,
-    coppock_bull: bool,
+    ticker:        str,
+    fecha_entrada: pd.Timestamp,   # ← nuevo parámetro
+    sp500_close:   pd.Series,
+    coppock_bull:  bool,
 ) -> dict:
     """
     Evalúa las 3 condiciones de salida para un ticker.
@@ -203,19 +197,19 @@ def evaluate_exit(
       S3: Coppock SP500 bajista (actual ≤ anterior)
     """
     resultado = {
-        "Ticker"            : ticker,
-        "Precio Actual"     : None,
-        "RSC Mansfield"     : None,
-        "Trailing Stop Ref" : None,
-        "S1 RSC < -0.5"     : None,
-        "S2 Trailing Stop"  : None,
-        "S3 Coppock Bajista": not coppock_bull,   # ya calculado globalmente
-        "SALIDA"            : False,
-        "Motivo"            : [],
-        "Error"             : None,
+        "Ticker"             : ticker,
+        "Precio Actual"      : None,
+        "RSC Mansfield"      : None,
+        "Trailing Stop Ref"  : None,
+        "Barras Abierto"     : None,   # ← nuevo campo informativo
+        "S1 RSC < -0.5"      : None,
+        "S2 Trailing Stop"   : None,
+        "S3 Coppock Bajista" : coppock_bearish,
+        "SALIDA"             : False,
+        "Motivo"             : [],
+        "Error"              : None,
     }
 
-    # ── Descarga datos del activo
     data = download_weekly(ticker)
     if data is None:
         resultado["Error"] = "Sin datos o histórico insuficiente"
@@ -223,57 +217,58 @@ def evaluate_exit(
 
     close = data["Close"].squeeze()
 
-    # ── S1: RSC Mansfield < -0.5
+    # ── S1: RSC Mansfield < -0.5 (sin cambios) ──────────────────────
     try:
         close_a, sp500_a = close.align(sp500_close, join="inner")
         if len(close_a) < RSC_SMA_PERIOD + 5:
             resultado["Error"] = "Histórico insuficiente para RSC"
             return resultado
-
         rsc_series  = rsc_mansfield(close_a, sp500_a)
         rsc_val     = float(rsc_series.iloc[-1])
         s1_activado = rsc_val < RSC_SALIDA_UMBRAL
-
         resultado["RSC Mansfield"] = round(rsc_val, 4)
         resultado["S1 RSC < -0.5"] = s1_activado
-
     except Exception as exc:
         resultado["Error"] = f"Error calculando RSC: {exc}"
         return resultado
 
-    # ── S2: Trailing Stop — precio < mínimo de los últimos 15 cierres
-    if len(close) < TRAILING_STOP_BARS + 1:
-        resultado["S2 Trailing Stop"] = False
+    # ── S2: Trailing Stop — CORREGIDO ───────────────────────────────
+    # Filtrar el histórico desde la fecha de entrada real
+    close_desde_entrada = close.loc[close.index >= fecha_entrada]
+    barras_abierto      = len(close_desde_entrada)
+    resultado["Barras Abierto"] = barras_abierto
+
+    if barras_abierto < TRAILING_STOP_BARS:
+        # ✅ La posición NO lleva 15 semanas abiertas → no activar trailing stop
+        resultado["S2 Trailing Stop"]  = False
         resultado["Trailing Stop Ref"] = None
     else:
-        # El trailing stop toma el mínimo de las 15 velas ANTERIORES
-        # (excluimos la vela actual para evitar lookahead)
-        trailing_min = float(close.iloc[-(TRAILING_STOP_BARS + 1):-1].min())
-        precio_actual = float(close.iloc[-1])
+        # Mínimo de los cierres semanales DESDE LA ENTRADA (excluimos vela actual)
+        trailing_min = float(close_desde_entrada.iloc[-2:].iloc[:-1]... )
+        precio_actual = float(close.iloc[-2])
         s2_activado   = precio_actual < trailing_min
 
         resultado["Precio Actual"]     = round(precio_actual, 2)
         resultado["Trailing Stop Ref"] = round(trailing_min, 2)
         resultado["S2 Trailing Stop"]  = s2_activado
 
-    # ── Precio actual (si no se calculó antes)
     if resultado["Precio Actual"] is None:
         resultado["Precio Actual"] = round(float(close.iloc[-1]), 2)
 
-    # ── Veredicto final: OR de las 3 condiciones
+    # ── Veredicto final: OR ──────────────────────────────────────────
     motivos = []
     if resultado["S1 RSC < -0.5"]:
         motivos.append(f"S1: RSC={resultado['RSC Mansfield']:+.3f} < -0.5")
     if resultado["S2 Trailing Stop"]:
         motivos.append(
             f"S2: Precio {resultado['Precio Actual']} < Stop {resultado['Trailing Stop Ref']}"
+            f" (tras {barras_abierto} semanas)"
         )
     if resultado["S3 Coppock Bajista"]:
         motivos.append("S3: Coppock SP500 bajista")
 
-    resultado["SALIDA"]  = len(motivos) > 0
-    resultado["Motivo"]  = " | ".join(motivos) if motivos else "—"
-
+    resultado["SALIDA"] = len(motivos) > 0
+    resultado["Motivo"] = " | ".join(motivos) if motivos else "—"
     return resultado
 
 
@@ -303,9 +298,10 @@ def run_exit_scanner(csv_path: str = DEFAULT_INPUT_CSV) -> pd.DataFrame:
 
     sp500_close  = sp500_data["Close"].squeeze()
     copk         = coppock_curve(sp500_close)
-    coppock_now  = float(copk.iloc[-1])
-    coppock_prev = float(copk.iloc[-2])
-    coppock_bull = coppock_now > coppock_prev
+    coppock_now  = float(copk.iloc[-2])
+    coppock_prev = float(copk.iloc[-3])
+    coppock_bull    = coppock_now > coppock_prev     # para el scanner de ENTRADAS
+    coppock_bearish = coppock_now < coppock_prev     # para el scanner de SALIDAS (S3)
     estado_mkt   = "↑ Alcista" if coppock_bull else "↓ BAJISTA"
 
     print(f"  Coppock actual   : {coppock_now:+.4f}")
@@ -322,14 +318,16 @@ def run_exit_scanner(csv_path: str = DEFAULT_INPUT_CSV) -> pd.DataFrame:
     resultados = []
 
     for _, fila in posiciones.iterrows():
-        ticker          = fila["Ticker"]
-        sector          = fila.get("Sector", "N/A")
-        precio_entrada  = fila.get("Precio_Entrada", None)
+        ticker         = fila["Ticker"]
+        sector         = fila.get("Sector", "N/A")
+        precio_entrada = fila.get("Precio_Entrada", None)
+        fecha_entrada  = fila["Fecha_Entrada"]
 
         res = evaluate_exit(
-            ticker       = ticker,
-            sp500_close  = sp500_close,
-            coppock_bull = coppock_bull,
+            ticker        = ticker,
+            fecha_entrada = fecha_entrada,
+            sp500_close   = sp500_close,
+            coppock_bull  = coppock_bull,
         )
 
         res["Sector"]         = sector

@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║      WEINSTEIN VERSION ALBERT — S&P 500 WEEKLY MARKET SCANNER       ║
+║      WEINSTEIN VERSION ALBERT — S&P 500 WEEKLY MARKET SCANNER        ║
 ║                                                                      ║
 ║  Sistema: Método Weinstein adaptado por Albert (fuerza relativa,     ║
 ║           WMA30, VPM5, Coppock como filtro de mercado)               ║
@@ -102,25 +102,62 @@ MIN_BARS = 70
 # 2. DESCARGA DE TICKERS S&P 500
 # ─────────────────────────────────────────────────────────────────────
 
+# ─────────────────────────────────────────────────────────────────────
+# NUEVA FUNCIÓN: fallback Wikipedia
+# ─────────────────────────────────────────────────────────────────────
+def _get_sp500_from_wikipedia() -> pd.DataFrame:
+    """Fuente de respaldo: tabla de Wikipedia."""
+    print("  → Fallback: leyendo desde Wikipedia...")
+    try:
+        tables = pd.read_html(
+            "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+            attrs={"id": "constituents"},
+        )
+        df = tables[0].copy()
+        # Wikipedia usa: Symbol, Security, GICS Sector, ...
+        df = df.rename(columns={"Security": "Name", "GICS Sector": "Sector"})
+        df["Symbol"] = df["Symbol"].astype(str).str.replace(".", "-", regex=False)
+        df = df[["Symbol", "Name", "Sector"]].dropna(subset=["Symbol"])
+        df = df.reset_index(drop=True)
+        print(f"  ✓ {len(df)} tickers cargados desde Wikipedia.")
+        return df
+    except Exception as exc:
+        print(f"  ✗ Fallback fallido: {exc}")
+        sys.exit(1)
+
+
+# ─────────────────────────────────────────────────────────────────────
+# FUNCIÓN CORREGIDA
+# ─────────────────────────────────────────────────────────────────────
 def get_sp500_tickers() -> pd.DataFrame:
     """
-    Descarga la lista actualizada de componentes del S&P 500 desde GitHub
-    (repositorio 'datasets/s-and-p-500-companies').
-
-    Retorna
-    -------
-    pd.DataFrame con columnas: Symbol, Name, Sector
+    Descarga la lista de componentes del S&P 500 desde GitHub con
+    normalización robusta de columnas y fallback a Wikipedia.
     """
-    print(f"  → Fuente: {SP500_CSV_URL}")
+    print(f"  → Fuente primaria: {SP500_CSV_URL}")
     try:
         df = pd.read_csv(SP500_CSV_URL)
-
-        # Normalizar nombre de columnas (el repo usa: Symbol, Name, Sector)
         df.columns = [c.strip() for c in df.columns]
 
-        # yfinance requiere BRK-B en lugar de BRK.B, etc.
-        df["Symbol"] = df["Symbol"].str.replace(".", "-", regex=False)
+        # ── Normalización robusta: mapear cualquier variante al nombre canónico ──
+        col_rename: dict[str, str] = {}
+        for col in df.columns:
+            c_low = col.strip().lower()
+            if c_low in ("symbol", "ticker"):
+                col_rename[col] = "Symbol"
+            elif c_low in ("name", "security", "company", "company name"):
+                col_rename[col] = "Name"
+            elif "sector" in c_low:          # captura 'Sector', 'GICS Sector', etc.
+                col_rename[col] = "Sector"
+        df.rename(columns=col_rename, inplace=True)
 
+        # Si alguna columna sigue faltando, asignar valor por defecto
+        for req in ("Symbol", "Name", "Sector"):
+            if req not in df.columns:
+                print(f"  ⚠️  Columna '{req}' no encontrada; se asignará 'N/A'.")
+                df[req] = "N/A"
+
+        df["Symbol"] = df["Symbol"].astype(str).str.replace(".", "-", regex=False)
         df = df[["Symbol", "Name", "Sector"]].dropna(subset=["Symbol"])
         df = df.reset_index(drop=True)
         print(f"  ✓ {len(df)} tickers cargados correctamente.")
@@ -128,7 +165,7 @@ def get_sp500_tickers() -> pd.DataFrame:
 
     except Exception as exc:
         print(f"  ✗ Error al descargar tickers: {exc}")
-        sys.exit(1)
+        return _get_sp500_from_wikipedia()
 
 
 # ─────────────────────────────────────────────────────────────────────
