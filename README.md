@@ -46,7 +46,7 @@ pip install yfinance pandas numpy requests
 1. Abre `CMD` en la carpeta del proyecto:
 
 ```cmd
-cd C:\UNI\weinstein_albert_scanner
+cd C:\weinstein_albert_scanner
 ```
 
 2. Crea un entorno virtual:
@@ -131,7 +131,3 @@ Notas importantes:
 - Si aparece un error de `python` no reconocido, verifica que Python esté instalado y agregado al `PATH`.
 - Si no se descargan datos, comprueba tu conexión a Internet.
 - Si el escáner de salida indica columnas faltantes, revisa que `posiciones.csv` incluya `Ticker`, `Sector`, `Precio_Entrada` y `Fecha_Entrada`.
-
-## Licencia
-
-No se ha definido una licencia en este repositorio.
