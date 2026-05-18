@@ -82,7 +82,6 @@ DOWNLOAD_PERIOD      = "5y"        # historia suficiente para todos los indicado
 
 # Parámetros de condiciones de salida
 RSC_SALIDA_UMBRAL    = -0.5        # S1: RSC Mansfield < este valor → salida
-TRAILING_STOP_BARS   = 15          # S2: mínimo de los últimos N cierres semanales
 RSC_SMA_PERIOD       = 52          # para el cálculo del RSC Mansfield
 COPPOCK_ROC1         = 14
 COPPOCK_ROC2         = 11
@@ -182,18 +181,15 @@ def evaluate_exit(
     Retorna un dict con el estado de cada condición y el veredicto final.
 
     Condiciones (OR — cualquiera activa la salida):
-      S1: RSC Mansfield Activo < -0.5
-      S2: Precio actual < mínimo de los últimos 15 cierres semanales
-      S3: Coppock SP500 bajista (actual ≤ anterior)
+            S1: RSC Mansfield Activo < -0.5
+            S2: (eliminada) Trailing stop ya no se evalúa
+            S3: Coppock SP500 bajista (actual ≤ anterior)
     """
     resultado = {
         "Ticker"             : ticker,
         "Precio Actual"      : None,
         "RSC Mansfield"      : None,
-        "Trailing Stop Ref"  : None,
-        "Barras Abierto"     : None,   # ← nuevo campo informativo
         "S1 RSC < -0.5"      : None,
-        "S2 Trailing Stop"   : None,
         "S3 Coppock Bajista" : coppock_bearish,
         "SALIDA"             : False,
         "Motivo"             : [],
@@ -222,40 +218,18 @@ def evaluate_exit(
         resultado["Error"] = f"Error calculando RSC: {exc}"
         return resultado
 
-    # ── S2: Trailing Stop ────────────────────────────────────────────
-    # La condición solo puede evaluarse cuando la posición ya acumula
-    # al menos 15 velas semanales desde la fecha de entrada.
+    # Precio actual (último cierre desde la fecha de entrada)
     close_desde_entrada = close.loc[close.index >= fecha_entrada]
-    barras_abierto = len(close_desde_entrada)
-    resultado["Barras Abierto"] = barras_abierto
-
+    if close_desde_entrada.empty:
+        resultado["Error"] = "Sin cierres desde la fecha de entrada"
+        return resultado
     precio_actual = float(close_desde_entrada.iloc[-1])
     resultado["Precio Actual"] = round(precio_actual, 2)
-
-    # Se requiere disponer de 15 barras COMPLETAS previas al cierre actual
-    # para evaluar correctamente el trailing stop de 15 barras.
-    if barras_abierto <= TRAILING_STOP_BARS:
-        resultado["S2 Trailing Stop"] = False
-        resultado["Trailing Stop Ref"] = None
-    else:
-        history_before_current = close_desde_entrada.iloc[:-1]
-        if len(history_before_current) < TRAILING_STOP_BARS:
-            resultado["S2 Trailing Stop"] = False
-            resultado["Trailing Stop Ref"] = None
-        else:
-            trailing_min = float(history_before_current.tail(TRAILING_STOP_BARS).min())
-            resultado["Trailing Stop Ref"] = round(trailing_min, 2)
-            resultado["S2 Trailing Stop"] = precio_actual < trailing_min
 
     # ── Veredicto final: OR ──────────────────────────────────────────
     motivos = []
     if resultado["S1 RSC < -0.5"]:
         motivos.append(f"S1: RSC={resultado['RSC Mansfield']:+.3f} < -0.5")
-    if resultado["S2 Trailing Stop"]:
-        motivos.append(
-            f"S2: Precio {resultado['Precio Actual']} < Stop {resultado['Trailing Stop Ref']}"
-            f" (tras {barras_abierto} semanas)"
-        )
     if resultado["S3 Coppock Bajista"]:
         motivos.append("S3: Coppock SP500 bajista")
 
@@ -356,9 +330,8 @@ def run_exit_scanner(csv_path: str = DEFAULT_INPUT_CSV) -> pd.DataFrame:
         "Precio Actual",
         "Rentabilidad %",
         "RSC Mansfield",
-        "Trailing Stop Ref",
         "S1 RSC < -0.5",
-        "S2 Trailing Stop",
+        
         "S3 Coppock Bajista",
         "SALIDA",
         "Motivo",

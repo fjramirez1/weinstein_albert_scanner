@@ -191,7 +191,6 @@ Idea clave: solo se considera la acción si `VPM5 > 0`, lo que indica que el vol
 ### ❌ Condiciones de Salida (cualquiera activa la salida / OR)
 
 - Pérdida de fuerza del valor (RSC Mansfield del Activo < −0.5) o
-- Activación del trailing stop (mínimo 15 barras) o
 - Coppock bajista (filtro de mercado)
 
 ## Solución de problemas
