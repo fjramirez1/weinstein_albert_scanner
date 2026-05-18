@@ -89,7 +89,7 @@ bash scripts/run_exit.sh
 
 Columnas requeridas: `Ticker`, `Sector`, `Precio_Entrada`, `Fecha_Entrada` (formato `YYYY-MM-DD`).
 
-Ejemplo real (en repo):
+Ejemplo real:
 
 ```csv
 Ticker,Sector,Precio_Entrada,Fecha_Entrada
@@ -102,7 +102,7 @@ JPM,Financial Services,198.20,2024-05-17
 
 ### `weinstein_albert_scan_YYYYMMDD_HHMM.csv` (salida del escáner de entrada)
 
-Cabecera de ejemplo (archivo real en repo):
+Cabecera de ejemplo:
 
 ```csv
 Ticker,Nombre,Sector,ETF Sector,Precio Actual,RSC Mansfield Activo,Momentum (MOM),RSC Mansfield Sector,VPM5,Distancia % WMA30,Dirección Coppock SP500
@@ -121,7 +121,7 @@ Descripción breve de columnas (resumen):
 
 ### `<archivo_entrada>_salidas_YYYYMMDD_HHMM.csv` (salida del escáner de salida)
 
-Cabecera de ejemplo (archivo real en repo):
+Cabecera de ejemplo:
 
 ```csv
 Ticker,Precio Actual,RSC Mansfield,S1 RSC < -0.5,S3 Coppock Bajista,SALIDA,Motivo,Error,Sector,Precio Entrada,Rentabilidad %
