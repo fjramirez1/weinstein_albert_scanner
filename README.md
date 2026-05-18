@@ -165,7 +165,7 @@ La fuente de información de donde se ha sacado la estrategia de trading algorí
 
 ### ✅ Condiciones de Entrada (todas deben cumplirse / AND)
 
-- Fuerza del sector positiva (RSC Mansfield sector)
+- Fuerza del sector positiva: `RSC Mansfield Sector >= +0.10`
 - Volumen normalizado positivo (VPM5 > 0)
 - Fuerza del valor positiva (RSC Mansfield activo)
 - Distancia < 8 % respecto a la WMA30

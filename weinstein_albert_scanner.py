@@ -102,6 +102,7 @@ VPM_PERIOD      = 5    # semanas para el VPM
 COPPOCK_ROC1    = 14   # periodos ROC largo (Coppock)
 COPPOCK_ROC2    = 11   # periodos ROC corto (Coppock)
 COPPOCK_WMA     = 10   # periodos WMA de suavizado (Coppock)
+SECTOR_RSC_MIN  = 0.10 # mínimo para considerar fuerte un sector
 
 # Umbral máximo de distancia a la WMA30 (%)
 MAX_DISTANCIA_WMA30 = 8.0
@@ -471,7 +472,7 @@ def evaluate_ticker(
     # APLICACIÓN DE LOS 6 FILTROS (operador AND)
     # ──────────────────────────────────────────────────────────────────
     #
-    #  F1: RSC Mansfield del SECTOR > 0
+    #  F1: RSC Mansfield del SECTOR >= 0.10
     #  F2: VPM5 > 0
     #  F3: RSC Mansfield del ACTIVO > 0
     #  F4: Distancia a WMA30 < 8 %
@@ -481,7 +482,7 @@ def evaluate_ticker(
     # ──────────────────────────────────────────────────────────────────
 
     filtros = {
-        "F1_rsc_sector"   : (not pd.isna(rsc_sector_val)) and (rsc_sector_val   > 0.0),
+        "F1_rsc_sector"   : (not pd.isna(rsc_sector_val)) and (rsc_sector_val   >= SECTOR_RSC_MIN),
         "F2_vpm5"         : (not pd.isna(vpm5_val))       and (vpm5_val         > 0.0),
         "F3_rsc_activo"   : (not pd.isna(rsc_activo_val)) and (rsc_activo_val   > 0.0),
         "F4_distancia"    : (not pd.isna(distancia_wma30)) and (distancia_wma30 < MAX_DISTANCIA_WMA30),
