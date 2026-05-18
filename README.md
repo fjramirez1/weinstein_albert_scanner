@@ -44,7 +44,7 @@ Salida principal:
 
 - `RSC Mansfield del Activo < −0.5`.
 - `Trailing stop` basado en los últimos cierres semanales desde la fecha de entrada.
-- `Coppock` bajista en el S&P 500.
+- `Coppock` bajista en el S&P 500: solo activa salida si el Coppock semanal está por debajo de 0 y cae frente a la semana anterior.
 
 Uso recomendado:
 
@@ -191,7 +191,7 @@ Idea clave: solo se considera la acción si `VPM5 > 0`, lo que indica que el vol
 ### ❌ Condiciones de Salida (cualquiera activa la salida / OR)
 
 - Pérdida de fuerza del valor (RSC Mansfield del Activo < −0.5) o
-- Coppock bajista (filtro de mercado)
+- Coppock bajista (filtro de mercado): el Coppock semanal del S&P 500 debe estar por debajo de 0 y además ser menor que el valor de la semana anterior.
 
 ## Solución de problemas
 

@@ -180,10 +180,10 @@ def evaluate_exit(
     Evalúa las 3 condiciones de salida para un ticker.
     Retorna un dict con el estado de cada condición y el veredicto final.
 
-    Condiciones (OR — cualquiera activa la salida):
+        Condiciones (OR — cualquiera activa la salida):
             S1: RSC Mansfield Activo < -0.5
             S2: (eliminada) Trailing stop ya no se evalúa
-            S3: Coppock SP500 bajista (actual ≤ anterior)
+            S3: Coppock SP500 bajista (Coppock < 0 y actual < anterior)
     """
     resultado = {
         "Ticker"             : ticker,
@@ -231,7 +231,7 @@ def evaluate_exit(
     if resultado["S1 RSC < -0.5"]:
         motivos.append(f"S1: RSC={resultado['RSC Mansfield']:+.3f} < -0.5")
     if resultado["S3 Coppock Bajista"]:
-        motivos.append("S3: Coppock SP500 bajista")
+        motivos.append("S3: Coppock SP500 < 0 y descendiendo")
 
     resultado["SALIDA"] = len(motivos) > 0
     resultado["Motivo"] = " | ".join(motivos) if motivos else "—"
@@ -266,7 +266,7 @@ def run_exit_scanner(csv_path: str = DEFAULT_INPUT_CSV) -> pd.DataFrame:
     copk         = coppock_curve(sp500_close)
     coppock_now  = float(copk.iloc[-1])
     coppock_prev = float(copk.iloc[-2])
-    coppock_bearish = coppock_now < coppock_prev
+    coppock_bearish = coppock_now < 0.0 and coppock_now < coppock_prev
     estado_mkt   = "↓ Bajista" if coppock_bearish else "↑ Alcista"
 
     print(f"  Coppock actual   : {coppock_now:+.4f}")
@@ -274,7 +274,7 @@ def run_exit_scanner(csv_path: str = DEFAULT_INPUT_CSV) -> pd.DataFrame:
     print(f"  Estado mercado   : {estado_mkt}")
 
     if coppock_bearish:
-        print("  ⚠️  S3 ACTIVA para TODAS las posiciones (Coppock bajista)")
+        print("  ⚠️  S3 ACTIVA para TODAS las posiciones (Coppock < 0 y descendiendo)")
 
     # ── Evaluar cada ticker
     print(f"\n[3/3] Evaluando {len(posiciones)} posiciones...")
