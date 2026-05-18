@@ -98,7 +98,8 @@ SECTOR_TO_ETF: dict[str, str] = {
 # Parámetros de indicadores
 WMA30_PERIOD    = 30   # semanas
 RSC_SMA_PERIOD  = 52   # semanas para la SMA base del RSC Mansfield
-VPM_PERIOD      = 5    # semanas para el VPM
+VPM_BASE_PERIOD = 52   # semanas para media y desviación estándar del VPM
+VPM_SMOOTHING   = 5    # semanas para suavizar el VPM
 COPPOCK_ROC1    = 14   # periodos ROC largo (Coppock)
 COPPOCK_ROC2    = 11   # periodos ROC corto (Coppock)
 COPPOCK_WMA     = 10   # periodos WMA de suavizado (Coppock)
@@ -283,39 +284,43 @@ def rsc_mansfield(
     return rsc
 
 
-# ── 4.3  VPM5 (Volumen Positivo Medio de 5 periodos) ──────────────────
+# ── 4.3  VPM5 (Volumen Normalizado Positivo de 5 semanas) ─────────────
 
-def vpm5(data: pd.DataFrame, period: int = VPM_PERIOD) -> pd.Series:
+def vpm5(
+    data: pd.DataFrame,
+    base_period: int = VPM_BASE_PERIOD,
+    smoothing_period: int = VPM_SMOOTHING,
+) -> pd.Series:
     """
-    Volumen Normalizado Positivo de N periodos.
+    Volumen Normalizado Positivo suavizado.
 
     Lógica
     ------
-    Para cada semana, si el precio cierra AL ALZA respecto a la semana anterior
-    se contabiliza el volumen como POSITIVO; si cierra A LA BAJA, como NEGATIVO.
+    1. Se calcula la media y la desviación estándar del volumen de las
+       últimas 52 semanas.
+    2. Para cada semana se obtiene el VPM como distancia estandarizada del
+       volumen actual respecto a esa media.
+    3. El VPM5 es la media móvil de 5 semanas aplicada al VPM.
 
-    VPM_n = Σ(Vol_firmado en últimos n períodos) / Vol_promedio(n)
+    Fórmula
+    -------
+    VPM(t)  = (Volume(t) - mean52(Volume)) / std52(Volume)
+    VPM5(t) = SMA5(VPM(t))
 
-    donde Vol_firmado = +Volume si Close > Close_anterior
-                       -Volume si Close < Close_anterior
-                        0      si Close = Close_anterior
-
-    VPM5 > 0 → predominio del volumen alcista en las últimas 5 semanas.
-    VPM5 < 0 → predominio del volumen bajista.
+    Interpretación
+    -------------
+    VPM5 > 0 → el volumen reciente está por encima de su media histórica y
+               respalda la entrada.
+    VPM5 < 0 → el volumen reciente está por debajo de su media histórica.
     """
-    close  = data["Close"].squeeze()
-    volume = data["Volume"].squeeze()
+    volume = data["Volume"].squeeze().astype(float)
 
-    # Dirección semanal: +1 alcista, -1 bajista, 0 igual
-    direction   = np.sign(close.diff())
-    signed_vol  = direction * volume
+    rolling_mean = volume.rolling(window=base_period).mean()
+    rolling_std = volume.rolling(window=base_period).std(ddof=0)
+    vpm = (volume - rolling_mean) / rolling_std.replace(0, np.nan)
 
-    rolling_sum  = signed_vol.rolling(window=period).sum()
-    rolling_mean = volume.rolling(window=period).mean()
-
-    # Evitamos división por cero
-    result = rolling_sum / rolling_mean.replace(0, np.nan)
-    return result
+    vpm5_series = vpm.rolling(window=smoothing_period).mean()
+    return vpm5_series
 
 
 # ── 4.4  Coppock Curve ────────────────────────────────────────────────
@@ -465,7 +470,7 @@ def evaluate_ticker(
         rsc_sector_val = np.nan   # sector desconocido → filtro fallará
 
     # ── VPM5
-    vpm5_series = vpm5(data, VPM_PERIOD)
+    vpm5_series = vpm5(data)
     vpm5_val    = float(vpm5_series.iloc[-1])
 
     # ──────────────────────────────────────────────────────────────────

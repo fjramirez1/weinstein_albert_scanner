@@ -166,11 +166,26 @@ La fuente de información de donde se ha sacado la estrategia de trading algorí
 ### ✅ Condiciones de Entrada (todas deben cumplirse / AND)
 
 - Fuerza del sector positiva: `RSC Mansfield Sector >= +0.10`
-- Volumen normalizado positivo (VPM5 > 0)
+- Volumen normalizado positivo: `VPM5 > 0`, calculado como la media móvil de 5 semanas del volumen estandarizado frente a las últimas 52 semanas
 - Fuerza del valor positiva (RSC Mansfield activo)
 - Distancia < 8 % respecto a la WMA30
 - Cierre > WMA30
 - Coppock alcista (filtro de mercado)
+
+### Cómo se calcula VPM5
+
+El filtro de volumen usa esta secuencia:
+
+1. Se calcula la media y la desviación estándar del volumen de las últimas 52 semanas.
+2. Para cada semana, se obtiene el VPM como la distancia estandarizada del volumen actual respecto a esa media.
+3. Se suaviza el VPM con una media móvil simple de 5 semanas.
+
+Fórmulas:
+
+- `VPM(t) = (Volumen(t) - media52) / desviacion52`
+- `VPM5(t) = SMA5(VPM(t))`
+
+Idea clave: solo se considera la acción si `VPM5 > 0`, lo que indica que el volumen reciente está por encima de su comportamiento histórico medio y respalda el movimiento.
 
 ### ❌ Condiciones de Salida (cualquiera activa la salida / OR)
 
