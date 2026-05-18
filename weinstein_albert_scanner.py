@@ -34,7 +34,7 @@ import os
 import numpy as np
 import pandas as pd
 import yfinance as yf
-from we_utils import wma, rsc_mansfield, vpm5, coppock_curve, sp500_alcista
+from we_utils import wma, rsc_mansfield, vpm5, coppock_curve, sp500_alcista, calculate_mom
 
 warnings.filterwarnings("ignore")
 
@@ -387,6 +387,16 @@ def evaluate_ticker(
     # Distancia porcentual a la WMA30
     distancia_wma30 = ((precio_actual - wma30_val) / wma30_val) * 100.0
 
+    # ── Momentum Relativo (MOM)
+    mom_val = calculate_mom(close, ma_period=30)
+    if mom_val is None:
+        return None  # Excluir si no hay datos suficientes para MOM
+
+    # ── Momentum Relativo (MOM)
+    mom_val = calculate_mom(close, ma_period=30)
+    if mom_val is None:
+        return None  # Excluir si no hay datos suficientes para MOM
+
     # ── RSC Mansfield del activo vs S&P 500
     close_aligned, sp500_aligned = close.align(sp500_close, join="inner")
     if len(close_aligned) < RSC_SMA_PERIOD + 5:
@@ -439,6 +449,7 @@ def evaluate_ticker(
         "ETF Sector"            : etf_ticker if etf_ticker else "N/A",
         "Precio Actual"         : round(precio_actual, 2),
         "RSC Mansfield Activo"  : round(rsc_activo_val, 4),
+        "Momentum (MOM)"         : round(mom_val, 4),
         "RSC Mansfield Sector"  : round(rsc_sector_val, 4) if not pd.isna(rsc_sector_val) else np.nan,
         "VPM5"                  : round(vpm5_val, 4),
         "Distancia % WMA30"     : round(distancia_wma30, 2),
@@ -515,6 +526,7 @@ def run_scanner() -> pd.DataFrame:
                 resultados.append(resultado)
                 # Feedback inmediato al usuario cuando encuentra un candidato
                 print(f"  ★ CANDIDATO → {ticker:<6} | {sector:<30} | "
+                      f"MOM: {resultado['Momentum (MOM)']:+.3f} | "
                       f"RSC: {resultado['RSC Mansfield Activo']:+.3f} | "
                       f"Dist: {resultado['Distancia % WMA30']:+.1f}%")
 
@@ -552,15 +564,21 @@ def run_scanner() -> pd.DataFrame:
     # Construir DataFrame de resultados
     df = pd.DataFrame(resultados)
 
-    # Ordenar por RSC Mansfield del activo (mayor → mejor fuerza relativa)
-    df.sort_values("RSC Mansfield Activo", ascending=False, inplace=True)
+    # Ordenar por Momentum Relativo (mayor → tendencia más alcista)
+    df.sort_values("Momentum (MOM)", ascending=False, inplace=True)
     df.reset_index(drop=True, inplace=True)
+
+    # Limitar a top 10 posiciones
+    df = df.head(10)
+
+    print(f"  [TOP 10] Seleccionados {len(df)} stocks con mayor Momentum Relativo")
 
     # ── Columnas de salida requeridas (especificación del sistema)
     columnas_output = [
         "Ticker",
         "Sector",
         "Precio Actual",
+        "Momentum (MOM)",
         "RSC Mansfield Activo",
         "Distancia % WMA30",
         "Dirección Coppock SP500",
@@ -584,7 +602,7 @@ def export_results(df: pd.DataFrame) -> None:
 
     Columnas del CSV (completo, incluyendo métricas auxiliares):
         Ticker, Nombre, Sector, ETF Sector, Precio Actual,
-        RSC Mansfield Activo, RSC Mansfield Sector, VPM5,
+        RSC Mansfield Activo, Momentum (MOM), RSC Mansfield Sector, VPM5,
         Distancia % WMA30, Dirección Coppock SP500
     """
     if df.empty:

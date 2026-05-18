@@ -59,6 +59,43 @@ def coppock_curve(price: pd.Series, roc_long: int = 14, roc_short: int = 11, wma
     return wma(combined, wma_period)
 
 
+def calculate_mom(close_prices: pd.Series, ma_period: int = 30) -> float | None:
+    """
+    Calcula Momentum Relativo (MOM) basado en la media móvil de `ma_period` sesiones.
+    
+    MOM = (Precio Actual - MA30) / MA30
+    
+    Parámetros
+    ----------
+    close_prices : pd.Series
+        Serie de precios de cierre (típicamente últimas 30+ sesiones)
+    ma_period : int
+        Período para la media móvil (default: 30)
+    
+    Retorna
+    -------
+    float | None
+        Momentum Relativo si hay datos suficientes, None en caso contrario
+    """
+    if close_prices is None or len(close_prices) < ma_period:
+        return None
+    
+    # Calcular la media móvil ponderada del período especificado
+    ma_series = wma(close_prices, ma_period)
+    ma_val = float(ma_series.iloc[-1])
+    
+    if pd.isna(ma_val) or ma_val <= 0:
+        return None
+    
+    # Precio actual es el último cierre
+    current_price = float(close_prices.iloc[-1])
+    
+    # Calcular MOM
+    mom = (current_price - ma_val) / ma_val
+    
+    return mom
+
+
 def sp500_alcista(coppock: pd.Series, recent_lookback: int = 4) -> tuple[bool, str]:
     """
     Estado alcista del S&P 500 a partir de la curva de Coppock semanal.

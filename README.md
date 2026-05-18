@@ -38,6 +38,16 @@ Salida principal:
 - Muestra el progreso por consola.
 - Genera un CSV con nombre similar a `weinstein_albert_scan_YYYYMMDD_HHMM.csv`.
 
+### Desempate y selección (Momentum)
+
+Se ha añadido un criterio de desempate basado en Momentum relativo (MOM) para ordenar y seleccionar los candidatos finales.
+
+- Cálculo: MOM = (Precio Actual - WMA30) / WMA30, donde la WMA es la media móvil ponderada de 30 semanas (implementado en la función `calculate_mom` en `we_utils.py`).
+- Uso: el escáner incluye `Momentum (MOM)` en la salida y en la impresión por consola para cada candidato.
+- Selección: tras aplicar los 5 filtros (AND), los candidatos se ordenan por `Momentum (MOM)` en orden descendente y se limita la lista a las 10 posiciones superiores (top 10). Esto actúa como desempate cuando hay más candidatos que cupos.
+
+Nota: el MOM es un criterio complementario de selección, no reemplaza los filtros técnicos principales (RSC, VPM5, WMA30, Coppock).
+
 ### Escáner de salida
 
 `weinstein_albert_exit_scanner.py` revisa una lista de posiciones abiertas y comprueba tres condiciones de salida:
