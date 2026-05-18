@@ -42,7 +42,7 @@ Salida principal:
 
 `weinstein_albert_exit_scanner.py` revisa una lista de posiciones abiertas y comprueba tres condiciones de salida:
 
-- `RSC Mansfield` por debajo del umbral definido.
+- `RSC Mansfield del Activo < −0.5`.
 - `Trailing stop` basado en los últimos cierres semanales desde la fecha de entrada.
 - `Coppock` bajista en el S&P 500.
 
@@ -190,7 +190,7 @@ Idea clave: solo se considera la acción si `VPM5 > 0`, lo que indica que el vol
 
 ### ❌ Condiciones de Salida (cualquiera activa la salida / OR)
 
-- Pérdida de fuerza del valor (RSC Mansfield < −0.5) o
+- Pérdida de fuerza del valor (RSC Mansfield del Activo < −0.5) o
 - Activación del trailing stop (mínimo 15 barras) o
 - Coppock bajista (filtro de mercado)
 
