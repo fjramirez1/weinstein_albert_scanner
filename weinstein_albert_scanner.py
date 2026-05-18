@@ -34,7 +34,7 @@ import os
 import numpy as np
 import pandas as pd
 import yfinance as yf
-from we_utils import wma, rsc_mansfield
+from we_utils import wma, rsc_mansfield, vpm5, coppock_curve, sp500_alcista
 
 warnings.filterwarnings("ignore")
 
@@ -54,7 +54,9 @@ SP500_INDEX = "^GSPC"
 # Período de descarga (necesitamos historia suficiente para todos los indicadores)
 # WMA30 → 30 semanas | RSC SMA52 → 52 semanas | Coppock ROC14 + WMA10 → ~24 semanas
 # Con 5 años (~260 semanas) tenemos margen más que suficiente
-from we_utils import vpm5, coppock_curve
+
+# Ventana para detectar un mínimo reciente del Coppock del mercado.
+COPPOCK_RECENT_LOOKBACK = 4
 # NUEVA FUNCIÓN: fallback Wikipedia
 # ─────────────────────────────────────────────────────────────────────
 def _get_sp500_from_wikipedia() -> pd.DataFrame:
@@ -267,16 +269,18 @@ def precompute_sp500_and_sectors(
 
     Retorna
     -------
-    coppock_bullish   : bool  — True si Coppock actual > Coppock anterior
+    coppock_bullish   : bool  — True si Sp500alcista se activa
     coppock_direction : str   — etiqueta descriptiva
     sector_rsc        : dict  — { 'XLK': valor_rsc, 'XLF': valor_rsc, … }
     """
     # ── Coppock del S&P 500
     copk = coppock_curve(sp500_close)
+    coppock_bullish, coppock_direction = sp500_alcista(
+        copk,
+        recent_lookback=COPPOCK_RECENT_LOOKBACK,
+    )
     coppock_now  = copk.iloc[-1]
     coppock_prev = copk.iloc[-2]
-    coppock_bullish   = bool(coppock_now > coppock_prev)
-    coppock_direction = "↑ Alcista" if coppock_bullish else "↓ Bajista"
 
     print(f"\n  Coppock SP500 actual   : {coppock_now:+.4f}")
     print(f"  Coppock SP500 anterior : {coppock_prev:+.4f}")
@@ -377,7 +381,9 @@ def evaluate_ticker(
     #  F2: VPM5 > 0
     #  F3: RSC Mansfield del ACTIVO > 0
     #  F4: Distancia a WMA30 < 8 %
-    #  F5: Coppock SP500 actual > anterior (mercado alcista)
+    #  F5: Sp500alcista
+    #      - inicio alcista desde un mínimo reciente del Coppock, o
+    #      - continuación alcista cuando Coppock ya es positivo y sigue subiendo
     #
     # ──────────────────────────────────────────────────────────────────
 

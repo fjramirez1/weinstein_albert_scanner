@@ -57,3 +57,36 @@ def coppock_curve(price: pd.Series, roc_long: int = 14, roc_short: int = 11, wma
     roc_s = price.pct_change(periods=roc_short) * 100.0
     combined = roc_l + roc_s
     return wma(combined, wma_period)
+
+
+def sp500_alcista(coppock: pd.Series, recent_lookback: int = 4) -> tuple[bool, str]:
+    """
+    Estado alcista del S&P 500 a partir de la curva de Coppock semanal.
+
+    La señal se activa en dos casos:
+    1. Inicio alcista: Coppock sigue por debajo de cero, el valor previo fue
+       el mínimo reciente y la serie empieza a girar al alza.
+    2. Continuación alcista: Coppock ya es positivo y sigue subiendo.
+    """
+    valid = coppock.dropna()
+    if len(valid) < 2:
+        return False, "↓ Bajista"
+
+    current = float(valid.iloc[-1])
+    previous = float(valid.iloc[-2])
+
+    start_bullish = False
+    if len(valid) >= recent_lookback + 1:
+        recent_window = valid.iloc[-(recent_lookback + 1):-1]
+        previous_was_recent_min = previous == float(recent_window.min())
+        start_bullish = (
+            current < 0.0
+            and previous < 0.0
+            and previous_was_recent_min
+            and current > previous
+        )
+
+    continuation_bullish = current > 0.0 and current > previous
+    bullish = start_bullish or continuation_bullish
+    direction = "↑ Alcista" if bullish else "↓ Bajista"
+    return bullish, direction

@@ -169,7 +169,9 @@ La fuente de información de donde se ha sacado la estrategia de trading algorí
 - Volumen normalizado positivo: `VPM5 > 0`, calculado como la media móvil de 5 semanas del volumen estandarizado frente a las últimas 52 semanas
 - Fuerza del valor positiva (RSC Mansfield activo)
 - Distancia < 8 % respecto a la WMA30
-- Coppock alcista (filtro de mercado)
+- `Sp500alcista = True` según la curva de Coppock semanal:
+	- inicio alcista: Coppock sigue por debajo de 0, el valor previo fue el mínimo reciente y la curva empieza a girar al alza
+	- continuación alcista: Coppock ya es positivo y sigue subiendo
 
 ### Cómo se calcula VPM5
 
