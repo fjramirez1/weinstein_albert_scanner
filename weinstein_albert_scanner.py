@@ -51,6 +51,39 @@ if os.getenv("WEINSTEIN_DRY_RUN") == "1":
 # Ticker del índice de referencia
 SP500_INDEX = "^GSPC"
 
+# Fuente primaria para descargar los componentes del S&P 500.
+SP500_CSV_URL = "https://raw.githubusercontent.com/datasets/s-and-p-500-companies/master/data/constituents.csv"
+
+# Periodo de descarga semanal usado en el escáner de entrada.
+DOWNLOAD_PERIOD = "6y"
+
+# Umbrales y parámetros de los filtros técnicos.
+MIN_BARS = 70
+WMA30_PERIOD = 30
+RSC_SMA_PERIOD = 52
+VPM_BASE_PERIOD = 52
+VPM_SMOOTHING = 5
+COPPOCK_ROC1 = 14
+COPPOCK_ROC2 = 11
+COPPOCK_WMA = 10
+SECTOR_RSC_MIN = 0.10
+MAX_DISTANCIA_WMA30 = 8.0
+
+# Mapeo de sectores GICS a ETFs sectoriales SPDR.
+SECTOR_TO_ETF = {
+    "Communication Services": "XLC",
+    "Consumer Cyclical": "XLY",
+    "Consumer Defensive": "XLP",
+    "Energy": "XLE",
+    "Financial Services": "XLF",
+    "Healthcare": "XLV",
+    "Industrials": "XLI",
+    "Basic Materials": "XLB",
+    "Real Estate": "XLRE",
+    "Technology": "XLK",
+    "Utilities": "XLU",
+}
+
 # Período de descarga (necesitamos historia suficiente para todos los indicadores)
 # WMA30 → 30 semanas | RSC SMA52 → 52 semanas | Coppock ROC14 + WMA10 → ~24 semanas
 # Con 5 años (~260 semanas) tenemos margen más que suficiente
@@ -441,7 +474,7 @@ def run_scanner() -> pd.DataFrame:
 
     # ── PASO 2: Datos del índice
     print("\n[PASO 2] Descargando S&P 500 (^GSPC) y pre-calculando indicadores...")
-    sp500_data = download_weekly(SP500_INDEX, period="6y")
+    sp500_data = download_weekly(SP500_INDEX, period=DOWNLOAD_PERIOD)
     if sp500_data is None:
         print("ERROR CRÍTICO: No se pudo descargar el S&P 500. Abortando.")
         sys.exit(1)
