@@ -34,6 +34,7 @@ import os
 import numpy as np
 import pandas as pd
 import yfinance as yf
+from we_utils import wma, rsc_mansfield
 
 warnings.filterwarnings("ignore")
 
@@ -53,70 +54,7 @@ SP500_INDEX = "^GSPC"
 # Período de descarga (necesitamos historia suficiente para todos los indicadores)
 # WMA30 → 30 semanas | RSC SMA52 → 52 semanas | Coppock ROC14 + WMA10 → ~24 semanas
 # Con 5 años (~260 semanas) tenemos margen más que suficiente
-DOWNLOAD_PERIOD = "5y"
-
-# URL pública del CSV con los componentes del S&P 500
-# Repositorio: https://github.com/datasets/s-and-p-500-companies  (mantenido activamente)
-SP500_CSV_URL = (
-    "https://raw.githubusercontent.com/datasets/s-and-p-500-companies"
-    "/main/data/constituents.csv"
-)
-
-# Mapeo: nombre de sector (gfCategory yfinance / CSV) → ETF sectorial SPDR
-SECTOR_TO_ETF: dict[str, str] = {
-    # Tecnología
-    "Technology":                  "XLK",
-    "Information Technology":      "XLK",
-    # Finanzas
-    "Financials":                  "XLF",
-    "Financial Services":          "XLF",
-    # Salud
-    "Health Care":                 "XLV",
-    "Healthcare":                  "XLV",
-    # Industriales
-    "Industrials":                 "XLI",
-    # Energía
-    "Energy":                      "XLE",
-    # Consumo básico
-    "Consumer Staples":            "XLP",
-    "Consumer Defensive":          "XLP",
-    # Consumo discrecional
-    "Consumer Discretionary":      "XLY",
-    "Consumer Cyclical":           "XLY",
-    # Materiales
-    "Materials":                   "XLB",
-    "Basic Materials":             "XLB",
-    # Inmobiliario
-    "Real Estate":                 "XLRE",
-    # Utilities
-    "Utilities":                   "XLU",
-    # Comunicaciones
-    "Communication Services":      "XLC",
-    "Telecommunication Services":  "XLC",
-}
-
-# Parámetros de indicadores
-WMA30_PERIOD    = 30   # semanas
-RSC_SMA_PERIOD  = 52   # semanas para la SMA base del RSC Mansfield
-VPM_BASE_PERIOD = 52   # semanas para media y desviación estándar del VPM
-VPM_SMOOTHING   = 5    # semanas para suavizar el VPM
-COPPOCK_ROC1    = 14   # periodos ROC largo (Coppock)
-COPPOCK_ROC2    = 11   # periodos ROC corto (Coppock)
-COPPOCK_WMA     = 10   # periodos WMA de suavizado (Coppock)
-SECTOR_RSC_MIN  = 0.10 # mínimo para considerar fuerte un sector
-
-# Umbral máximo de distancia a la WMA30 (%)
-MAX_DISTANCIA_WMA30 = 8.0
-
-# Mínimo de velas históricas para operar con el ticker
-MIN_BARS = 70
-
-
-# ─────────────────────────────────────────────────────────────────────
-# 2. DESCARGA DE TICKERS S&P 500
-# ─────────────────────────────────────────────────────────────────────
-
-# ─────────────────────────────────────────────────────────────────────
+from we_utils import vpm5, coppock_curve
 # NUEVA FUNCIÓN: fallback Wikipedia
 # ─────────────────────────────────────────────────────────────────────
 def _get_sp500_from_wikipedia() -> pd.DataFrame:
@@ -235,53 +173,11 @@ def download_weekly(ticker: str, period: str = DOWNLOAD_PERIOD) -> pd.DataFrame 
 
 # ── 4.1  WMA (Weighted Moving Average) ────────────────────────────────
 
-def wma(series: pd.Series, period: int) -> pd.Series:
-    """
-    Media Móvil Ponderada de `period` periodos.
-
-    Fórmula
-    -------
-    WMA_n = Σ(precio_i × peso_i) / Σ(pesos)
-    donde peso_i = i  (1 para el más antiguo, n para el más reciente)
-    """
-    weights = np.arange(1, period + 1, dtype=float)   # [1, 2, …, period]
-    w_sum   = weights.sum()
-
-    return series.rolling(window=period).apply(
-        lambda x: np.dot(x, weights) / w_sum,
-        raw=True,
-    )
 
 
 # ── 4.2  RSC Mansfield ────────────────────────────────────────────────
 
-def rsc_mansfield(
-    price_asset: pd.Series,
-    price_benchmark: pd.Series,
-    sma_period: int = RSC_SMA_PERIOD,
-) -> pd.Series:
-    """
-    Fuerza Relativa de Mansfield respecto al benchmark.
-
-    Fórmula
-    -------
-    Base_RS           = Precio_Activo / Precio_Benchmark
-    SMA52(Base_RS)    = Media simple de 52 periodos de Base_RS
-    RSC_Mansfield     = ((Base_RS / SMA52(Base_RS)) - 1) × 10
-
-    Interpretación
-    --------------
-    RSC > 0 → el activo supera al benchmark en términos relativos.
-    RSC < 0 → el activo cede terreno respecto al benchmark.
-    """
-    # Alineamos los dos índices temporales para evitar desfases
-    asset_aligned, bench_aligned = price_asset.align(price_benchmark, join="inner")
-
-    base_rs  = asset_aligned / bench_aligned
-    sma52    = base_rs.rolling(window=sma_period).mean()
-    rsc      = ((base_rs / sma52) - 1.0) * 10.0
-
-    return rsc
+# wma and rsc_mansfield moved to we_utils.py
 
 
 # ── 4.3  VPM5 (Volumen Normalizado Positivo de 5 semanas) ─────────────
@@ -426,7 +322,7 @@ def evaluate_ticker(
     sector_rsc_map:    dict[str, float],
 ) -> dict | None:
     """
-    Descarga datos del ticker y aplica los 6 filtros Weinstein-Albert.
+    Descarga datos del ticker y aplica los 5 filtros Weinstein-Albert.
 
     Retorna
     -------
@@ -474,15 +370,14 @@ def evaluate_ticker(
     vpm5_val    = float(vpm5_series.iloc[-1])
 
     # ──────────────────────────────────────────────────────────────────
-    # APLICACIÓN DE LOS 6 FILTROS (operador AND)
+    # APLICACIÓN DE LOS 5 FILTROS (operador AND)
     # ──────────────────────────────────────────────────────────────────
     #
     #  F1: RSC Mansfield del SECTOR >= 0.10
     #  F2: VPM5 > 0
     #  F3: RSC Mansfield del ACTIVO > 0
     #  F4: Distancia a WMA30 < 8 %
-    #  F5: Precio Actual > WMA30         (activo por encima de su media)
-    #  F6: Coppock SP500 actual > anterior (mercado alcista)
+    #  F5: Coppock SP500 actual > anterior (mercado alcista)
     #
     # ──────────────────────────────────────────────────────────────────
 
@@ -491,8 +386,7 @@ def evaluate_ticker(
         "F2_vpm5"         : (not pd.isna(vpm5_val))       and (vpm5_val         > 0.0),
         "F3_rsc_activo"   : (not pd.isna(rsc_activo_val)) and (rsc_activo_val   > 0.0),
         "F4_distancia"    : (not pd.isna(distancia_wma30)) and (distancia_wma30 < MAX_DISTANCIA_WMA30),
-        "F5_sobre_wma30"  : precio_actual > wma30_val,
-        "F6_coppock_bull" : coppock_bullish,
+        "F5_coppock_bull" : coppock_bullish,
     }
 
     # Solo devolver resultado si todos los filtros son True
@@ -505,7 +399,6 @@ def evaluate_ticker(
         "Sector"                : sector_name,
         "ETF Sector"            : etf_ticker if etf_ticker else "N/A",
         "Precio Actual"         : round(precio_actual, 2),
-        "WMA30"                 : round(wma30_val, 2),
         "RSC Mansfield Activo"  : round(rsc_activo_val, 4),
         "RSC Mansfield Sector"  : round(rsc_sector_val, 4) if not pd.isna(rsc_sector_val) else np.nan,
         "VPM5"                  : round(vpm5_val, 4),
@@ -527,7 +420,7 @@ def run_scanner() -> pd.DataFrame:
     1. Cargar tickers S&P 500 desde CSV público en GitHub
     2. Descargar S&P 500 (^GSPC) y calcular Coppock + RSC sectoriales
     3. Iterar sobre cada ticker con try-except individual
-    4. Aplicar los 6 filtros Weinstein-Albert en paralelo (AND)
+    4. Aplicar los 5 filtros Weinstein-Albert en paralelo (AND)
     5. Construir y devolver el DataFrame de resultados
     """
     print("\n" + "═" * 68)
@@ -610,7 +503,7 @@ def run_scanner() -> pd.DataFrame:
     print(f"  Acciones procesadas      : {procesados}")
     print(f"  Sin datos / insuf.       : {sin_datos}")
     print(f"  Errores de descarga      : {errores}")
-    print(f"  Candidatos (6/6 filtros) : {len(resultados)}")
+    print(f"  Candidatos (5/5 filtros) : {len(resultados)}")
     print("═" * 68)
 
     if not resultados:
@@ -634,7 +527,7 @@ def run_scanner() -> pd.DataFrame:
         "Dirección Coppock SP500",
     ]
 
-    print("\n  ACCIONES QUE CUMPLEN LOS 6 FILTROS WEINSTEIN-ALBERT")
+    print("\n  ACCIONES QUE CUMPLEN LOS 5 FILTROS WEINSTEIN-ALBERT")
     print("─" * 68)
     print(df[columnas_output].to_string(index=True))
     print("─" * 68)
@@ -651,7 +544,7 @@ def export_results(df: pd.DataFrame) -> None:
     Exporta el DataFrame de resultados a CSV con fecha en el nombre.
 
     Columnas del CSV (completo, incluyendo métricas auxiliares):
-        Ticker, Nombre, Sector, ETF Sector, Precio Actual, WMA30,
+        Ticker, Nombre, Sector, ETF Sector, Precio Actual,
         RSC Mansfield Activo, RSC Mansfield Sector, VPM5,
         Distancia % WMA30, Dirección Coppock SP500
     """

@@ -169,7 +169,6 @@ La fuente de información de donde se ha sacado la estrategia de trading algorí
 - Volumen normalizado positivo: `VPM5 > 0`, calculado como la media móvil de 5 semanas del volumen estandarizado frente a las últimas 52 semanas
 - Fuerza del valor positiva (RSC Mansfield activo)
 - Distancia < 8 % respecto a la WMA30
-- Cierre > WMA30
 - Coppock alcista (filtro de mercado)
 
 ### Cómo se calcula VPM5
@@ -226,3 +225,7 @@ scripts/run_exit.sh "arg1 arg2"    # ejecuta el escáner de salida
 Los scripts aceptan argumentos adicionales que se pasarán al script Python.
 
 Si prefieres ejecutar manualmente, activa el entorno virtual y usa `python <script>.py` como se indica arriba.
+
+Nota: los scripts en la carpeta `scripts/` cambian automáticamente al directorio raíz
+del proyecto antes de ejecutar el script y activan el `venv` si existe, por lo que
+puedes invocarlos desde cualquier ubicación.

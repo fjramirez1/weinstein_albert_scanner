@@ -63,6 +63,7 @@ import os
 import numpy as np
 import pandas as pd
 import yfinance as yf
+from we_utils import wma, rsc_mansfield, coppock_curve
 
 warnings.filterwarnings("ignore")
 
@@ -130,39 +131,12 @@ def download_weekly(ticker: str, period: str = DOWNLOAD_PERIOD) -> pd.DataFrame 
 # 3. INDICADORES
 # ─────────────────────────────────────────────────────────────────────
 
-def wma(series: pd.Series, period: int) -> pd.Series:
-    """Media Móvil Ponderada de `period` periodos."""
-    weights = np.arange(1, period + 1, dtype=float)
-    w_sum   = weights.sum()
-    return series.rolling(window=period).apply(
-        lambda x: np.dot(x, weights) / w_sum, raw=True
-    )
 
 
-def rsc_mansfield(
-    price_asset: pd.Series,
-    price_benchmark: pd.Series,
-    sma_period: int = RSC_SMA_PERIOD,
-) -> pd.Series:
-    """
-    RSC Mansfield = ((Base_RS / SMA52(Base_RS)) - 1) × 10
-    Base_RS = Precio_Activo / Precio_Benchmark
-    """
-    asset_a, bench_a = price_asset.align(price_benchmark, join="inner")
-    base_rs = asset_a / bench_a
-    sma52   = base_rs.rolling(window=sma_period).mean()
-    return ((base_rs / sma52) - 1.0) * 10.0
+# wma and rsc_mansfield moved to we_utils.py
 
 
-def coppock_curve(price: pd.Series) -> pd.Series:
-    """
-    Coppock = WMA(ROC(14) + ROC(11), 10)
-    Aplicado sobre datos semanales del S&P 500.
-    """
-    roc_l    = price.pct_change(periods=COPPOCK_ROC1) * 100.0
-    roc_s    = price.pct_change(periods=COPPOCK_ROC2) * 100.0
-    combined = roc_l + roc_s
-    return wma(combined, COPPOCK_WMA_PERIOD)
+# coppock_curve moved to we_utils.py
 
 
 # ─────────────────────────────────────────────────────────────────────
