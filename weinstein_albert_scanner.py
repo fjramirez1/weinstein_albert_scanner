@@ -5,7 +5,8 @@
 ║  Sistema: Método Weinstein adaptado por Albert (fuerza relativa,     ║
 ║           WMA30, VPM5, Coppock como filtro de mercado)               ║
 ║  Temporalidad : Semanal (1wk)                                        ║
-║  Universo     : Componentes del S&P 500                              ║
+║  Universo     : Acciones/tickers del S&P 500                         ║
+║                 (número variable; puede superar 500)                 ║
 ║  Operativa    : Ejecutar tras el cierre semanal, idealmente          ║
 ║                 durante el fin de semana                             ║
 ║  Operador     : AND — todos los filtros deben cumplirse              ║

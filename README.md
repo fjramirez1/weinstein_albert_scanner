@@ -54,8 +54,10 @@ python weinstein_albert_exit_scanner.py --input mis_posiciones.csv
 
 ## Cómo funciona (breve)
 
-- `weinstein_albert_scanner.py` descarga componentes del S&P 500, calcula indicadores (WMA30, RSC Mansfield, VPM5, Coppock) y filtra candidatos que cumplen las condiciones de entrada.
+- `weinstein_albert_scanner.py` descarga los constituyentes del S&P 500, calcula indicadores (WMA30, RSC Mansfield, VPM5, Coppock) y filtra candidatos que cumplen las condiciones de entrada.
 - `weinstein_albert_exit_scanner.py` evalúa posiciones abiertas y marca salidas cuando se cumple cualquiera de las condiciones de salida (RSC débil, Coppock bajista, trailing stop).
+
+Nota: el universo se trata por acción/ticker negociable. Aunque el S&P 500 representa 500 empresas, el número de acciones puede ser variable y superar 500 cuando hay clases múltiples, como GOOGL y GOOG en Alphabet.
 
 Para la descripción técnica completa (fórmulas y criterios), ver [docs/ESTRATEGIA.md](docs/ESTRATEGIA.md#condiciones-de-la-estrategia).
 

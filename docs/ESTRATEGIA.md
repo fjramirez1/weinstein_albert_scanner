@@ -4,6 +4,7 @@ Este documento amplía y explica con más detalle los criterios operativos usado
 
 ## 1. Definiciones clave
 
+- **Universo del S&P 500**: el escáner trabaja con tickers/acciones negociables del índice, no con un conteo fijo de empresas únicas. El número de acciones puede ser variable y superar 500 cuando existen clases múltiples, por ejemplo GOOGL y GOOG en Alphabet.
 - **RSC Mansfield (Sector)**: mide la fortaleza relativa del índice sectorial frente al S&P 500. Se calcula comparando la serie de precios del ETF sectorial con la del S&P 500 y aplicando la transformación "Mansfield" para detectar consistencia en la fortaleza.
 - **RSC Mansfield (Activo / rsMan)**: mismo procedimiento aplicado a la acción frente al S&P 500. Valores positivos indican mejor comportamiento relativo.
 - **VPM5 (Volumen Proporcional Medio 5 semanas)**: volumen estandarizado respecto a las últimas 52 semanas, suavizado con una SMA de 5 semanas. Indica si el volumen actual es atípico respecto al histórico.
@@ -85,7 +86,7 @@ Si cualquiera de las condiciones se cumple, el escáner etiqueta la posición co
 - `RSC_SALIDA_UMBRAL = -0.5` (umbral de salida por RSC del activo)
 - `COPPOCK_ROC1 = 14`, `COPPOCK_ROC2 = 11`, `COPPOCK_WMA = 10` (configuración típica Coppock semanal)
 
-Notas: los nombres y ubicaciones de las constantes están en el código; consulte las funciones y constantes en [we_utils.py](we_utils.py#L1-L200) y los puntos de aplicación en [weinstein_albert_scanner.py](weinstein_albert_scanner.py#L1-L500) y [weinstein_albert_exit_scanner.py](weinstein_albert_exit_scanner.py#L1-L350).
+Notas: los nombres y ubicaciones de las constantes están en el código; consulte las funciones y constantes en [we_utils.py](we_utils.py#L1-L200) y los puntos de aplicación en [weinstein_albert_scanner.py](weinstein_albert_scanner.py#L1-L500) y [weinstein_albert_exit_scanner.py](weinstein_albert_exit_scanner.py#L1-L350). El universo se carga desde la fuente de constituyentes por ticker, así que su tamaño puede variar con rebalanceos y clases múltiples.
 
 ## 7. Ejemplos orientativos de CSV
 
