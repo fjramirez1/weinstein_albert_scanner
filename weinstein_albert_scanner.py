@@ -358,24 +358,28 @@ def evaluate_ticker(
     coppock_bullish:   bool,
     coppock_direction: str,
     sector_rsc_map:    dict[str, float],
-) -> dict | None:
+) -> tuple[dict | None, str]:
     """
     Descarga datos del ticker y aplica los 5 filtros Weinstein-Albert.
 
     Retorna
     -------
-    dict con las métricas si pasa todos los filtros, None en caso contrario.
+    (dict | None, str)
+        - dict con las métricas si pasa todos los filtros, junto con
+          motivo "ok".
+        - (None, "sin_datos") si no se pudo descargar histórico suficiente.
+        - (None, "filtrado")  si hubo datos pero no pasó algún filtro.
     """
     # ── Descarga
     data = download_weekly(ticker)
     if data is None:
-        return None
+        return None, "sin_datos"
 
     close  = data["Close"].squeeze()
     n_bars = len(close)
 
     if n_bars < MIN_BARS:
-        return None
+        return None, "sin_datos"
 
     # ── WMA30
     wma30_series = wma(close, WMA30_PERIOD)
@@ -383,7 +387,7 @@ def evaluate_ticker(
     precio_actual = float(close.iloc[-1])
 
     if pd.isna(wma30_val) or wma30_val <= 0:
-        return None
+        return None, "sin_datos"
 
     # Distancia porcentual a la WMA30
     distancia_wma30 = ((precio_actual - wma30_val) / wma30_val) * 100.0
@@ -391,17 +395,12 @@ def evaluate_ticker(
     # ── Momentum Relativo (MOM)
     mom_val = calculate_mom(close, ma_period=30)
     if mom_val is None:
-        return None  # Excluir si no hay datos suficientes para MOM
-
-    # ── Momentum Relativo (MOM)
-    mom_val = calculate_mom(close, ma_period=30)
-    if mom_val is None:
-        return None  # Excluir si no hay datos suficientes para MOM
+        return None, "sin_datos"  # Excluir si no hay datos suficientes para MOM
 
     # ── RSC Mansfield del activo vs S&P 500
     close_aligned, sp500_aligned = close.align(sp500_close, join="inner")
     if len(close_aligned) < RSC_SMA_PERIOD + 5:
-        return None
+        return None, "sin_datos"
 
     rsc_activo_series = rsc_mansfield(close_aligned, sp500_aligned)
     rsc_activo_val    = float(rsc_activo_series.iloc[-1])
@@ -441,9 +440,9 @@ def evaluate_ticker(
 
     # Solo devolver resultado si todos los filtros son True
     if not all(filtros.values()):
-        return None
+        return None, "filtrado"
 
-    return {
+    resultado = {
         "Ticker"                : ticker,
         "Nombre"                : company_name,
         "Sector"                : sector_name,
@@ -456,6 +455,7 @@ def evaluate_ticker(
         "Distancia % WMA30"     : round(distancia_wma30, 2),
         "Dirección Coppock SP500": coppock_direction,
     }
+    return resultado, "ok"
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -505,6 +505,7 @@ def run_scanner() -> pd.DataFrame:
     resultados  = []
     errores     = 0
     sin_datos   = 0
+    filtrados   = 0
     procesados  = 0
 
     for idx, fila in sp500_df.iterrows():
@@ -513,7 +514,7 @@ def run_scanner() -> pd.DataFrame:
         sector  = fila.get("Sector", "Unknown")
 
         try:
-            resultado = evaluate_ticker(
+            resultado, motivo = evaluate_ticker(
                 ticker            = ticker,
                 sector_name       = sector,
                 company_name      = nombre,
@@ -530,16 +531,16 @@ def run_scanner() -> pd.DataFrame:
                       f"MOM: {resultado['Momentum (MOM)']:+.3f} | "
                       f"RSC: {resultado['RSC Mansfield Activo']:+.3f} | "
                       f"Dist: {resultado['Distancia % WMA30']:+.1f}%")
+            elif motivo == "sin_datos":
+                sin_datos += 1
+            elif motivo == "filtrado":
+                filtrados += 1
 
         except Exception as exc:
             # Captura cualquier error inesperado sin detener el script
             errores += 1
             # Descomentar la siguiente línea para ver detalles de errores:
             # print(f"  ✗ ERROR {ticker}: {exc}")
-
-        else:
-            if resultado is None:
-                sin_datos += 1
 
         procesados += 1
 
@@ -553,7 +554,8 @@ def run_scanner() -> pd.DataFrame:
     print(f"  RESUMEN DEL ESCÁNER")
     print("─" * 68)
     print(f"  Acciones procesadas      : {procesados}")
-    print(f"  Sin datos / insuf.       : {sin_datos}")
+    print(f"  Sin datos / histórico insuf. : {sin_datos}")
+    print(f"  No cumplen filtros       : {filtrados}")
     print(f"  Errores de descarga      : {errores}")
     print(f"  Candidatos (5/5 filtros) : {len(resultados)}")
     print("═" * 68)
