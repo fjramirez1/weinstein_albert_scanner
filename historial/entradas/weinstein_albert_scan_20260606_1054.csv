@@ -1,0 +1,4 @@
+﻿Ticker,Nombre,Sector,ETF Sector,Precio Actual,RSC Mansfield Activo,Momentum (MOM),RSC Mansfield Sector,VPM5,Distancia % WMA30,Dirección Coppock SP500
+FANG,Diamondback Energy,Energy,XLE,192.62,1.0781,0.0536,0.8708,0.3242,5.36,↑ Alcista
+BKR,Baker Hughes,Energy,XLE,62.59,1.1551,0.0316,0.8708,0.0008,3.16,↑ Alcista
+DVN,Devon Energy,Energy,XLE,44.28,0.476,-0.0181,0.8708,1.2238,-1.81,↑ Alcista

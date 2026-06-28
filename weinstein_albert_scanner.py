@@ -30,6 +30,7 @@ los candidatos que cumplen todos los filtros de entrada.
 import warnings
 import sys
 from datetime import datetime
+from pathlib import Path
 import os
 
 import numpy as np
@@ -85,14 +86,14 @@ SECTOR_TO_ETF = {
     "Utilities": "XLU",
 }
 
-# Período de descarga (necesitamos historia suficiente para todos los indicadores)
-# WMA30 → 30 semanas | RSC SMA52 → 52 semanas | Coppock ROC14 + WMA10 → ~24 semanas
-# Con 5 años (~260 semanas) tenemos margen más que suficiente
-
 # Ventana para detectar un mínimo reciente del Coppock del mercado.
 COPPOCK_RECENT_LOOKBACK = 4
-# NUEVA FUNCIÓN: fallback Wikipedia
+
+
 # ─────────────────────────────────────────────────────────────────────
+# 2. CARGA DE TICKERS S&P 500
+# ─────────────────────────────────────────────────────────────────────
+
 def _get_sp500_from_wikipedia() -> pd.DataFrame:
     """Fuente de respaldo: tabla de Wikipedia."""
     print("  → Fallback: leyendo desde Wikipedia...")
@@ -102,7 +103,6 @@ def _get_sp500_from_wikipedia() -> pd.DataFrame:
             attrs={"id": "constituents"},
         )
         df = tables[0].copy()
-        # Wikipedia usa: Symbol, Security, GICS Sector, ...
         df = df.rename(columns={"Security": "Name", "GICS Sector": "Sector"})
         df["Symbol"] = df["Symbol"].astype(str).str.replace(".", "-", regex=False)
         df = df[["Symbol", "Name", "Sector"]].dropna(subset=["Symbol"])
@@ -114,9 +114,6 @@ def _get_sp500_from_wikipedia() -> pd.DataFrame:
         sys.exit(1)
 
 
-# ─────────────────────────────────────────────────────────────────────
-# FUNCIÓN CORREGIDA
-# ─────────────────────────────────────────────────────────────────────
 def get_sp500_tickers() -> pd.DataFrame:
     """
     Descarga la lista de componentes del S&P 500 desde GitHub con
@@ -127,7 +124,6 @@ def get_sp500_tickers() -> pd.DataFrame:
         df = pd.read_csv(SP500_CSV_URL)
         df.columns = [c.strip() for c in df.columns]
 
-        # ── Normalización robusta: mapear cualquier variante al nombre canónico ──
         col_rename: dict[str, str] = {}
         for col in df.columns:
             c_low = col.strip().lower()
@@ -135,11 +131,10 @@ def get_sp500_tickers() -> pd.DataFrame:
                 col_rename[col] = "Symbol"
             elif c_low in ("name", "security", "company", "company name"):
                 col_rename[col] = "Name"
-            elif "sector" in c_low:          # captura 'Sector', 'GICS Sector', etc.
+            elif "sector" in c_low:
                 col_rename[col] = "Sector"
         df.rename(columns=col_rename, inplace=True)
 
-        # Si alguna columna sigue faltando, asignar valor por defecto
         for req in ("Symbol", "Name", "Sector"):
             if req not in df.columns:
                 print(f"  ⚠️  Columna '{req}' no encontrada; se asignará 'N/A'.")
@@ -158,8 +153,6 @@ def get_sp500_tickers() -> pd.DataFrame:
 
 # ─────────────────────────────────────────────────────────────────────
 # 3. DESCARGA DE DATOS SEMANALES
-# El análisis está pensado para velas semanales ya cerradas; por eso
-# la ejecución práctica se hace una vez por semana, no a diario.
 # ─────────────────────────────────────────────────────────────────────
 
 def download_weekly(ticker: str, period: str = DOWNLOAD_PERIOD) -> pd.DataFrame | None:
@@ -184,12 +177,9 @@ def download_weekly(ticker: str, period: str = DOWNLOAD_PERIOD) -> pd.DataFrame 
         if raw is None or raw.empty:
             return None
 
-        # yfinance >= 0.2.x puede devolver MultiIndex en columnas al descargar
-        # un solo ticker; aplanamos si es necesario.
         if isinstance(raw.columns, pd.MultiIndex):
             raw.columns = raw.columns.get_level_values(0)
 
-        # Seleccionar y limpiar columnas OHLCV
         cols_needed = ["Open", "High", "Low", "Close", "Volume"]
         raw = raw[[c for c in cols_needed if c in raw.columns]].copy()
         raw.dropna(subset=["Close"], inplace=True)
@@ -204,89 +194,7 @@ def download_weekly(ticker: str, period: str = DOWNLOAD_PERIOD) -> pd.DataFrame 
 
 
 # ─────────────────────────────────────────────────────────────────────
-# 4. INDICADORES TÉCNICOS
-# ─────────────────────────────────────────────────────────────────────
-
-# ── 4.1  WMA (Weighted Moving Average) ────────────────────────────────
-
-
-
-# ── 4.2  RSC Mansfield ────────────────────────────────────────────────
-
-# wma and rsc_mansfield moved to we_utils.py
-
-
-# ── 4.3  VPM5 (Volumen Normalizado Positivo de 5 semanas) ─────────────
-
-def vpm5(
-    data: pd.DataFrame,
-    base_period: int = VPM_BASE_PERIOD,
-    smoothing_period: int = VPM_SMOOTHING,
-) -> pd.Series:
-    """
-    Volumen Normalizado Positivo suavizado.
-
-    Lógica
-    ------
-    1. Se calcula la media y la desviación estándar del volumen de las
-       últimas 52 semanas.
-    2. Para cada semana se obtiene el VPM como distancia estandarizada del
-       volumen actual respecto a esa media.
-    3. El VPM5 es la media móvil de 5 semanas aplicada al VPM.
-
-    Fórmula
-    -------
-    VPM(t)  = (Volume(t) - mean52(Volume)) / std52(Volume)
-    VPM5(t) = SMA5(VPM(t))
-
-    Interpretación
-    -------------
-    VPM5 > 0 → el volumen reciente está por encima de su media histórica y
-               respalda la entrada.
-    VPM5 < 0 → el volumen reciente está por debajo de su media histórica.
-    """
-    volume = data["Volume"].squeeze().astype(float)
-
-    rolling_mean = volume.rolling(window=base_period).mean()
-    rolling_std = volume.rolling(window=base_period).std(ddof=0)
-    vpm = (volume - rolling_mean) / rolling_std.replace(0, np.nan)
-
-    vpm5_series = vpm.rolling(window=smoothing_period).mean()
-    return vpm5_series
-
-
-# ── 4.4  Coppock Curve ────────────────────────────────────────────────
-
-def coppock_curve(
-    price: pd.Series,
-    roc_long:  int = COPPOCK_ROC1,
-    roc_short: int = COPPOCK_ROC2,
-    wma_period: int = COPPOCK_WMA,
-) -> pd.Series:
-    """
-    Curva de Coppock estándar (adaptación semanal).
-
-    Fórmula original (mensual, E. S. C. Coppock, 1962):
-        Coppock = WMA(ROC(14) + ROC(11), 10)
-    donde ROC(n) = ((Precio / Precio[n]) - 1) × 100
-
-    Aplicado aquí sobre datos semanales del S&P 500 con los mismos
-    parámetros numéricos —práctica habitual en trading cuantitativo.
-
-    Interpretación como filtro de mercado
-    --------------------------------------
-    Coppock(t) > Coppock(t-1) → mercado en fase alcista → permitir entradas.
-    Coppock(t) ≤ Coppock(t-1) → mercado sin momentum → evitar nuevas compras.
-    """
-    roc_l = price.pct_change(periods=roc_long)  * 100.0
-    roc_s = price.pct_change(periods=roc_short) * 100.0
-    combined = roc_l + roc_s
-
-    return wma(combined, wma_period)
-
-
-# ─────────────────────────────────────────────────────────────────────
-# 5. PRE-CÁLCULO DE DATOS COMPARTIDOS
+# 4. PRE-CÁLCULO DE DATOS COMPARTIDOS
 # ─────────────────────────────────────────────────────────────────────
 
 def precompute_sp500_and_sectors(
@@ -296,16 +204,6 @@ def precompute_sp500_and_sectors(
     Calcula el estado del S&P 500 (Coppock) y los RSC Mansfield de los
     ETFs sectoriales SPDR. Estos valores son constantes para todos los
     tickers y se calculan una sola vez por eficiencia.
-
-    Parámetros
-    ----------
-    sp500_close : Serie de cierres semanales del ^GSPC
-
-    Retorna
-    -------
-    coppock_bullish   : bool  — True si Sp500alcista se activa
-    coppock_direction : str   — etiqueta descriptiva
-    sector_rsc        : dict  — { 'XLK': valor_rsc, 'XLF': valor_rsc, … }
     """
     # ── Coppock del S&P 500
     copk = coppock_curve(sp500_close)
@@ -338,7 +236,7 @@ def precompute_sp500_and_sectors(
             rsc_series = rsc_mansfield(etf_close, sp500_close)
             rsc_last   = float(rsc_series.iloc[-1])
             sector_rsc[etf] = rsc_last
-            estado = "✓" if rsc_last > 0 else "✗"
+            estado = "✓" if rsc_last >= SECTOR_RSC_MIN else "✗"
             print(f"    {estado} {etf}: RSC = {rsc_last:+.4f}")
         except Exception as exc:
             print(f"    ✗ {etf}: error en RSC ({exc})")
@@ -347,7 +245,7 @@ def precompute_sp500_and_sectors(
 
 
 # ─────────────────────────────────────────────────────────────────────
-# 6. EVALUACIÓN DE UN TICKER
+# 5. EVALUACIÓN DE UN TICKER
 # ─────────────────────────────────────────────────────────────────────
 
 def evaluate_ticker(
@@ -365,8 +263,7 @@ def evaluate_ticker(
     Retorna
     -------
     (dict | None, str)
-        - dict con las métricas si pasa todos los filtros, junto con
-          motivo "ok".
+        - dict con las métricas si pasa todos los filtros.
         - (None, "sin_datos") si no se pudo descargar histórico suficiente.
         - (None, "filtrado")  si hubo datos pero no pasó algún filtro.
     """
@@ -395,7 +292,7 @@ def evaluate_ticker(
     # ── Momentum Relativo (MOM)
     mom_val = calculate_mom(close, ma_period=30)
     if mom_val is None:
-        return None, "sin_datos"  # Excluir si no hay datos suficientes para MOM
+        return None, "sin_datos"
 
     # ── RSC Mansfield del activo vs S&P 500
     close_aligned, sp500_aligned = close.align(sp500_close, join="inner")
@@ -410,24 +307,20 @@ def evaluate_ticker(
     if etf_ticker and etf_ticker in sector_rsc_map:
         rsc_sector_val = sector_rsc_map[etf_ticker]
     else:
-        rsc_sector_val = np.nan   # sector desconocido → filtro fallará
+        rsc_sector_val = np.nan
 
-    # ── VPM5
-    vpm5_series = vpm5(data)
+    # ── VPM5 — importado desde we_utils, sin duplicado local
+    vpm5_series = vpm5(data, base_period=VPM_BASE_PERIOD, smoothing_period=VPM_SMOOTHING)
     vpm5_val    = float(vpm5_series.iloc[-1])
 
     # ──────────────────────────────────────────────────────────────────
     # APLICACIÓN DE LOS 5 FILTROS (operador AND)
-    # ──────────────────────────────────────────────────────────────────
     #
     #  F1: RSC Mansfield del SECTOR >= 0.10
     #  F2: VPM5 > 0
     #  F3: RSC Mansfield del ACTIVO > 0
     #  F4: Distancia a WMA30 < 8 %
     #  F5: Sp500alcista
-    #      - inicio alcista desde un mínimo reciente del Coppock, o
-    #      - continuación alcista cuando Coppock ya es positivo y sigue subiendo
-    #
     # ──────────────────────────────────────────────────────────────────
 
     filtros = {
@@ -438,28 +331,27 @@ def evaluate_ticker(
         "F5_coppock_bull" : coppock_bullish,
     }
 
-    # Solo devolver resultado si todos los filtros son True
     if not all(filtros.values()):
         return None, "filtrado"
 
     resultado = {
-        "Ticker"                : ticker,
-        "Nombre"                : company_name,
-        "Sector"                : sector_name,
-        "ETF Sector"            : etf_ticker if etf_ticker else "N/A",
-        "Precio Actual"         : round(precio_actual, 2),
-        "RSC Mansfield Activo"  : round(rsc_activo_val, 4),
+        "Ticker"                 : ticker,
+        "Nombre"                 : company_name,
+        "Sector"                 : sector_name,
+        "ETF Sector"             : etf_ticker if etf_ticker else "N/A",
+        "Precio Actual"          : round(precio_actual, 2),
+        "RSC Mansfield Activo"   : round(rsc_activo_val, 4),
         "Momentum (MOM)"         : round(mom_val, 4),
-        "RSC Mansfield Sector"  : round(rsc_sector_val, 4) if not pd.isna(rsc_sector_val) else np.nan,
-        "VPM5"                  : round(vpm5_val, 4),
-        "Distancia % WMA30"     : round(distancia_wma30, 2),
+        "RSC Mansfield Sector"   : round(rsc_sector_val, 4) if not pd.isna(rsc_sector_val) else np.nan,
+        "VPM5"                   : round(vpm5_val, 4),
+        "Distancia % WMA30"      : round(distancia_wma30, 2),
         "Dirección Coppock SP500": coppock_direction,
     }
     return resultado, "ok"
 
 
 # ─────────────────────────────────────────────────────────────────────
-# 7. FUNCIÓN PRINCIPAL — ORQUESTADOR DEL ESCÁNER
+# 6. FUNCIÓN PRINCIPAL — ORQUESTADOR DEL ESCÁNER
 # ─────────────────────────────────────────────────────────────────────
 
 def run_scanner() -> pd.DataFrame:
@@ -474,10 +366,10 @@ def run_scanner() -> pd.DataFrame:
     4. Aplicar los 5 filtros Weinstein-Albert en paralelo (AND)
     5. Construir y devolver el DataFrame de resultados
     """
-    print("\n" + "═" * 68)
+    print("\n" + "═" * 72)
     print("  WEINSTEIN VERSION ALBERT — S&P 500 WEEKLY SCANNER")
     print(f"  Ejecución: {datetime.now().strftime('%Y-%m-%d  %H:%M:%S')}")
-    print("═" * 68)
+    print("═" * 72)
 
     # ── PASO 1: Tickers
     print("\n[PASO 1] Descargando componentes del S&P 500...")
@@ -493,14 +385,13 @@ def run_scanner() -> pd.DataFrame:
 
     sp500_close = sp500_data["Close"].squeeze()
 
-    # Pre-calcular Coppock + RSC sectoriales (operación costosa, se hace una vez)
     coppock_bullish, coppock_direction, sector_rsc_map = precompute_sp500_and_sectors(
         sp500_close
     )
 
     # ── PASO 3 y 4: Escanear cada ticker
     print(f"\n[PASO 3] Escaneando {total_tickers} acciones (esto puede tardar varios minutos)...")
-    print("─" * 68)
+    print("─" * 72)
 
     resultados  = []
     errores     = 0
@@ -526,45 +417,44 @@ def run_scanner() -> pd.DataFrame:
 
             if resultado is not None:
                 resultados.append(resultado)
-                # Feedback inmediato al usuario cuando encuentra un candidato
-                print(f"  ★ CANDIDATO → {ticker:<6} | {sector:<30} | "
-                      f"MOM: {resultado['Momentum (MOM)']:+.3f} | "
-                      f"RSC: {resultado['RSC Mansfield Activo']:+.3f} | "
-                      f"Dist: {resultado['Distancia % WMA30']:+.1f}%")
+                print(
+                    f"  ★ CANDIDATO → {ticker:<6} | {sector:<30} | "
+                    f"MOM: {resultado['Momentum (MOM)']:+.3f} | "
+                    f"RSC: {resultado['RSC Mansfield Activo']:+.3f} | "
+                    f"VPM5: {resultado['VPM5']:+.3f} | "
+                    f"Dist: {resultado['Distancia % WMA30']:+.1f}%"
+                )
             elif motivo == "sin_datos":
                 sin_datos += 1
             elif motivo == "filtrado":
                 filtrados += 1
 
         except Exception as exc:
-            # Captura cualquier error inesperado sin detener el script
             errores += 1
-            # Descomentar la siguiente línea para ver detalles de errores:
+            # Descomentar para ver detalles de errores:
             # print(f"  ✗ ERROR {ticker}: {exc}")
 
         procesados += 1
 
-        # Progreso cada 50 tickers
         if procesados % 50 == 0:
             print(f"  … {procesados}/{total_tickers} procesados | "
                   f"Candidatos: {len(resultados)} | Errores: {errores}")
 
     # ── PASO 5: Resultado final
-    print("\n" + "═" * 68)
+    print("\n" + "═" * 72)
     print(f"  RESUMEN DEL ESCÁNER")
-    print("─" * 68)
-    print(f"  Acciones procesadas      : {procesados}")
+    print("─" * 72)
+    print(f"  Acciones procesadas          : {procesados}")
     print(f"  Sin datos / histórico insuf. : {sin_datos}")
-    print(f"  No cumplen filtros       : {filtrados}")
-    print(f"  Errores de descarga      : {errores}")
-    print(f"  Candidatos (5/5 filtros) : {len(resultados)}")
-    print("═" * 68)
+    print(f"  No cumplen filtros           : {filtrados}")
+    print(f"  Errores de descarga          : {errores}")
+    print(f"  Candidatos (5/5 filtros)     : {len(resultados)}")
+    print("═" * 72)
 
     if not resultados:
         print("\n  No se encontraron acciones que cumplan todos los filtros.")
         return pd.DataFrame()
 
-    # Construir DataFrame de resultados
     df = pd.DataFrame(resultados)
 
     # Ordenar por Momentum Relativo (mayor → tendencia más alcista)
@@ -576,32 +466,35 @@ def run_scanner() -> pd.DataFrame:
 
     print(f"  [TOP 10] Seleccionados {len(df)} stocks con mayor Momentum Relativo")
 
-    # ── Columnas de salida requeridas (especificación del sistema)
+    # ── Columnas de salida — ahora incluye VPM5
     columnas_output = [
         "Ticker",
         "Sector",
         "Precio Actual",
         "Momentum (MOM)",
         "RSC Mansfield Activo",
+        "VPM5",
         "Distancia % WMA30",
         "Dirección Coppock SP500",
     ]
 
     print("\n  ACCIONES QUE CUMPLEN LOS 5 FILTROS WEINSTEIN-ALBERT")
-    print("─" * 68)
+    print("─" * 72)
     print(df[columnas_output].to_string(index=True))
-    print("─" * 68)
+    print("─" * 72)
 
     return df
 
 
 # ─────────────────────────────────────────────────────────────────────
-# 8. EXPORTACIÓN DE RESULTADOS
+# 7. EXPORTACIÓN DE RESULTADOS
 # ─────────────────────────────────────────────────────────────────────
 
 def export_results(df: pd.DataFrame) -> None:
     """
     Exporta el DataFrame de resultados a CSV con fecha en el nombre.
+    El archivo se guarda en historial/entradas/ para mantener un registro
+    histórico de todas las ejecuciones del escáner de entrada.
 
     Columnas del CSV (completo, incluyendo métricas auxiliares):
         Ticker, Nombre, Sector, ETF Sector, Precio Actual,
@@ -611,20 +504,20 @@ def export_results(df: pd.DataFrame) -> None:
     if df.empty:
         return
 
-    fecha  = datetime.now().strftime("%Y%m%d_%H%M")
-    nombre = f"weinstein_albert_scan_{fecha}.csv"
+    carpeta = Path("historial") / "entradas"
+    carpeta.mkdir(parents=True, exist_ok=True)
 
-    df.to_csv(nombre, index=False, encoding="utf-8-sig")
-    print(f"\n  ✅ Resultados exportados → {nombre}")
+    fecha  = datetime.now().strftime("%Y%m%d_%H%M")
+    ruta   = carpeta / f"weinstein_albert_scan_{fecha}.csv"
+
+    df.to_csv(ruta, index=False, encoding="utf-8-sig")
+    print(f"\n  ✅ Resultados exportados → {ruta}")
 
 
 # ─────────────────────────────────────────────────────────────────────
-# 9. ENTRY POINT
+# 8. ENTRY POINT
 # ─────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     df_resultado = run_scanner()
     export_results(df_resultado)
-
-    # El objeto df_resultado está disponible para análisis adicional
-    # en notebooks o scripts que importen este módulo.

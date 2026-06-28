@@ -1,0 +1,5 @@
+﻿Ticker,Nombre,Sector,ETF Sector,Precio Actual,RSC Mansfield Activo,Momentum (MOM),RSC Mansfield Sector,VPM5,Distancia % WMA30,Dirección Coppock SP500
+NDSN,Nordson Corporation,Industrials,XLI,295.92,0.751,0.0649,0.2349,0.4688,6.49,↑ Alcista
+HUBB,Hubbell Incorporated,Industrials,XLI,523.69,0.3146,0.0613,0.2349,0.8333,6.13,↑ Alcista
+PH,Parker Hannifin,Industrials,XLI,953.27,0.2281,0.0406,0.2349,0.4276,4.06,↑ Alcista
+DE,Deere & Company,Industrials,XLI,589.24,0.2607,0.038,0.2349,0.2098,3.8,↑ Alcista

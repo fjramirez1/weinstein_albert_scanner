@@ -1,0 +1,5 @@
+﻿Ticker,Nombre,Sector,ETF Sector,Precio Actual,RSC Mansfield Activo,Momentum (MOM),RSC Mansfield Sector,VPM5,Distancia % WMA30,Dirección Coppock SP500
+XOM,ExxonMobil,Energy,XLE,154.92,1.1051,0.0612,1.1335,0.0664,6.12,↑ Alcista
+COP,ConocoPhillips,Energy,XLE,120.46,0.8362,0.0597,1.1335,0.1557,5.97,↑ Alcista
+CVX,Chevron Corporation,Energy,XLE,191.43,0.6077,0.055,1.1335,0.1252,5.5,↑ Alcista
+DVN,Devon Energy,Energy,XLE,47.22,1.0982,0.0542,1.1335,1.2034,5.42,↑ Alcista

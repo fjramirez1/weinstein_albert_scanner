@@ -10,7 +10,7 @@
 ║    S3. Coppock SP500 bajista        (filtro de mercado)               ║
 ║                                                                      ║
 ║  Entrada : CSV con posiciones abiertas (ver formato abajo)           ║
-║  Salida  : CSV con el estado de cada posición + motivo de salida     ║
+║  Salida  : CSV en historial/salidas/ con el estado de cada posición  ║
 ║  Operativa: Revisar en fin de semana mientras haya posiciones        ║
 ║             abiertas                                                 ║
 ╚══════════════════════════════════════════════════════════════════════╝
@@ -78,25 +78,21 @@ if os.getenv("WEINSTEIN_DRY_RUN") == "1":
 # ─────────────────────────────────────────────────────────────────────
 
 SP500_INDEX          = "^GSPC"
-DOWNLOAD_PERIOD      = "5y"        # historia suficiente para todos los indicadores
+DOWNLOAD_PERIOD      = "5y"
 
-# Parámetros de condiciones de salida
-RSC_SALIDA_UMBRAL    = -0.5        # S1: RSC Mansfield < este valor → salida
-RSC_SMA_PERIOD       = 52          # para el cálculo del RSC Mansfield
+RSC_SALIDA_UMBRAL    = -0.5
+RSC_SMA_PERIOD       = 52
 COPPOCK_ROC1         = 14
 COPPOCK_ROC2         = 11
 COPPOCK_WMA_PERIOD   = 10
 
-MIN_BARS             = 70          # mínimo de velas para operar
+MIN_BARS             = 70
 
-# Nombre por defecto del CSV de entrada
 DEFAULT_INPUT_CSV    = "posiciones.csv"
 
 
 # ─────────────────────────────────────────────────────────────────────
 # 2. DESCARGA DE DATOS
-# El cálculo se apoya en cierres semanales, así que la revisión de
-# posiciones está pensada para hacerse una vez por semana.
 # ─────────────────────────────────────────────────────────────────────
 
 def download_weekly(ticker: str, period: str = DOWNLOAD_PERIOD) -> pd.DataFrame | None:
@@ -113,7 +109,6 @@ def download_weekly(ticker: str, period: str = DOWNLOAD_PERIOD) -> pd.DataFrame 
         if raw is None or raw.empty:
             return None
 
-        # Aplanar MultiIndex si yfinance lo devuelve así (versión >= 0.2.x)
         if isinstance(raw.columns, pd.MultiIndex):
             raw.columns = raw.columns.get_level_values(0)
 
@@ -127,19 +122,7 @@ def download_weekly(ticker: str, period: str = DOWNLOAD_PERIOD) -> pd.DataFrame 
 
 
 # ─────────────────────────────────────────────────────────────────────
-# 3. INDICADORES
-# ─────────────────────────────────────────────────────────────────────
-
-
-
-# wma and rsc_mansfield moved to we_utils.py
-
-
-# coppock_curve moved to we_utils.py
-
-
-# ─────────────────────────────────────────────────────────────────────
-# 4. LECTURA DEL CSV DE POSICIONES
+# 3. LECTURA DEL CSV DE POSICIONES
 # ─────────────────────────────────────────────────────────────────────
 
 def load_positions(csv_path: str) -> pd.DataFrame:
@@ -152,37 +135,35 @@ def load_positions(csv_path: str) -> pd.DataFrame:
     df = pd.read_csv(csv_path)
     df.columns = [c.strip() for c in df.columns]
 
-    required = {"Ticker", "Sector", "Precio_Entrada", "Fecha_Entrada"}   # ← añadida
+    required = {"Ticker", "Sector", "Precio_Entrada", "Fecha_Entrada"}
     missing  = required - set(df.columns)
     if missing:
         print(f"\n  ✗ Faltan columnas en el CSV: {missing}")
         print(  "    Asegúrate de incluir Fecha_Entrada (formato YYYY-MM-DD)")
         sys.exit(1)
 
-    df["Ticker"]        = df["Ticker"].str.strip().str.upper()
+    df["Ticker"]         = df["Ticker"].str.strip().str.upper()
     df["Precio_Entrada"] = pd.to_numeric(df["Precio_Entrada"], errors="coerce")
-    df["Fecha_Entrada"] = pd.to_datetime(df["Fecha_Entrada"], errors="coerce")
+    df["Fecha_Entrada"]  = pd.to_datetime(df["Fecha_Entrada"], errors="coerce")
     df = df.dropna(subset=["Ticker", "Precio_Entrada", "Fecha_Entrada"]).reset_index(drop=True)
     return df
 
 
 # ─────────────────────────────────────────────────────────────────────
-# 5. EVALUACIÓN DE CONDICIONES DE SALIDA PARA UN TICKER
+# 4. EVALUACIÓN DE CONDICIONES DE SALIDA PARA UN TICKER
 # ─────────────────────────────────────────────────────────────────────
 
 def evaluate_exit(
-    ticker:        str,
-    fecha_entrada: pd.Timestamp,   # ← nuevo parámetro
-    sp500_close:   pd.Series,
+    ticker:          str,
+    fecha_entrada:   pd.Timestamp,
+    sp500_close:     pd.Series,
     coppock_bearish: bool,
 ) -> dict:
     """
-    Evalúa las 3 condiciones de salida para un ticker.
-    Retorna un dict con el estado de cada condición y el veredicto final.
+    Evalúa las condiciones de salida para un ticker.
 
         Condiciones (OR — cualquiera activa la salida):
             S1: RSC Mansfield Activo < -0.5
-            S2: (eliminada) Trailing stop ya no se evalúa
             S3: Coppock SP500 bajista (Coppock < 0 y actual < anterior)
     """
     resultado = {
@@ -203,7 +184,7 @@ def evaluate_exit(
 
     close: pd.Series = data["Close"].copy()
 
-    # ── S1: RSC Mansfield < -0.5 (sin cambios) ──────────────────────
+    # ── S1: RSC Mansfield < -0.5
     try:
         close_a, sp500_a = close.align(sp500_close, join="inner")
         if len(close_a) < RSC_SMA_PERIOD + 5:
@@ -218,7 +199,7 @@ def evaluate_exit(
         resultado["Error"] = f"Error calculando RSC: {exc}"
         return resultado
 
-    # Precio actual (último cierre desde la fecha de entrada)
+    # Precio actual desde la fecha de entrada
     close_desde_entrada = close.loc[close.index >= fecha_entrada]
     if close_desde_entrada.empty:
         resultado["Error"] = "Sin cierres desde la fecha de entrada"
@@ -226,7 +207,7 @@ def evaluate_exit(
     precio_actual = float(close_desde_entrada.iloc[-1])
     resultado["Precio Actual"] = round(precio_actual, 2)
 
-    # ── Veredicto final: OR ──────────────────────────────────────────
+    # ── Veredicto final: OR
     motivos = []
     if resultado["S1 RSC < -0.5"]:
         motivos.append(f"S1: RSC={resultado['RSC Mansfield']:+.3f} < -0.5")
@@ -239,7 +220,7 @@ def evaluate_exit(
 
 
 # ─────────────────────────────────────────────────────────────────────
-# 6. FUNCIÓN PRINCIPAL
+# 5. FUNCIÓN PRINCIPAL
 # ─────────────────────────────────────────────────────────────────────
 
 def run_exit_scanner(csv_path: str = DEFAULT_INPUT_CSV) -> pd.DataFrame:
@@ -289,16 +270,15 @@ def run_exit_scanner(csv_path: str = DEFAULT_INPUT_CSV) -> pd.DataFrame:
         fecha_entrada  = fila["Fecha_Entrada"]
 
         res = evaluate_exit(
-            ticker        = ticker,
-            fecha_entrada = fecha_entrada,
-            sp500_close   = sp500_close,
+            ticker          = ticker,
+            fecha_entrada   = fecha_entrada,
+            sp500_close     = sp500_close,
             coppock_bearish = coppock_bearish,
         )
 
         res["Sector"]         = sector
         res["Precio Entrada"] = precio_entrada
 
-        # Calcular rentabilidad si tenemos los datos
         if precio_entrada and res["Precio Actual"]:
             rentabilidad = ((res["Precio Actual"] / float(precio_entrada)) - 1) * 100
             res["Rentabilidad %"] = round(rentabilidad, 2)
@@ -307,7 +287,6 @@ def run_exit_scanner(csv_path: str = DEFAULT_INPUT_CSV) -> pd.DataFrame:
 
         resultados.append(res)
 
-        # Feedback inmediato
         icono  = "🔴 SALIDA" if res["SALIDA"] else "🟢 Mantener"
         motivo = res["Motivo"] if res["SALIDA"] else ""
         error  = f"  ⚠ {res['Error']}" if res["Error"] else ""
@@ -316,13 +295,11 @@ def run_exit_scanner(csv_path: str = DEFAULT_INPUT_CSV) -> pd.DataFrame:
     # ── Construir DataFrame final
     df = pd.DataFrame(resultados)
 
-    # Ordenar: primero las que requieren salida, luego por rentabilidad
     df["_sort_salida"] = df["SALIDA"].apply(lambda x: 0 if x else 1)
     df.sort_values(["_sort_salida", "Rentabilidad %"], ascending=[True, True], inplace=True)
     df.drop(columns=["_sort_salida"], inplace=True)
     df.reset_index(drop=True, inplace=True)
 
-    # ── Columnas para la salida
     cols_output = [
         "Ticker",
         "Sector",
@@ -331,14 +308,12 @@ def run_exit_scanner(csv_path: str = DEFAULT_INPUT_CSV) -> pd.DataFrame:
         "Rentabilidad %",
         "RSC Mansfield",
         "S1 RSC < -0.5",
-        
         "S3 Coppock Bajista",
         "SALIDA",
         "Motivo",
     ]
     cols_output = [c for c in cols_output if c in df.columns]
 
-    # ── Resumen
     n_salida   = df["SALIDA"].sum()
     n_mantener = len(df) - n_salida
 
@@ -356,21 +331,30 @@ def run_exit_scanner(csv_path: str = DEFAULT_INPUT_CSV) -> pd.DataFrame:
 
 
 # ─────────────────────────────────────────────────────────────────────
-# 7. EXPORTACIÓN
+# 6. EXPORTACIÓN
 # ─────────────────────────────────────────────────────────────────────
 
 def export_results(df: pd.DataFrame, input_csv: str) -> None:
+    """
+    Exporta los resultados a CSV en historial/salidas/ para mantener
+    un registro histórico de todas las evaluaciones de posiciones.
+    """
     if df.empty:
         return
+
+    carpeta = Path("historial") / "salidas"
+    carpeta.mkdir(parents=True, exist_ok=True)
+
     fecha  = datetime.now().strftime("%Y%m%d_%H%M")
     stem   = Path(input_csv).stem
-    nombre = f"{stem}_salidas_{fecha}.csv"
-    df.to_csv(nombre, index=False, encoding="utf-8-sig")
-    print(f"\n  ✅ Resultados exportados → {nombre}")
+    ruta   = carpeta / f"{stem}_salidas_{fecha}.csv"
+
+    df.to_csv(ruta, index=False, encoding="utf-8-sig")
+    print(f"\n  ✅ Resultados exportados → {ruta}")
 
 
 # ─────────────────────────────────────────────────────────────────────
-# 8. ENTRY POINT
+# 7. ENTRY POINT
 # ─────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
