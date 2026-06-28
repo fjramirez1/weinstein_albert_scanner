@@ -27,9 +27,7 @@ from weinstein.data import download_weekly, load_positions
 from weinstein.indicators import coppock_curve, rsc_mansfield, sp500_alcista
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Evaluación de un ticker
-# ─────────────────────────────────────────────────────────────────────
+# ── Evaluación de un ticker ───────────────────────────────────────────
 
 def _evaluate_exit(
     ticker:           str,
@@ -60,14 +58,14 @@ def _evaluate_exit(
 
     close = data["Close"].copy()
 
-    # ── S1: RSC Mansfield < umbral ───────────────────────────────────
+    # S1: RSC Mansfield < umbral
     try:
         close_a, sp500_a = close.align(sp500_close, join="inner")
         if len(close_a) < RSC_SMA_PERIOD + 5:
             result["Error"] = "Histórico insuficiente para RSC"
             return result
 
-        rsc_val  = float(rsc_mansfield(close_a, sp500_a).iloc[-1])
+        rsc_val   = float(rsc_mansfield(close_a, sp500_a).iloc[-1])
         s1_activo = rsc_val < RSC_EXIT_THRESHOLD
 
         result["RSC Mansfield"] = round(rsc_val, 4)
@@ -76,7 +74,6 @@ def _evaluate_exit(
         result["Error"] = f"Error calculando RSC: {exc}"
         return result
 
-    # Precio actual desde la fecha de entrada
     close_desde_entrada = close.loc[close.index >= fecha_entrada]
     if close_desde_entrada.empty:
         result["Error"] = "Sin cierres desde la fecha de entrada"
@@ -84,7 +81,7 @@ def _evaluate_exit(
 
     result["Precio Actual"] = round(float(close_desde_entrada.iloc[-1]), 2)
 
-    # ── Veredicto final (OR) ─────────────────────────────────────────
+    # Veredicto final (OR)
     motivos: list[str] = []
     if result["S1 RSC < -0.5"]:
         motivos.append(f"S1: RSC={result['RSC Mansfield']:+.3f} < {RSC_EXIT_THRESHOLD}")
@@ -96,17 +93,13 @@ def _evaluate_exit(
     return result
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Función principal
-# ─────────────────────────────────────────────────────────────────────
+# ── Función principal ─────────────────────────────────────────────────
 
 def run_exit_scanner(csv_path: str) -> pd.DataFrame:
     """
     Ejecuta el escáner de salida sobre las posiciones del CSV indicado.
 
-    Retorna
-    -------
-    pd.DataFrame con el estado de cada posición, ordenado por
+    Retorna un DataFrame con el estado de cada posición, ordenado por
     SALIDA (primero las señales activas) y Rentabilidad %.
     """
     print("\n" + "═" * 68)
@@ -115,12 +108,10 @@ def run_exit_scanner(csv_path: str) -> pd.DataFrame:
     print(f"  Archivo   : {csv_path}")
     print("═" * 68)
 
-    # PASO 1 — Posiciones
     print("\n[1/3] Cargando posiciones abiertas...")
     posiciones = load_positions(csv_path)
     print(f"  ✓ {len(posiciones)} posiciones: {list(posiciones['Ticker'])}")
 
-    # PASO 2 — S&P 500 y Coppock
     print("\n[2/3] Descargando S&P 500 y calculando Coppock...")
     sp500_data = download_weekly(SP500_INDEX, period="6y")
     if sp500_data is None:
@@ -139,7 +130,6 @@ def run_exit_scanner(csv_path: str) -> pd.DataFrame:
     if coppock_not_bull:
         print("  ⚠️  S2 ACTIVA para TODAS las posiciones (Coppock no alcista)")
 
-    # PASO 3 — Evaluar posiciones
     print(f"\n[3/3] Evaluando {len(posiciones)} posiciones...")
     print("─" * 68)
 
@@ -174,7 +164,6 @@ def run_exit_scanner(csv_path: str) -> pd.DataFrame:
         error  = f"  ⚠ {res['Error']}" if res["Error"] else ""
         print(f"  {icono:<14} {ticker:<6} | RSC: {str(res['RSC Mansfield']):<9} | {motivo}{error}")
 
-    # ── DataFrame y orden ────────────────────────────────────────────
     df = pd.DataFrame(resultados)
     df["_sort"] = df["SALIDA"].apply(lambda x: 0 if x else 1)
     df.sort_values(["_sort", "Rentabilidad %"], ascending=[True, True], inplace=True)

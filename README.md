@@ -1,23 +1,22 @@
 # Weinstein Albert Scanner
 
-Utilidades en Python para ejecutar una estrategia semanal inspirada en el método Weinstein: detección de candidatos de entrada y evaluación de salidas para posiciones abiertas.
+Utilidades en Python para ejecutar una estrategia semanal inspirada en el método Weinstein:
+detección de candidatos de entrada y evaluación de salidas para posiciones abiertas.
 
 ## Estructura del proyecto
 
 ```
-weinstein/                        ← paquete principal
+weinstein/                  ← paquete principal
 │   __init__.py
-│   config.py                     ← todos los parámetros en un único lugar
-│   indicators.py                 ← cálculos técnicos (WMA, RSC, VPM5, Coppock, MOM)
-│   data.py                       ← descarga de precios y carga de tickers S&P 500
-│   scanner.py                    ← lógica de escáner de entrada
-│   exit_scanner.py               ← lógica de escáner de salida
-│   exporter.py                   ← exportación CSV con historial
+│   __main__.py             ← CLI unificado (python -m weinstein)
+│   config.py               ← todos los parámetros en un único lugar
+│   indicators.py           ← cálculos técnicos (WMA, RSC, VPM5, Coppock, MOM)
+│   data.py                 ← descarga de precios y carga de tickers S&P 500
+│   scanner_entry.py        ← lógica del escáner de entrada
+│   scanner_exit.py         ← lógica del escáner de salida
+│   exporter.py             ← exportación CSV con historial
 │
-weinstein_albert_scanner.py       ← entry point: escáner de entrada
-weinstein_albert_exit_scanner.py  ← entry point: escáner de salida
-we_utils.py                       ← compatibilidad con versiones anteriores
-posiciones.csv                    ← tus posiciones abiertas
+posiciones.csv              ← tus posiciones abiertas
 requirements.txt
 │
 scripts/
@@ -25,11 +24,11 @@ scripts/
 │   run_exit.sh  / run_exit.bat
 │
 historial/
-│   entradas/                     ← CSVs generados por el escáner de entrada
-│   salidas/                      ← CSVs generados por el escáner de salida
+│   entradas/               ← CSVs generados por el escáner de entrada
+│   salidas/                ← CSVs generados por el escáner de salida
 │
 docs/
-    ESTRATEGIA.md                 ← descripción técnica completa
+    ESTRATEGIA.md           ← descripción técnica completa
 ```
 
 ## Quickstart (3 pasos)
@@ -44,20 +43,33 @@ source venv/bin/activate        # macOS/Linux
 pip install -r requirements.txt
 
 # 3a. Escáner de entrada (ejecutar tras el cierre semanal)
-python weinstein_albert_scanner.py
+python -m weinstein entry
 
 # 3b. Escáner de salida (revisar posiciones abiertas)
-python weinstein_albert_exit_scanner.py
-python weinstein_albert_exit_scanner.py --input mis_posiciones.csv
+python -m weinstein exit
+python -m weinstein exit --input mis_posiciones.csv
+```
+
+## Scripts de arranque
+
+```bash
+bash scripts/run_entry.sh
+bash scripts/run_exit.sh
+
+# Pasar --input desde el script de salida:
+bash scripts/run_exit.sh --input mis_posiciones.csv
+
+# Windows
+scripts\run_entry.bat
+scripts\run_exit.bat
+scripts\run_exit.bat --input mis_posiciones.csv
 ```
 
 ## Ajustar parámetros
 
-Todos los umbrales y periodos están centralizados en **`weinstein/config.py`**.
-No hace falta tocar ningún otro archivo para modificar la estrategia:
+Todos los umbrales y periodos están centralizados en **`weinstein/config.py`**:
 
 ```python
-# weinstein/config.py (fragmento)
 SECTOR_RSC_MIN      = 0.10   # F1: RSC Mansfield sector >= umbral
 MAX_DISTANCIA_WMA30 = 8.0    # F4: precio no supera WMA30 en más de X %
 RSC_EXIT_THRESHOLD  = -0.5   # S1: RSC Mansfield activo < umbral → salida
@@ -66,7 +78,7 @@ MAX_CANDIDATES      = 10     # Top-N candidatos en el ranking
 
 ## Cómo funciona
 
-### Escáner de entrada (`weinstein/scanner.py`)
+### Escáner de entrada (`weinstein/scanner_entry.py`)
 
 Aplica 5 filtros **AND** sobre el universo del S&P 500:
 
@@ -80,7 +92,7 @@ Aplica 5 filtros **AND** sobre el universo del S&P 500:
 
 Los candidatos se ordenan por Momentum Relativo (MOM) descendente.
 
-### Escáner de salida (`weinstein/exit_scanner.py`)
+### Escáner de salida (`weinstein/scanner_exit.py`)
 
 Aplica 2 condiciones **OR** sobre las posiciones abiertas:
 
@@ -93,11 +105,12 @@ Aplica 2 condiciones **OR** sobre las posiciones abiertas:
 
 | Módulo | Responsabilidad |
 |--------|----------------|
+| `__main__.py` | CLI unificado con subcomandos `entry` y `exit` |
 | `config.py` | Constantes y umbrales de la estrategia |
 | `indicators.py` | Cálculos puros: WMA, RSC Mansfield, VPM5, Coppock, MOM |
 | `data.py` | Descarga yfinance, carga de tickers S&P 500, lectura de posiciones |
-| `scanner.py` | Orquestación del escáner de entrada |
-| `exit_scanner.py` | Orquestación del escáner de salida |
+| `scanner_entry.py` | Orquestación del escáner de entrada |
+| `scanner_exit.py` | Orquestación del escáner de salida |
 | `exporter.py` | Exportación a CSV con historial fechado |
 
 ## Formato de archivos
@@ -120,29 +133,6 @@ weinstein_albert_scan_YYYYMMDD_HHMM.csv
 
 ```
 posiciones_salidas_YYYYMMDD_HHMM.csv
-```
-
-## Scripts de arranque
-
-```bash
-bash scripts/run_entry.sh
-bash scripts/run_exit.sh
-
-# Windows
-scripts\run_entry.bat
-scripts\run_exit.bat
-```
-
-## Compatibilidad con versiones anteriores
-
-Si tienes código que importa desde `we_utils` directamente, sigue funcionando:
-
-```python
-# Esto sigue siendo válido
-from we_utils import wma, rsc_mansfield, coppock_curve
-
-# Para código nuevo, importa desde el paquete
-from weinstein.indicators import wma, rsc_mansfield, coppock_curve
 ```
 
 ## Troubleshooting

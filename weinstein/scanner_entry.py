@@ -42,9 +42,7 @@ from weinstein.indicators import (
 )
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Pre-cálculo compartido (S&P 500 + sectores)
-# ─────────────────────────────────────────────────────────────────────
+# ── Pre-cálculo compartido ────────────────────────────────────────────
 
 def _precompute_market_context(
     sp500_close: pd.Series,
@@ -52,11 +50,8 @@ def _precompute_market_context(
     """
     Calcula el estado del mercado y los RSC sectoriales.
 
-    Se llama una sola vez por ejecución para evitar descargas redundantes.
-
-    Retorna
-    -------
-    (coppock_bullish, coppock_direction, sector_rsc_map)
+    Llamado una sola vez por ejecución para evitar descargas redundantes.
+    Retorna (coppock_bullish, coppock_direction, sector_rsc_map).
     """
     copk = coppock_curve(sp500_close)
     coppock_bullish, direction = sp500_alcista(copk, recent_lookback=COPPOCK_RECENT_LOOKBACK)
@@ -65,7 +60,6 @@ def _precompute_market_context(
     print(f"  Coppock SP500 anterior : {float(copk.iloc[-2]):+.4f}")
     print(f"  Estado de mercado      : {direction}")
 
-    # RSC de cada ETF sectorial
     unique_etfs    = sorted(set(SECTOR_TO_ETF.values()))
     sector_rsc_map: dict[str, float] = {}
 
@@ -76,8 +70,8 @@ def _precompute_market_context(
             print(f"    ✗ {etf}: sin datos")
             continue
         try:
-            rsc_series     = rsc_mansfield(etf_data["Close"].squeeze(), sp500_close)
-            rsc_val        = float(rsc_series.iloc[-1])
+            rsc_series          = rsc_mansfield(etf_data["Close"].squeeze(), sp500_close)
+            rsc_val             = float(rsc_series.iloc[-1])
             sector_rsc_map[etf] = rsc_val
             ok = "✓" if rsc_val >= SECTOR_RSC_MIN else "✗"
             print(f"    {ok} {etf}: RSC = {rsc_val:+.4f}")
@@ -87,9 +81,7 @@ def _precompute_market_context(
     return coppock_bullish, direction, sector_rsc_map
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Evaluación de un ticker
-# ─────────────────────────────────────────────────────────────────────
+# ── Evaluación de un ticker ───────────────────────────────────────────
 
 def _evaluate_ticker(
     ticker:            str,
@@ -103,10 +95,7 @@ def _evaluate_ticker(
     """
     Aplica los 5 filtros Weinstein-Albert a un ticker.
 
-    Retorna
-    -------
-    (dict_resultado, motivo)
-        motivo ∈ {"ok", "sin_datos", "filtrado"}
+    Retorna (dict_resultado, motivo) donde motivo ∈ {"ok", "sin_datos", "filtrado"}.
     """
     data = download_weekly(ticker)
     if data is None:
@@ -116,7 +105,6 @@ def _evaluate_ticker(
     if len(close) < RSC_SMA_PERIOD + 5:
         return None, "sin_datos"
 
-    # ── Indicadores ──────────────────────────────────────────────────
     wma30_val = float(wma(close, WMA30_PERIOD).iloc[-1])
     if pd.isna(wma30_val) or wma30_val <= 0:
         return None, "sin_datos"
@@ -128,18 +116,18 @@ def _evaluate_ticker(
     close_a, sp500_a = close.align(sp500_close, join="inner")
     rsc_activo_val   = float(rsc_mansfield(close_a, sp500_a).iloc[-1])
 
-    etf_ticker    = SECTOR_TO_ETF.get(sector_name)
+    etf_ticker     = SECTOR_TO_ETF.get(sector_name)
     rsc_sector_val = sector_rsc_map.get(etf_ticker, np.nan) if etf_ticker else np.nan
 
     if dist is None or mom is None:
         return None, "sin_datos"
 
-    # ── Filtros (AND) ────────────────────────────────────────────────
-    #  F1: RSC sector >= 0.10
-    #  F2: VPM5 > 0
-    #  F3: RSC activo > 0
-    #  F4: distancia WMA30 < +8 %   (sin cota inferior)
-    #  F5: Coppock alcista
+    # Filtros AND
+    # F1: RSC sector >= 0.10
+    # F2: VPM5 > 0
+    # F3: RSC activo > 0
+    # F4: distancia WMA30 < +8 %  (sin cota inferior)
+    # F5: Coppock alcista
     filtros = {
         "F1_rsc_sector"   : (not pd.isna(rsc_sector_val)) and rsc_sector_val >= SECTOR_RSC_MIN,
         "F2_vpm5"         : (not pd.isna(vpm5_val))       and vpm5_val > 0.0,
@@ -166,30 +154,24 @@ def _evaluate_ticker(
     }, "ok"
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Función principal
-# ─────────────────────────────────────────────────────────────────────
+# ── Función principal ─────────────────────────────────────────────────
 
 def run_entry_scanner() -> pd.DataFrame:
     """
     Ejecuta el escáner de entrada completo y devuelve los candidatos.
 
-    Retorna
-    -------
-    pd.DataFrame con hasta ``MAX_CANDIDATES`` filas ordenadas por MOM
-    descendente, o un DataFrame vacío si no hay candidatos.
+    Retorna un DataFrame con hasta ``MAX_CANDIDATES`` filas ordenadas
+    por MOM descendente, o un DataFrame vacío si no hay candidatos.
     """
     print("\n" + "═" * 72)
     print("  WEINSTEIN VERSION ALBERT — S&P 500 WEEKLY ENTRY SCANNER")
     print(f"  Ejecución : {datetime.now().strftime('%Y-%m-%d  %H:%M:%S')}")
     print("═" * 72)
 
-    # PASO 1 — Tickers
     print("\n[1/3] Descargando constituyentes del S&P 500...")
     sp500_df      = load_sp500_tickers()
     total_tickers = len(sp500_df)
 
-    # PASO 2 — Contexto de mercado
     print("\n[2/3] Descargando S&P 500 y calculando indicadores de mercado...")
     sp500_data = download_weekly(SP500_INDEX, period=DOWNLOAD_PERIOD_ENTRY)
     if sp500_data is None:
@@ -199,7 +181,6 @@ def run_entry_scanner() -> pd.DataFrame:
     sp500_close = sp500_data["Close"].squeeze()
     coppock_bullish, coppock_direction, sector_rsc_map = _precompute_market_context(sp500_close)
 
-    # PASO 3 — Escanear tickers
     print(f"\n[3/3] Escaneando {total_tickers} acciones...")
     print("─" * 72)
 
@@ -242,7 +223,6 @@ def run_entry_scanner() -> pd.DataFrame:
                 f"Candidatos: {len(resultados)} | Errores: {counters['errores']}"
             )
 
-    # Resumen
     print("\n" + "═" * 72)
     print("  RESUMEN DEL ESCÁNER")
     print("─" * 72)

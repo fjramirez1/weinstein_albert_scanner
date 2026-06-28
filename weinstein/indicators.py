@@ -22,16 +22,14 @@ from weinstein.config import (
 )
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Medias móviles
-# ─────────────────────────────────────────────────────────────────────
+# ── Medias móviles ────────────────────────────────────────────────────
 
 def wma(series: pd.Series, period: int) -> pd.Series:
     """
     Media Móvil Ponderada de ``period`` periodos.
 
-    El peso lineal asigna 1 al valor más antiguo y ``period`` al más
-    reciente: WMA = Σ(precio_i × i) / Σ(i)  para i en [1, period].
+    Peso lineal: 1 al valor más antiguo, ``period`` al más reciente.
+    WMA = Σ(precio_i × i) / Σ(i)  para i en [1, period].
     """
     weights = np.arange(1, period + 1, dtype=float)
     w_sum = weights.sum()
@@ -41,9 +39,7 @@ def wma(series: pd.Series, period: int) -> pd.Series:
     )
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Fuerza relativa
-# ─────────────────────────────────────────────────────────────────────
+# ── Fuerza relativa ───────────────────────────────────────────────────
 
 def rsc_mansfield(
     price_asset: pd.Series,
@@ -53,14 +49,11 @@ def rsc_mansfield(
     """
     RSC Mansfield del activo frente al benchmark.
 
-    Fórmula
-    -------
     R(t)   = precio_activo(t) / precio_benchmark(t)
     SMA52  = SMA(R, sma_period)
     RSC(t) = (R(t) / SMA52(t) - 1) × 10
 
-    Valores positivos indican que el activo supera la media de su
-    comportamiento relativo respecto al benchmark.
+    Positivo → activo supera la media de su comportamiento relativo.
     """
     asset, bench = price_asset.align(price_benchmark, join="inner")
     relative = asset / bench
@@ -68,9 +61,7 @@ def rsc_mansfield(
     return ((relative / sma) - 1.0) * 10.0
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Volumen
-# ─────────────────────────────────────────────────────────────────────
+# ── Volumen ───────────────────────────────────────────────────────────
 
 def vpm5(
     data: pd.DataFrame,
@@ -80,14 +71,11 @@ def vpm5(
     """
     Volumen Proporcional Medio suavizado (VPM5).
 
-    Pasos
-    -----
-    1. Estandarizar el volumen respecto a la media y desviación típica
-       de las últimas ``base_period`` semanas.
-    2. Suavizar con una SMA de ``smoothing_period`` periodos.
+    1. Estandariza el volumen respecto a media/desv de las últimas
+       ``base_period`` semanas.
+    2. Suaviza con SMA de ``smoothing_period`` periodos.
 
-    Un valor positivo indica que el volumen actual está por encima de
-    su media histórica (interés comprador presente).
+    Positivo → volumen por encima de su media histórica.
     """
     volume = data["Volume"].squeeze().astype(float)
     rolling_mean = volume.rolling(window=base_period).mean()
@@ -96,9 +84,7 @@ def vpm5(
     return vpm.rolling(window=smoothing_period).mean()
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Momentum y distancia
-# ─────────────────────────────────────────────────────────────────────
+# ── Momentum y distancia ──────────────────────────────────────────────
 
 def momentum_vs_wma(
     close: pd.Series,
@@ -108,7 +94,7 @@ def momentum_vs_wma(
     Momentum relativo: (precio_actual - WMA) / WMA.
 
     Devuelve ``None`` si no hay datos suficientes o la WMA es inválida.
-    Se usa para ordenar candidatos que pasan todos los filtros.
+    Usado para ordenar candidatos que superan todos los filtros.
     """
     if len(close) < period:
         return None
@@ -134,9 +120,7 @@ def distancia_wma_pct(close: pd.Series, period: int = WMA30_PERIOD) -> float | N
     return ((float(close.iloc[-1]) - wma_val) / wma_val) * 100.0
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Coppock
-# ─────────────────────────────────────────────────────────────────────
+# ── Coppock ───────────────────────────────────────────────────────────
 
 def coppock_curve(
     price: pd.Series,
@@ -147,12 +131,9 @@ def coppock_curve(
     """
     Curva de Coppock semanal.
 
-    Fórmula
-    -------
     Coppock(t) = WMA_wma_period( ROC_roc_long(P) + ROC_roc_short(P) )
 
-    Parámetros por defecto según la especificación semanal de la
-    estrategia: ROC_12 + ROC_6, suavizado con WMA_10.
+    Parámetros por defecto: ROC_12 + ROC_6, suavizado con WMA_10.
     """
     roc_l    = price.pct_change(periods=roc_long)  * 100.0
     roc_s    = price.pct_change(periods=roc_short) * 100.0
@@ -168,14 +149,11 @@ def sp500_alcista(
     Determina si el S&P 500 está en fase alcista según el Coppock.
 
     Señal alcista en dos casos:
-    1. **Inicio alcista**: Coppock en negativo, el valor previo era el
-       mínimo reciente y la curva comienza a girar al alza.
-    2. **Continuación alcista**: Coppock positivo y creciendo.
+    1. Inicio alcista: Coppock negativo, valor previo era el mínimo
+       reciente y la curva comienza a girar al alza.
+    2. Continuación alcista: Coppock positivo y creciendo.
 
-    Retorna
-    -------
-    (bool, str)
-        Bandera alcista y etiqueta legible («↑ Alcista» / «↓ Bajista»).
+    Retorna (bool, str) → bandera alcista y etiqueta legible.
     """
     valid = coppock.dropna()
     if len(valid) < 2:
@@ -184,7 +162,6 @@ def sp500_alcista(
     current  = float(valid.iloc[-1])
     previous = float(valid.iloc[-2])
 
-    # Caso 1: giro al alza desde zona negativa
     start_bullish = False
     if len(valid) >= recent_lookback + 1:
         recent_window = valid.iloc[-(recent_lookback + 1):-1]
@@ -196,7 +173,6 @@ def sp500_alcista(
             and current > previous
         )
 
-    # Caso 2: continuación en zona positiva
     continuation_bullish = current > 0.0 and current > previous
 
     bullish   = start_bullish or continuation_bullish

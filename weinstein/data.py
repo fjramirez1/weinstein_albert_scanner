@@ -24,9 +24,7 @@ from weinstein.config import (
 )
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Descarga OHLCV semanal
-# ─────────────────────────────────────────────────────────────────────
+# ── Descarga OHLCV semanal ────────────────────────────────────────────
 
 def download_weekly(
     ticker: str,
@@ -35,10 +33,8 @@ def download_weekly(
     """
     Descarga datos OHLCV semanales de un ticker con yfinance.
 
-    Retorna
-    -------
-    pd.DataFrame con columnas [Open, High, Low, Close, Volume] o
-    ``None`` si la descarga falla o el histórico es insuficiente.
+    Retorna un DataFrame con columnas [Open, High, Low, Close, Volume]
+    o ``None`` si la descarga falla o el histórico es insuficiente.
     """
     try:
         raw = yf.download(
@@ -55,8 +51,7 @@ def download_weekly(
     if raw is None or raw.empty:
         return None
 
-    # yfinance devuelve MultiIndex cuando se descarga un solo ticker
-    # en ciertas versiones; lo normalizamos siempre.
+    # Normalizar MultiIndex que yfinance introduce en algunas versiones.
     if isinstance(raw.columns, pd.MultiIndex):
         raw.columns = raw.columns.get_level_values(0)
 
@@ -67,9 +62,7 @@ def download_weekly(
     return raw if len(raw) >= MIN_BARS else None
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Constituyentes del S&P 500
-# ─────────────────────────────────────────────────────────────────────
+# ── Constituyentes del S&P 500 ────────────────────────────────────────
 
 def _sp500_from_wikipedia() -> pd.DataFrame:
     """Fuente de respaldo: tabla HTML de Wikipedia."""
@@ -97,16 +90,13 @@ def load_sp500_tickers() -> pd.DataFrame:
     Intenta primero el CSV público en GitHub; si falla, recurre a
     Wikipedia.
 
-    Retorna
-    -------
-    pd.DataFrame con columnas [Symbol, Name, Sector].
+    Retorna un DataFrame con columnas [Symbol, Name, Sector].
     """
     print(f"  → Fuente primaria: {SP500_CSV_URL}")
     try:
         df = pd.read_csv(SP500_CSV_URL)
         df.columns = [c.strip() for c in df.columns]
 
-        # Normalización de nombres de columna (el CSV cambia ocasionalmente)
         rename: dict[str, str] = {}
         for col in df.columns:
             low = col.strip().lower()
@@ -132,16 +122,13 @@ def load_sp500_tickers() -> pd.DataFrame:
         return _sp500_from_wikipedia()
 
 
-# ─────────────────────────────────────────────────────────────────────
-# CSV de posiciones abiertas
-# ─────────────────────────────────────────────────────────────────────
+# ── CSV de posiciones abiertas ────────────────────────────────────────
 
 def load_positions(csv_path: str = DEFAULT_POSITIONS_CSV) -> pd.DataFrame:
     """
     Carga el CSV de posiciones abiertas y valida su estructura.
 
     Columnas requeridas: Ticker, Sector, Precio_Entrada, Fecha_Entrada.
-
     Aborta con mensaje claro si el archivo no existe o faltan columnas.
     """
     path = Path(csv_path)

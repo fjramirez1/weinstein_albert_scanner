@@ -19,8 +19,7 @@ def _export(df: pd.DataFrame, directory: str, stem: str) -> Path | None:
     """
     Lógica común de exportación: crea la carpeta si no existe y guarda.
 
-    Retorna la ruta del archivo creado, o ``None`` si el DataFrame
-    estaba vacío.
+    Retorna la ruta del archivo creado, o ``None`` si el DataFrame estaba vacío.
     """
     if df.empty:
         return None
@@ -40,7 +39,7 @@ def export_entry_results(df: pd.DataFrame) -> Path | None:
     """
     Guarda el CSV del escáner de entrada en ``historial/entradas/``.
 
-    Nombre del archivo: ``weinstein_albert_scan_YYYYMMDD_HHMM.csv``
+    Nombre: ``weinstein_albert_scan_YYYYMMDD_HHMM.csv``
     """
     return _export(df, HISTORY_ENTRIES_DIR, "weinstein_albert_scan")
 
@@ -49,8 +48,7 @@ def export_exit_results(df: pd.DataFrame, input_csv: str) -> Path | None:
     """
     Guarda el CSV del escáner de salida en ``historial/salidas/``.
 
-    El prefijo del nombre replica el stem del CSV de posiciones para
-    facilitar la trazabilidad:
+    El prefijo replica el stem del CSV de posiciones:
     ``<stem>_salidas_YYYYMMDD_HHMM.csv``
     """
     stem = Path(input_csv).stem + "_salidas"
