@@ -49,9 +49,14 @@ def vpm5(data: pd.DataFrame, base_period: int = 52, smoothing_period: int = 5) -
     return vpm5_series
 
 
-def coppock_curve(price: pd.Series, roc_long: int = 14, roc_short: int = 11, wma_period: int = 10) -> pd.Series:
+def coppock_curve(price: pd.Series, roc_long: int = 12, roc_short: int = 6, wma_period: int = 10) -> pd.Series:
     """
-    Curva de Coppock: WMA(ROC(roc_long) + ROC(roc_short), wma_period)
+    Curva de Coppock semanal: WMA(ROC(roc_long) + ROC(roc_short), wma_period)
+
+    Parámetros por defecto según la fuente original aplicada a datos semanales:
+        roc_long  = 12 semanas
+        roc_short =  6 semanas
+        wma_period = 10 semanas
     """
     roc_l = price.pct_change(periods=roc_long) * 100.0
     roc_s = price.pct_change(periods=roc_short) * 100.0
@@ -61,17 +66,17 @@ def coppock_curve(price: pd.Series, roc_long: int = 14, roc_short: int = 11, wma
 
 def calculate_mom(close_prices: pd.Series, ma_period: int = 30) -> float | None:
     """
-    Calcula Momentum Relativo (MOM) basado en la media móvil de `ma_period` sesiones.
-    
-    MOM = (Precio Actual - MA30) / MA30
-    
+    Calcula Momentum Relativo (MOM) basado en la media móvil ponderada de `ma_period` sesiones.
+
+    MOM = (Precio Actual - WMA30) / WMA30
+
     Parámetros
     ----------
     close_prices : pd.Series
         Serie de precios de cierre (típicamente últimas 30+ sesiones)
     ma_period : int
-        Período para la media móvil (default: 30)
-    
+        Período para la media móvil ponderada (default: 30)
+
     Retorna
     -------
     float | None
@@ -79,20 +84,16 @@ def calculate_mom(close_prices: pd.Series, ma_period: int = 30) -> float | None:
     """
     if close_prices is None or len(close_prices) < ma_period:
         return None
-    
-    # Calcular la media móvil ponderada del período especificado
+
     ma_series = wma(close_prices, ma_period)
     ma_val = float(ma_series.iloc[-1])
-    
+
     if pd.isna(ma_val) or ma_val <= 0:
         return None
-    
-    # Precio actual es el último cierre
+
     current_price = float(close_prices.iloc[-1])
-    
-    # Calcular MOM
     mom = (current_price - ma_val) / ma_val
-    
+
     return mom
 
 

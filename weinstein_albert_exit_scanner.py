@@ -2,12 +2,11 @@
 ╔══════════════════════════════════════════════════════════════════════╗
 ║      WEINSTEIN VERSION ALBERT — ESCÁNER DE CONDICIONES DE SALIDA    ║
 ║                                                                      ║
-║  Operador : OR — cualquiera de las 3 condiciones activa la salida    ║
+║  Operador : OR — cualquiera de las 2 condiciones activa la salida    ║
 ║                                                                      ║
 ║  Condiciones de salida:                                              ║
 ║    S1. RSC Mansfield Activo < -0.5  (pérdida de fuerza relativa)     ║
-║    S2. Trailing Stop activado       (precio < mín. 15 cierres)       ║
-║    S3. Coppock SP500 bajista        (filtro de mercado)               ║
+║    S2. Coppock SP500 no alcista     (filtro de mercado)               ║
 ║                                                                      ║
 ║  Entrada : CSV con posiciones abiertas (ver formato abajo)           ║
 ║  Salida  : CSV en historial/salidas/ con el estado de cada posición  ║
@@ -63,7 +62,7 @@ import os
 import numpy as np
 import pandas as pd
 import yfinance as yf
-from we_utils import wma, rsc_mansfield, coppock_curve
+from we_utils import wma, rsc_mansfield, coppock_curve, sp500_alcista
 
 warnings.filterwarnings("ignore")
 
@@ -82,9 +81,12 @@ DOWNLOAD_PERIOD      = "5y"
 
 RSC_SALIDA_UMBRAL    = -0.5
 RSC_SMA_PERIOD       = 52
-COPPOCK_ROC1         = 14
-COPPOCK_ROC2         = 11
+
+# Coppock semanal: ROC de 12 y 6 semanas suavizados con WMA de 10 semanas.
+COPPOCK_ROC1         = 12
+COPPOCK_ROC2         = 6
 COPPOCK_WMA_PERIOD   = 10
+COPPOCK_RECENT_LOOKBACK = 4
 
 MIN_BARS             = 70
 
@@ -154,27 +156,27 @@ def load_positions(csv_path: str) -> pd.DataFrame:
 # ─────────────────────────────────────────────────────────────────────
 
 def evaluate_exit(
-    ticker:          str,
-    fecha_entrada:   pd.Timestamp,
-    sp500_close:     pd.Series,
-    coppock_bearish: bool,
+    ticker:           str,
+    fecha_entrada:    pd.Timestamp,
+    sp500_close:      pd.Series,
+    coppock_not_bull: bool,
 ) -> dict:
     """
     Evalúa las condiciones de salida para un ticker.
 
-        Condiciones (OR — cualquiera activa la salida):
-            S1: RSC Mansfield Activo < -0.5
-            S3: Coppock SP500 bajista (Coppock < 0 y actual < anterior)
+    Condiciones (OR — cualquiera activa la salida):
+        S1: RSC Mansfield Activo < -0.5
+        S2: Coppock SP500 no alcista (sp500_alcista = False)
     """
     resultado = {
-        "Ticker"             : ticker,
-        "Precio Actual"      : None,
-        "RSC Mansfield"      : None,
-        "S1 RSC < -0.5"      : None,
-        "S3 Coppock Bajista" : coppock_bearish,
-        "SALIDA"             : False,
-        "Motivo"             : [],
-        "Error"              : None,
+        "Ticker"                  : ticker,
+        "Precio Actual"           : None,
+        "RSC Mansfield"           : None,
+        "S1 RSC < -0.5"           : None,
+        "S2 Coppock No Alcista"   : coppock_not_bull,
+        "SALIDA"                  : False,
+        "Motivo"                  : [],
+        "Error"                   : None,
     }
 
     data = download_weekly(ticker)
@@ -211,8 +213,8 @@ def evaluate_exit(
     motivos = []
     if resultado["S1 RSC < -0.5"]:
         motivos.append(f"S1: RSC={resultado['RSC Mansfield']:+.3f} < -0.5")
-    if resultado["S3 Coppock Bajista"]:
-        motivos.append("S3: Coppock SP500 < 0 y descendiendo")
+    if resultado["S2 Coppock No Alcista"]:
+        motivos.append("S2: Coppock SP500 no alcista")
 
     resultado["SALIDA"] = len(motivos) > 0
     resultado["Motivo"] = " | ".join(motivos) if motivos else "—"
@@ -236,7 +238,7 @@ def run_exit_scanner(csv_path: str = DEFAULT_INPUT_CSV) -> pd.DataFrame:
     posiciones = load_positions(csv_path)
     print(f"  ✓ {len(posiciones)} posiciones encontradas: {list(posiciones['Ticker'])}")
 
-    # ── Descargar S&P 500 y calcular Coppock
+    # ── Descargar S&P 500 y calcular Coppock semanal (ROC 12 + ROC 6, WMA 10)
     print("\n[2/3] Descargando S&P 500 y calculando Coppock...")
     sp500_data = download_weekly(SP500_INDEX, period="6y")
     if sp500_data is None:
@@ -244,18 +246,19 @@ def run_exit_scanner(csv_path: str = DEFAULT_INPUT_CSV) -> pd.DataFrame:
         sys.exit(1)
 
     sp500_close: pd.Series = sp500_data["Close"].copy()
-    copk         = coppock_curve(sp500_close)
+    copk = coppock_curve(sp500_close)
+    coppock_bullish, estado_mkt = sp500_alcista(copk, recent_lookback=COPPOCK_RECENT_LOOKBACK)
+    coppock_not_bull = not coppock_bullish
+
     coppock_now  = float(copk.iloc[-1])
     coppock_prev = float(copk.iloc[-2])
-    coppock_bearish = coppock_now < 0.0 and coppock_now < coppock_prev
-    estado_mkt   = "↓ Bajista" if coppock_bearish else "↑ Alcista"
 
     print(f"  Coppock actual   : {coppock_now:+.4f}")
     print(f"  Coppock anterior : {coppock_prev:+.4f}")
     print(f"  Estado mercado   : {estado_mkt}")
 
-    if coppock_bearish:
-        print("  ⚠️  S3 ACTIVA para TODAS las posiciones (Coppock < 0 y descendiendo)")
+    if coppock_not_bull:
+        print("  ⚠️  S2 ACTIVA para TODAS las posiciones (Coppock no alcista)")
 
     # ── Evaluar cada ticker
     print(f"\n[3/3] Evaluando {len(posiciones)} posiciones...")
@@ -270,10 +273,10 @@ def run_exit_scanner(csv_path: str = DEFAULT_INPUT_CSV) -> pd.DataFrame:
         fecha_entrada  = fila["Fecha_Entrada"]
 
         res = evaluate_exit(
-            ticker          = ticker,
-            fecha_entrada   = fecha_entrada,
-            sp500_close     = sp500_close,
-            coppock_bearish = coppock_bearish,
+            ticker            = ticker,
+            fecha_entrada     = fecha_entrada,
+            sp500_close       = sp500_close,
+            coppock_not_bull  = coppock_not_bull,
         )
 
         res["Sector"]         = sector
@@ -308,7 +311,7 @@ def run_exit_scanner(csv_path: str = DEFAULT_INPUT_CSV) -> pd.DataFrame:
         "Rentabilidad %",
         "RSC Mansfield",
         "S1 RSC < -0.5",
-        "S3 Coppock Bajista",
+        "S2 Coppock No Alcista",
         "SALIDA",
         "Motivo",
     ]

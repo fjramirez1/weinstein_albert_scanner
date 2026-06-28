@@ -65,10 +65,16 @@ WMA30_PERIOD = 30
 RSC_SMA_PERIOD = 52
 VPM_BASE_PERIOD = 52
 VPM_SMOOTHING = 5
-COPPOCK_ROC1 = 14
-COPPOCK_ROC2 = 11
+
+# Coppock semanal: ROC de 12 y 6 semanas suavizados con WMA de 10 semanas.
+COPPOCK_ROC1 = 12
+COPPOCK_ROC2 = 6
 COPPOCK_WMA = 10
+
 SECTOR_RSC_MIN = 0.10
+
+# F4: el precio no debe superar la WMA30 en más del 8 % (sin cota inferior;
+# sí se admiten acciones cuyo precio esté por debajo de la WMA30).
 MAX_DISTANCIA_WMA30 = 8.0
 
 # Mapeo de sectores GICS a ETFs sectoriales SPDR.
@@ -205,7 +211,7 @@ def precompute_sp500_and_sectors(
     ETFs sectoriales SPDR. Estos valores son constantes para todos los
     tickers y se calculan una sola vez por eficiencia.
     """
-    # ── Coppock del S&P 500
+    # ── Coppock semanal del S&P 500 (ROC 12 + ROC 6, WMA 10)
     copk = coppock_curve(sp500_close)
     coppock_bullish, coppock_direction = sp500_alcista(
         copk,
@@ -286,10 +292,12 @@ def evaluate_ticker(
     if pd.isna(wma30_val) or wma30_val <= 0:
         return None, "sin_datos"
 
-    # Distancia porcentual a la WMA30
+    # Distancia porcentual a la WMA30.
+    # F4: solo se rechaza si el precio SUPERA la WMA30 en más del 8 %.
+    # Valores por debajo de la WMA30 (distancia negativa) no se filtran.
     distancia_wma30 = ((precio_actual - wma30_val) / wma30_val) * 100.0
 
-    # ── Momentum Relativo (MOM)
+    # ── Momentum Relativo (MOM): (C − WMA30) / WMA30, usado para ranking
     mom_val = calculate_mom(close, ma_period=30)
     if mom_val is None:
         return None, "sin_datos"
@@ -309,7 +317,7 @@ def evaluate_ticker(
     else:
         rsc_sector_val = np.nan
 
-    # ── VPM5 — importado desde we_utils, sin duplicado local
+    # ── VPM5
     vpm5_series = vpm5(data, base_period=VPM_BASE_PERIOD, smoothing_period=VPM_SMOOTHING)
     vpm5_val    = float(vpm5_series.iloc[-1])
 
@@ -319,8 +327,9 @@ def evaluate_ticker(
     #  F1: RSC Mansfield del SECTOR >= 0.10
     #  F2: VPM5 > 0
     #  F3: RSC Mansfield del ACTIVO > 0
-    #  F4: Distancia a WMA30 < 8 %
-    #  F5: Sp500alcista
+    #  F4: Precio no supera la WMA30 en más del 8 % (distancia < +8 %)
+    #      Nota: no hay cota inferior; valores por debajo de WMA30 son válidos.
+    #  F5: Sp500alcista (Coppock semanal indica mercado alcista)
     # ──────────────────────────────────────────────────────────────────
 
     filtros = {
@@ -466,7 +475,6 @@ def run_scanner() -> pd.DataFrame:
 
     print(f"  [TOP 10] Seleccionados {len(df)} stocks con mayor Momentum Relativo")
 
-    # ── Columnas de salida — ahora incluye VPM5
     columnas_output = [
         "Ticker",
         "Sector",
