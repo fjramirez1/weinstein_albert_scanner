@@ -1,18 +1,28 @@
 """
 Escáner de condiciones de ENTRADA — estrategia Weinstein-Albert.
 
-Flujo
------
-1. Cargar tickers del S&P 500.
-2. Descargar ^GSPC y pre-calcular Coppock + RSC sectoriales (una vez).
-3. Evaluar cada ticker con los 5 filtros (AND).
-4. Devolver el top-N ordenado por Momentum Relativo.
+Optimizaciones respecto a la versión original
+----------------------------------------------
+1. **Early-exit de mercado**: si el Coppock no es alcista se aborta
+   antes de descargar cualquier ticker individual (F5 es AND → falla global).
+2. **Descarga paralela**: los ~500 tickers y los 11 ETFs sectoriales
+   se descargan con ThreadPoolExecutor (I/O-bound; yfinance libera el GIL).
+3. **Short-circuit de filtros**: dentro de cada evaluación los filtros se
+   ordenan de más barato a más caro. En cuanto uno falla se descarta el
+   ticker sin calcular el resto:
+     F5 (ya conocido) → F1 (RSC sector, sin I/O extra) → descarga ticker
+     → F3 (RSC activo) → F2 (VPM5) → F4 (distancia WMA30)
+4. **Semáforo de concurrencia**: limita las peticiones simultáneas a
+   yfinance para evitar rate-limiting (MAX_WORKERS configurable).
+5. **Descarga de ETFs en paralelo**: antes del loop principal.
 """
 
 from __future__ import annotations
 
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+from threading import Semaphore
 
 import numpy as np
 import pandas as pd
@@ -41,17 +51,39 @@ from weinstein.indicators import (
     wma,
 )
 
+# Máximo de hilos concurrentes contra yfinance.
+# 20-25 es seguro; súbelo si tu red lo aguanta.
+MAX_WORKERS = 20
+
 
 # ── Pre-cálculo compartido ────────────────────────────────────────────
+
+def _download_etf_rsc(
+    etf: str,
+    sp500_close: pd.Series,
+    sem: Semaphore,
+) -> tuple[str, float | None]:
+    """Descarga un ETF y devuelve (etf, rsc_val | None). Thread-safe."""
+    with sem:
+        data = download_weekly(etf)
+    if data is None:
+        return etf, None
+    try:
+        rsc_val = float(rsc_mansfield(data["Close"].squeeze(), sp500_close).iloc[-1])
+        return etf, rsc_val
+    except Exception:
+        return etf, None
+
 
 def _precompute_market_context(
     sp500_close: pd.Series,
 ) -> tuple[bool, str, dict[str, float]]:
     """
-    Calcula el estado del mercado y los RSC sectoriales.
+    Calcula estado de mercado y RSC sectoriales en paralelo.
 
-    Llamado una sola vez por ejecución para evitar descargas redundantes.
-    Retorna (coppock_bullish, coppock_direction, sector_rsc_map).
+    Returns
+    -------
+    (coppock_bullish, coppock_direction, sector_rsc_map)
     """
     copk = coppock_curve(sp500_close)
     coppock_bullish, direction = sp500_alcista(copk, recent_lookback=COPPOCK_RECENT_LOOKBACK)
@@ -60,28 +92,35 @@ def _precompute_market_context(
     print(f"  Coppock SP500 anterior : {float(copk.iloc[-2]):+.4f}")
     print(f"  Estado de mercado      : {direction}")
 
-    unique_etfs    = sorted(set(SECTOR_TO_ETF.values()))
+    # ── Early-exit: si el mercado ya es bajista, no hay nada que escanear ──
+    if not coppock_bullish:
+        print("\n  ⛔ Mercado BAJISTA (F5 falla). No se procesa ningún ticker.")
+        return coppock_bullish, direction, {}
+
+    unique_etfs = sorted(set(SECTOR_TO_ETF.values()))
+    print(f"\n  Calculando RSC de {len(unique_etfs)} ETFs sectoriales (paralelo)...")
+
+    sem = Semaphore(MAX_WORKERS)
     sector_rsc_map: dict[str, float] = {}
 
-    print(f"\n  Calculando RSC de {len(unique_etfs)} ETFs sectoriales...")
-    for etf in unique_etfs:
-        etf_data = download_weekly(etf)
-        if etf_data is None:
-            print(f"    ✗ {etf}: sin datos")
-            continue
-        try:
-            rsc_series          = rsc_mansfield(etf_data["Close"].squeeze(), sp500_close)
-            rsc_val             = float(rsc_series.iloc[-1])
-            sector_rsc_map[etf] = rsc_val
-            ok = "✓" if rsc_val >= SECTOR_RSC_MIN else "✗"
-            print(f"    {ok} {etf}: RSC = {rsc_val:+.4f}")
-        except Exception as exc:
-            print(f"    ✗ {etf}: error en RSC ({exc})")
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+        futures = {
+            pool.submit(_download_etf_rsc, etf, sp500_close, sem): etf
+            for etf in unique_etfs
+        }
+        for fut in as_completed(futures):
+            etf, rsc_val = fut.result()
+            if rsc_val is not None:
+                sector_rsc_map[etf] = rsc_val
+                ok = "✓" if rsc_val >= SECTOR_RSC_MIN else "✗"
+                print(f"    {ok} {etf}: RSC = {rsc_val:+.4f}")
+            else:
+                print(f"    ✗ {etf}: sin datos")
 
     return coppock_bullish, direction, sector_rsc_map
 
 
-# ── Evaluación de un ticker ───────────────────────────────────────────
+# ── Evaluación de un ticker (sin I/O propia de ETF) ──────────────────
 
 def _evaluate_ticker(
     ticker:            str,
@@ -91,13 +130,32 @@ def _evaluate_ticker(
     coppock_bullish:   bool,
     coppock_direction: str,
     sector_rsc_map:    dict[str, float],
+    sem:               Semaphore,
 ) -> tuple[dict | None, str]:
     """
-    Aplica los 5 filtros Weinstein-Albert a un ticker.
+    Aplica los 5 filtros Weinstein-Albert con short-circuit.
 
-    Retorna (dict_resultado, motivo) donde motivo ∈ {"ok", "sin_datos", "filtrado"}.
+    Orden de evaluación (de más barato a más caro):
+      F5 → F1 → [descarga] → F3 → F2 → F4
+
+    Returns
+    -------
+    (dict_resultado | None, motivo)
     """
-    data = download_weekly(ticker)
+    # F5: Coppock alcista — conocido de antemano, sin coste
+    if not coppock_bullish:
+        return None, "filtrado"
+
+    # F1: RSC sector — conocido de antemano, sin coste
+    etf_ticker     = SECTOR_TO_ETF.get(sector_name)
+    rsc_sector_val = sector_rsc_map.get(etf_ticker, np.nan) if etf_ticker else np.nan
+    f1_ok = (not pd.isna(rsc_sector_val)) and rsc_sector_val >= SECTOR_RSC_MIN
+    if not f1_ok:
+        return None, "filtrado"
+
+    # Descarga del ticker — único I/O de esta función
+    with sem:
+        data = download_weekly(ticker)
     if data is None:
         return None, "sin_datos"
 
@@ -105,39 +163,29 @@ def _evaluate_ticker(
     if len(close) < RSC_SMA_PERIOD + 5:
         return None, "sin_datos"
 
+    # F3: RSC Mansfield activo > 0  (solo necesita close + sp500)
+    close_a, sp500_a = close.align(sp500_close, join="inner")
+    rsc_activo_val = float(rsc_mansfield(close_a, sp500_a).iloc[-1])
+    if pd.isna(rsc_activo_val) or rsc_activo_val <= 0.0:
+        return None, "filtrado"
+
+    # F2: VPM5 > 0
+    vpm5_val = float(vpm5(data, VPM_BASE_PERIOD, VPM_SMOOTHING).iloc[-1])
+    if pd.isna(vpm5_val) or vpm5_val <= 0.0:
+        return None, "filtrado"
+
+    # F4: distancia WMA30 < MAX_DISTANCIA_WMA30
     wma30_val = float(wma(close, WMA30_PERIOD).iloc[-1])
     if pd.isna(wma30_val) or wma30_val <= 0:
         return None, "sin_datos"
 
-    dist     = distancia_wma_pct(close, WMA30_PERIOD)
-    mom      = momentum_vs_wma(close, WMA30_PERIOD)
-    vpm5_val = float(vpm5(data, VPM_BASE_PERIOD, VPM_SMOOTHING).iloc[-1])
-
-    close_a, sp500_a = close.align(sp500_close, join="inner")
-    rsc_activo_val   = float(rsc_mansfield(close_a, sp500_a).iloc[-1])
-
-    etf_ticker     = SECTOR_TO_ETF.get(sector_name)
-    rsc_sector_val = sector_rsc_map.get(etf_ticker, np.nan) if etf_ticker else np.nan
-
-    if dist is None or mom is None:
-        return None, "sin_datos"
-
-    # Filtros AND
-    # F1: RSC sector >= 0.10
-    # F2: VPM5 > 0
-    # F3: RSC activo > 0
-    # F4: distancia WMA30 < +8 %  (sin cota inferior)
-    # F5: Coppock alcista
-    filtros = {
-        "F1_rsc_sector"   : (not pd.isna(rsc_sector_val)) and rsc_sector_val >= SECTOR_RSC_MIN,
-        "F2_vpm5"         : (not pd.isna(vpm5_val))       and vpm5_val > 0.0,
-        "F3_rsc_activo"   : (not pd.isna(rsc_activo_val)) and rsc_activo_val > 0.0,
-        "F4_distancia"    : (not pd.isna(dist))            and dist < MAX_DISTANCIA_WMA30,
-        "F5_coppock_bull" : coppock_bullish,
-    }
-
-    if not all(filtros.values()):
+    dist = distancia_wma_pct(close, WMA30_PERIOD)
+    if dist is None or dist >= MAX_DISTANCIA_WMA30:
         return None, "filtrado"
+
+    mom = momentum_vs_wma(close, WMA30_PERIOD)
+    if mom is None:
+        return None, "sin_datos"
 
     return {
         "Ticker"                 : ticker,
@@ -147,11 +195,39 @@ def _evaluate_ticker(
         "Precio Actual"          : round(float(close.iloc[-1]), 2),
         "RSC Mansfield Activo"   : round(rsc_activo_val, 4),
         "Momentum (MOM)"         : round(mom, 4),
-        "RSC Mansfield Sector"   : round(rsc_sector_val, 4) if not pd.isna(rsc_sector_val) else np.nan,
+        "RSC Mansfield Sector"   : round(rsc_sector_val, 4),
         "VPM5"                   : round(vpm5_val, 4),
         "Distancia % WMA30"      : round(dist, 2),
         "Dirección Coppock SP500": coppock_direction,
     }, "ok"
+
+
+# ── Worker para el pool de tickers ───────────────────────────────────
+
+def _worker(
+    row:               pd.Series,
+    sp500_close:       pd.Series,
+    coppock_bullish:   bool,
+    coppock_direction: str,
+    sector_rsc_map:    dict[str, float],
+    sem:               Semaphore,
+) -> tuple[dict | None, str, str]:
+    """Envuelve _evaluate_ticker con manejo de excepciones para el pool."""
+    ticker = row["Symbol"]
+    try:
+        result, motivo = _evaluate_ticker(
+            ticker            = ticker,
+            sector_name       = row.get("Sector", "Unknown"),
+            company_name      = row.get("Name",   "N/A"),
+            sp500_close       = sp500_close,
+            coppock_bullish   = coppock_bullish,
+            coppock_direction = coppock_direction,
+            sector_rsc_map    = sector_rsc_map,
+            sem               = sem,
+        )
+        return result, motivo, ticker
+    except Exception as exc:
+        return None, "error", ticker
 
 
 # ── Función principal ─────────────────────────────────────────────────
@@ -160,8 +236,12 @@ def run_entry_scanner() -> pd.DataFrame:
     """
     Ejecuta el escáner de entrada completo y devuelve los candidatos.
 
-    Retorna un DataFrame con hasta ``MAX_CANDIDATES`` filas ordenadas
-    por MOM descendente, o un DataFrame vacío si no hay candidatos.
+    Mejoras de rendimiento vs versión original
+    ------------------------------------------
+    - Mercado bajista → salida inmediata (0 descargas de tickers).
+    - ETFs sectoriales descargados en paralelo.
+    - ~500 tickers descargados y evaluados en paralelo con short-circuit.
+    - Filtros ordenados por coste: los más baratos eliminan antes.
     """
     print("\n" + "═" * 72)
     print("  WEINSTEIN VERSION ALBERT — S&P 500 WEEKLY ENTRY SCANNER")
@@ -181,52 +261,58 @@ def run_entry_scanner() -> pd.DataFrame:
     sp500_close = sp500_data["Close"].squeeze()
     coppock_bullish, coppock_direction, sector_rsc_map = _precompute_market_context(sp500_close)
 
-    print(f"\n[3/3] Escaneando {total_tickers} acciones...")
+    # Early-exit de mercado: F5 falla para todos → no procesamos nada
+    if not coppock_bullish:
+        print("\n  No se encontraron candidatos (mercado bajista).")
+        return pd.DataFrame()
+
+    print(f"\n[3/3] Escaneando {total_tickers} acciones (paralelo, {MAX_WORKERS} hilos)...")
     print("─" * 72)
 
+    sem        = Semaphore(MAX_WORKERS)
     resultados: list[dict] = []
-    counters = {"sin_datos": 0, "filtrado": 0, "errores": 0, "procesados": 0}
+    counters   = {"sin_datos": 0, "filtrado": 0, "errores": 0}
 
-    for _, fila in sp500_df.iterrows():
-        ticker = fila["Symbol"]
-        nombre = fila.get("Name",   "N/A")
-        sector = fila.get("Sector", "Unknown")
+    rows = [row for _, row in sp500_df.iterrows()]
 
-        try:
-            resultado, motivo = _evaluate_ticker(
-                ticker            = ticker,
-                sector_name       = sector,
-                company_name      = nombre,
-                sp500_close       = sp500_close,
-                coppock_bullish   = coppock_bullish,
-                coppock_direction = coppock_direction,
-                sector_rsc_map    = sector_rsc_map,
-            )
-            if resultado:
-                resultados.append(resultado)
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+        futures = {
+            pool.submit(
+                _worker, row, sp500_close,
+                coppock_bullish, coppock_direction, sector_rsc_map, sem,
+            ): row["Symbol"]
+            for row in rows
+        }
+
+        done = 0
+        for fut in as_completed(futures):
+            result, motivo, ticker = fut.result()
+            done += 1
+
+            if result:
+                resultados.append(result)
                 print(
-                    f"  ★ CANDIDATO → {ticker:<6} | {sector:<30} | "
-                    f"MOM: {resultado['Momentum (MOM)']:+.3f} | "
-                    f"RSC: {resultado['RSC Mansfield Activo']:+.3f} | "
-                    f"VPM5: {resultado['VPM5']:+.3f} | "
-                    f"Dist: {resultado['Distancia % WMA30']:+.1f}%"
+                    f"  ★ CANDIDATO → {ticker:<6} | {result['Sector']:<30} | "
+                    f"MOM: {result['Momentum (MOM)']:+.3f} | "
+                    f"RSC: {result['RSC Mansfield Activo']:+.3f} | "
+                    f"VPM5: {result['VPM5']:+.3f} | "
+                    f"Dist: {result['Distancia % WMA30']:+.1f}%"
                 )
+            elif motivo == "error":
+                counters["errores"] += 1
             else:
                 counters[motivo] += 1
-        except Exception:
-            counters["errores"] += 1
 
-        counters["procesados"] += 1
-        if counters["procesados"] % 50 == 0:
-            print(
-                f"  … {counters['procesados']}/{total_tickers} procesados | "
-                f"Candidatos: {len(resultados)} | Errores: {counters['errores']}"
-            )
+            if done % 50 == 0:
+                print(
+                    f"  … {done}/{total_tickers} procesados | "
+                    f"Candidatos: {len(resultados)} | Errores: {counters['errores']}"
+                )
 
     print("\n" + "═" * 72)
     print("  RESUMEN DEL ESCÁNER")
     print("─" * 72)
-    print(f"  Acciones procesadas          : {counters['procesados']}")
+    print(f"  Acciones procesadas          : {done}")
     print(f"  Sin datos / histórico insuf. : {counters['sin_datos']}")
     print(f"  No cumplen filtros           : {counters['filtrado']}")
     print(f"  Errores de descarga          : {counters['errores']}")
