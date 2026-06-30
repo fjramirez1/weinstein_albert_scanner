@@ -165,7 +165,7 @@ def sp500_alcista(
     start_bullish = False
     if len(valid) >= recent_lookback + 1:
         recent_window = valid.iloc[-(recent_lookback + 1):-1]
-        prev_is_min   = previous == float(recent_window.min())
+        prev_is_min = abs(previous - float(recent_window.min())) < 1e-9
         start_bullish = (
             current  < 0.0
             and previous < 0.0
