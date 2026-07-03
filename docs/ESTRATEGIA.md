@@ -24,12 +24,13 @@ Este documento amplía y explica con más detalle los criterios operativos usado
   1. Tomar series de precios semanales: `P_activo(t)` y `P_ref(t)` (S&P 500 o ETF sectorial).
   2. Calcular la serie relativa `R(t) = P_activo(t) / P_ref(t)`.
   3. Aplicar una suavización (SMA sobre 52 períodos) y la transformación Mansfield para medir consistencia. El resultado positivo indica fortaleza relativa sostenida.
+  4. Si la SMA de la serie relativa es 0 en algún punto (caso degenerado, p.ej. precios extremadamente pequeños), el código produce `NaN` en ese punto en vez de dividir por cero, para evitar valores infinitos aguas abajo.
 
 - **Distancia % a WMA30**: `Dist% = 100 * (C - WMA30) / WMA30`.
 
 - **Coppock semanal**: `Coppock(t) = WMA_10( ROC_12(P) + ROC_6(P) )`.
 
-- **MOM (desempate)**: `MOM = (C - WMA30) / WMA30`. Se usa solo para ordenar candidatos que cumplen todos los filtros.
+- **MOM (desempate)**: `MOM = (C - WMA30) / WMA30`. Se usa solo para ordenar candidatos que cumplen todos los filtros. La WMA30 se calcula una única vez por ticker y se reutiliza tanto para F4 (distancia) como para MOM, evitando recalcular la misma media móvil dos veces.
 
 ## 3. Filtros de entrada (todas deben cumplirse — AND)
 
@@ -64,11 +65,15 @@ Este documento amplía y explica con más detalle los criterios operativos usado
 
 1. **Pérdida de fuerza del valor (RSC Mansfield del activo < −0.5)**
    - Si `rsMan < -0.5` la acción es marcada para salida inmediata: está rindiendo sustancialmente peor que el mercado.
+   - En el CSV de salida esta condición se etiqueta como **S1** en la columna `Motivo`.
 
 2. **Coppock no alcista (filtro de mercado)**
    - Si el Coppock semanal deja de señalar mercado alcista (`Sp500alcista = False`), se cierran las posiciones largas. Esta condición es la imagen inversa del filtro de entrada F5: la salida se activa exactamente cuando dejaría de cumplirse la condición de entrada de mercado.
+   - En el CSV de salida esta condición se etiqueta como **S2** en la columna `Motivo` (columna `S2 Coppock No Alcista` en el CSV).
 
-Si cualquiera de las condiciones se cumple, el escáner etiqueta la posición como `SALIDA=True` e incluye el `Motivo` en el CSV de salida.
+Si cualquiera de las condiciones se cumple, el escáner etiqueta la posición como `SALIDA=True` e incluye el `Motivo` en el CSV de salida. Los prefijos `S1`/`S2` usados en `Motivo` están centralizados en `weinstein/config.py` (`EXIT_REASON_S1_LABEL`, `EXIT_REASON_S2_LABEL`) para que sea la única fuente de verdad si alguna vez se renombran.
+
+> **Nota sobre el histórico**: los CSVs guardados en `historial/salidas/` con fecha anterior a `posiciones_salidas_20260619_1342.csv` usan la columna `S3 Coppock Bajista` en lugar de `S2 Coppock No Alcista`. Esa condición existía en una versión anterior del escáner con un esquema de columnas ligeramente distinto al actual. El código vigente (`weinstein/scanner_exit.py`) solo genera `S1`/`S2` tal como se describe arriba; los CSVs antiguos se conservan sin modificar por motivos de historial y no deben interpretarse como si reflejaran el esquema de columnas actual.
 
 ## 5. Regla de desempate y selección final (ranking)
 
@@ -79,35 +84,41 @@ Si cualquiera de las condiciones se cumple, el escáner etiqueta la posición co
 ## 6. Parámetros por defecto (valores usados en el código)
 
 - `SECTOR_RSC_MIN = 0.10` (umbral RSC sector fuerte)
-- `VPM_PERIOD = 52` y `VPM_SMOOTH = 5` (52 semanas para estadísticos de volumen, SMA5 para suavizar)
+- `VPM_BASE_PERIOD = 52` y `VPM_SMOOTHING = 5` (52 semanas para estadísticos de volumen, SMA5 para suavizar)
 - `WMA30_PERIOD = 30` (periodo referencia WMA30)
 - `MAX_DISTANCIA_WMA30 = 8.0` (%) — cota superior; sin cota inferior
-- `RSC_SALIDA_UMBRAL = -0.5` (umbral de salida por RSC del activo)
-- `COPPOCK_ROC1 = 12`, `COPPOCK_ROC2 = 6`, `COPPOCK_WMA = 10` (Coppock semanal)
+- `RSC_EXIT_THRESHOLD = -0.5` (umbral de salida por RSC del activo)
+- `COPPOCK_ROC_LONG = 12`, `COPPOCK_ROC_SHORT = 6`, `COPPOCK_WMA_PERIOD = 10` (Coppock semanal)
+- `DOWNLOAD_MAX_RETRIES = 3`, `DOWNLOAD_RETRY_BACKOFF_S = 1.5` (reintentos con backoff ante fallos puntuales de descarga en yfinance)
 
-Notas: los nombres y ubicaciones de las constantes están en el código; consulte las funciones y constantes en [we_utils.py](we_utils.py) y los puntos de aplicación en [weinstein_albert_scanner.py](weinstein_albert_scanner.py) y [weinstein_albert_exit_scanner.py](weinstein_albert_exit_scanner.py). El universo se carga desde la fuente de constituyentes por ticker, así que su tamaño puede variar con rebalanceos y clases múltiples.
+Notas: los nombres y ubicaciones de las constantes están en el código; consulta directamente `weinstein/config.py`, que es la única fuente de verdad de umbrales y periodos. El universo se carga desde la fuente de constituyentes por ticker, así que su tamaño puede variar con rebalanceos y clases múltiples.
 
 ## 7. Ejemplos orientativos de CSV
 
 Ejemplo (salida del escáner de entrada):
 
 ```
-Ticker,Nombre,Sector,ETF Sector,Precio Actual,RSC Mansfield Activo,MOM,RSC Mansfield Sector,VPM5,Distancia % WMA30,Dirección Coppock SP500
+Ticker,Nombre,Sector,ETF Sector,Precio Actual,RSC Mansfield Activo,Momentum (MOM),RSC Mansfield Sector,VPM5,Distancia % WMA30,Dirección Coppock SP500
 CVX,Chevron Corporation,Energy,XLE,191.10,0.6133,0.0513,1.2554,0.2496,5.13,↑ Alcista
 ```
 
-Ejemplo (salida del escáner de salidas):
+Ejemplo (salida del escáner de salidas — columnas y orden reales generados por `weinstein/scanner_exit.py`):
 
 ```
 Ticker,Sector,Precio Entrada,Precio Actual,Rentabilidad %,RSC Mansfield,S1 RSC < -0.5,S2 Coppock No Alcista,SALIDA,Motivo
 MSFT,Technology,415.00,421.92,1.67,-1.8943,True,False,True,"S1: RSC=-1.894 < -0.5"
 ```
 
+Cuando la descarga de un ticker falla, el CSV incluye además una columna `Error` con el motivo (no forma parte del ejemplo anterior por brevedad, pero siempre está presente en la salida real).
+
 ## 8. Referencias de implementación (para quien edite el código)
 
-- Cálculos y utilidades: [we_utils.py](we_utils.py) — funciones importantes: `rsc_mansfield()`, `vpm5()`, `wma()`, `coppock_curve()`, `calculate_mom()`, `sp500_alcista()`.
-- Puntos de filtrado de entrada: [weinstein_albert_scanner.py](weinstein_albert_scanner.py) — búsqueda de candidatos y aplicación de filtros.
-- Puntos de evaluación de salida: [weinstein_albert_exit_scanner.py](weinstein_albert_exit_scanner.py) — condiciones OR para cerrar posiciones.
+- Cálculos y utilidades: [`weinstein/indicators.py`](../weinstein/indicators.py) — funciones importantes: `rsc_mansfield()`, `vpm5()`, `wma()`, `coppock_curve()`, `sp500_alcista()`, `momentum_vs_wma()`, `distancia_wma_pct()`.
+- Acceso a datos: [`weinstein/data.py`](../weinstein/data.py) — `download_weekly()` (con reintentos y backoff), `load_sp500_tickers()`, `load_positions()`.
+- Parámetros y umbrales: [`weinstein/config.py`](../weinstein/config.py) — única fuente de verdad para constantes de la estrategia.
+- Puntos de filtrado de entrada: [`weinstein/scanner_entry.py`](../weinstein/scanner_entry.py) — búsqueda de candidatos y aplicación de filtros F1-F5.
+- Puntos de evaluación de salida: [`weinstein/scanner_exit.py`](../weinstein/scanner_exit.py) — condiciones OR (S1-S2) para cerrar posiciones.
+- Exportación a CSV: [`weinstein/exporter.py`](../weinstein/exporter.py).
 
 ## 9. Notas finales
 

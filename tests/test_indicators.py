@@ -69,6 +69,24 @@ class TestRSCMansfield:
         rsc = rsc_mansfield(asset, bench, sma_period=52)
         assert rsc.iloc[-1] < 0
 
+    def test_sma_relativa_cero_no_produce_inf(self):
+        """
+        Bug 4: si la media móvil de la serie relativa (activo/benchmark) es
+        0 en algún punto (caso degenerado, p.ej. precios extremadamente
+        pequeños), dividir sin protección producía inf/-inf. Ahora debe
+        producir NaN en ese punto en vez de un valor infinito.
+        """
+        idx = weekly_index(60)
+        # Serie relativa que cruza por 0 de forma sintética: benchmark
+        # negativo cerca del final fuerza relative/sma a pasar por 0 en la
+        # media móvil en algún punto de la ventana.
+        asset = pd.Series(np.concatenate([np.full(30, 1.0), np.full(30, -1.0)]), index=idx)
+        bench = pd.Series(1.0, index=idx)
+
+        rsc = rsc_mansfield(asset, bench, sma_period=10)
+
+        assert not np.isinf(rsc.dropna()).any()
+
 
 # ── vpm5 ─────────────────────────────────────────────────────────────
 
@@ -110,6 +128,23 @@ class TestMomentumYDistancia:
         mom = momentum_vs_wma(close, period=30)
         # distancia_wma_pct es momentum_vs_wma expresado en % -> deben coincidir *100
         assert dist == pytest.approx(mom * 100, rel=1e-9)
+
+    def test_wma_series_precalculada_da_el_mismo_resultado(self):
+        """
+        Bug 3 / mejora de rendimiento: pasar una WMA ya calculada debe dar
+        exactamente el mismo resultado que dejar que la función la calcule
+        internamente, sin recomputar `wma()` una segunda vez.
+        """
+        close = pd.Series(np.linspace(100, 130, 40))
+        wma_precalculada = wma(close, 30)
+
+        mom_con_cache    = momentum_vs_wma(close, period=30, wma_series=wma_precalculada)
+        mom_sin_cache     = momentum_vs_wma(close, period=30)
+        dist_con_cache   = distancia_wma_pct(close, period=30, wma_series=wma_precalculada)
+        dist_sin_cache    = distancia_wma_pct(close, period=30)
+
+        assert mom_con_cache == pytest.approx(mom_sin_cache)
+        assert dist_con_cache == pytest.approx(dist_sin_cache)
 
 
 # ── coppock_curve / sp500_alcista (filtro F5 / S2) ──────────────────

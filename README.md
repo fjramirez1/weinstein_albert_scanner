@@ -9,12 +9,12 @@ detección de candidatos de entrada y evaluación de salidas para posiciones abi
 weinstein/                  ← paquete principal
 │   __init__.py
 │   __main__.py             ← CLI unificado (python -m weinstein)
-│   config.py               ← todos los parámetros en un único lugar
-│   indicators.py           ← cálculos técnicos (WMA, RSC, VPM5, Coppock, MOM)
-│   data.py                 ← descarga de precios y carga de tickers S&P 500
-│   scanner_entry.py        ← lógica del escáner de entrada
-│   scanner_exit.py         ← lógica del escáner de salida
-│   exporter.py             ← exportación CSV con historial
+│   config.py                ← todos los parámetros en un único lugar
+│   indicators.py            ← cálculos técnicos (WMA, RSC, VPM5, Coppock, MOM)
+│   data.py                  ← descarga de precios y carga de tickers S&P 500
+│   scanner_entry.py         ← lógica del escáner de entrada
+│   scanner_exit.py          ← lógica del escáner de salida
+│   exporter.py              ← exportación CSV con historial
 │
 posiciones.csv              ← tus posiciones abiertas
 requirements.txt
@@ -78,11 +78,17 @@ scripts\run_exit.bat --input mis_posiciones.csv
 Todos los umbrales y periodos están centralizados en **`weinstein/config.py`**:
 
 ```python
-SECTOR_RSC_MIN      = 0.10   # F1: RSC Mansfield sector >= umbral
-MAX_DISTANCIA_WMA30 = 8.0    # F4: precio no supera WMA30 en más de X %
-RSC_EXIT_THRESHOLD  = -0.5   # S1: RSC Mansfield activo < umbral → salida
-MAX_CANDIDATES      = 10     # Top-N candidatos en el ranking
+SECTOR_RSC_MIN           = 0.10   # F1: RSC Mansfield sector >= umbral
+MAX_DISTANCIA_WMA30      = 8.0    # F4: precio no supera WMA30 en más de X %
+RSC_EXIT_THRESHOLD       = -0.5   # S1: RSC Mansfield activo < umbral → salida
+MAX_CANDIDATES           = 10     # Top-N candidatos en el ranking
+DOWNLOAD_MAX_RETRIES     = 3      # reintentos ante fallos puntuales de descarga
+DOWNLOAD_RETRY_BACKOFF_S = 1.5    # segundos de espera entre reintentos (con backoff lineal)
 ```
+
+Los textos de motivo de salida (`S1: RSC...`, `S2: Coppock SP500 no alcista`) también están
+centralizados aquí (`EXIT_REASON_S1_LABEL`, `EXIT_REASON_S2_LABEL`, `EXIT_REASON_NONE`), así
+que si alguna vez cambian de nombre solo hay que tocarlos en un sitio.
 
 ## Cómo funciona
 
@@ -98,7 +104,8 @@ Aplica 5 filtros **AND** sobre el universo del S&P 500:
 | F4 | Distancia precio / WMA30 | < +8 % |
 | F5 | Coppock SP500 alcista | True |
 
-Los candidatos se ordenan por Momentum Relativo (MOM) descendente.
+Los candidatos se ordenan por Momentum Relativo (MOM) descendente. La WMA30 se calcula una
+única vez por ticker y se reutiliza tanto para F4 como para MOM.
 
 ### Escáner de salida (`weinstein/scanner_exit.py`)
 
@@ -109,6 +116,13 @@ Aplica 2 condiciones **OR** sobre las posiciones abiertas:
 | S1 | RSC Mansfield del activo | < −0.5 |
 | S2 | Coppock SP500 no alcista | True |
 
+> **Nota sobre `historial/salidas/`**: los CSVs con fecha anterior a
+> `posiciones_salidas_20260619_1342.csv` usan la columna `S3 Coppock Bajista` en vez de
+> `S2 Coppock No Alcista`. Corresponden a una versión anterior del escáner con un esquema
+> ligeramente distinto; se conservan sin modificar por motivos de historial. El código actual
+> solo genera `S1`/`S2` como se describe arriba — ver `docs/ESTRATEGIA.md` sección 4 para más
+> detalle.
+
 ### Módulos del paquete
 
 | Módulo | Responsabilidad |
@@ -116,7 +130,7 @@ Aplica 2 condiciones **OR** sobre las posiciones abiertas:
 | `__main__.py` | CLI unificado con subcomandos `entry` y `exit` |
 | `config.py` | Constantes y umbrales de la estrategia |
 | `indicators.py` | Cálculos puros: WMA, RSC Mansfield, VPM5, Coppock, MOM |
-| `data.py` | Descarga yfinance, carga de tickers S&P 500, lectura de posiciones |
+| `data.py` | Descarga yfinance (con reintentos/backoff), carga de tickers S&P 500, lectura de posiciones |
 | `scanner_entry.py` | Orquestación del escáner de entrada |
 | `scanner_exit.py` | Orquestación del escáner de salida |
 | `exporter.py` | Exportación a CSV con historial fechado |
@@ -157,7 +171,7 @@ pytest -m network     # opcional: tests que sí golpean APIs externas reales
 ## Troubleshooting
 
 - **`python` no reconocido**: instalar Python 3.11+ y añadir al PATH.
-- **Descarga de datos falla**: comprobar conexión; `yfinance` puede tener interrupciones puntuales.
+- **Descarga de datos falla**: comprobar conexión; `yfinance` puede tener interrupciones puntuales. `download_weekly()` ya reintenta automáticamente (`DOWNLOAD_MAX_RETRIES` en `config.py`) antes de darse por vencido, y registra en stderr si el fallo final fue de red o de "sin datos".
 - **Columnas faltantes en `posiciones.csv`**: verificar que existen `Ticker`, `Sector`, `Precio_Entrada` y `Fecha_Entrada`.
 - **El proceso tarda mucho**: normal; descargar ~500 tickers lleva varios minutos.
 - **Los tests no encuentran el paquete `weinstein`**: ejecutar `pytest` desde la raíz del proyecto (usa `python -m pytest` si el problema persiste).

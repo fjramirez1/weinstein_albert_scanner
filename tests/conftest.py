@@ -8,8 +8,6 @@ sin depender de red ni de datos reales de mercado.
 
 from __future__ import annotations
 
-from threading import Semaphore
-
 import numpy as np
 import pandas as pd
 import pytest
@@ -80,9 +78,3 @@ def make_ohlcv(close: np.ndarray | pd.Series, volume: np.ndarray | pd.Series, in
         {"Open": close, "High": close, "Low": close, "Close": close, "Volume": volume},
         index=index,
     )
-
-
-@pytest.fixture
-def sem() -> Semaphore:
-    """Semáforo dummy con margen de sobra; las funciones de scanner lo requieren."""
-    return Semaphore(5)

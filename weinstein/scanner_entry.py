@@ -12,9 +12,17 @@ Optimizaciones respecto a la versión original
    ticker sin calcular el resto:
      F5 (ya conocido) → F1 (RSC sector, sin I/O extra) → descarga ticker
      → F3 (RSC activo) → F2 (VPM5) → F4 (distancia WMA30)
-4. **Semáforo de concurrencia**: limita las peticiones simultáneas a
-   yfinance para evitar rate-limiting (MAX_WORKERS configurable).
+4. **Concurrencia acotada por el propio ThreadPoolExecutor**: el límite de
+   peticiones simultáneas a yfinance lo impone `max_workers` del pool; no
+   se usa un `Semaphore` adicional porque sería redundante (cada tarea del
+   pool hace una única descarga, así que el pool ya serializa la
+   concurrencia al mismo número).
 5. **Descarga de ETFs en paralelo**: antes del loop principal.
+6. **WMA30 calculada una sola vez por ticker**: tanto la distancia %
+   respecto a WMA30 (F4) como el Momentum (MOM, usado para el ranking)
+   necesitaban la misma media móvil ponderada; antes se recalculaba dos
+   veces (operación cara: `rolling().apply()` sobre todo el histórico).
+   Ahora se calcula una vez y se reutiliza.
 """
 
 from __future__ import annotations
@@ -22,7 +30,6 @@ from __future__ import annotations
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-from threading import Semaphore
 
 import numpy as np
 import pandas as pd
@@ -61,11 +68,9 @@ MAX_WORKERS = 20
 def _download_etf_rsc(
     etf: str,
     sp500_close: pd.Series,
-    sem: Semaphore,
 ) -> tuple[str, float | None]:
     """Descarga un ETF y devuelve (etf, rsc_val | None). Thread-safe."""
-    with sem:
-        data = download_weekly(etf)
+    data = download_weekly(etf)
     if data is None:
         return etf, None
     try:
@@ -100,12 +105,11 @@ def _precompute_market_context(
     unique_etfs = sorted(set(SECTOR_TO_ETF.values()))
     print(f"\n  Calculando RSC de {len(unique_etfs)} ETFs sectoriales (paralelo)...")
 
-    sem = Semaphore(MAX_WORKERS)
     sector_rsc_map: dict[str, float] = {}
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
         futures = {
-            pool.submit(_download_etf_rsc, etf, sp500_close, sem): etf
+            pool.submit(_download_etf_rsc, etf, sp500_close): etf
             for etf in unique_etfs
         }
         for fut in as_completed(futures):
@@ -130,7 +134,6 @@ def _evaluate_ticker(
     coppock_bullish:   bool,
     coppock_direction: str,
     sector_rsc_map:    dict[str, float],
-    sem:               Semaphore,
 ) -> tuple[dict | None, str]:
     """
     Aplica los 5 filtros Weinstein-Albert con short-circuit.
@@ -154,8 +157,7 @@ def _evaluate_ticker(
         return None, "filtrado"
 
     # Descarga del ticker — único I/O de esta función
-    with sem:
-        data = download_weekly(ticker)
+    data = download_weekly(ticker)
     if data is None:
         return None, "sin_datos"
 
@@ -174,16 +176,18 @@ def _evaluate_ticker(
     if pd.isna(vpm5_val) or vpm5_val <= 0.0:
         return None, "filtrado"
 
-    # F4: distancia WMA30 < MAX_DISTANCIA_WMA30
-    wma30_val = float(wma(close, WMA30_PERIOD).iloc[-1])
+    # WMA30 calculada una única vez y reutilizada en F4 y en MOM.
+    wma30_series = wma(close, WMA30_PERIOD)
+    wma30_val    = float(wma30_series.iloc[-1]) if len(wma30_series) else float("nan")
     if pd.isna(wma30_val) or wma30_val <= 0:
         return None, "sin_datos"
 
-    dist = distancia_wma_pct(close, WMA30_PERIOD)
+    # F4: distancia WMA30 < MAX_DISTANCIA_WMA30
+    dist = distancia_wma_pct(close, WMA30_PERIOD, wma_series=wma30_series)
     if dist is None or dist >= MAX_DISTANCIA_WMA30:
         return None, "filtrado"
 
-    mom = momentum_vs_wma(close, WMA30_PERIOD)
+    mom = momentum_vs_wma(close, WMA30_PERIOD, wma_series=wma30_series)
     if mom is None:
         return None, "sin_datos"
 
@@ -210,7 +214,6 @@ def _worker(
     coppock_bullish:   bool,
     coppock_direction: str,
     sector_rsc_map:    dict[str, float],
-    sem:               Semaphore,
 ) -> tuple[dict | None, str, str]:
     """Envuelve _evaluate_ticker con manejo de excepciones para el pool."""
     ticker = row["Symbol"]
@@ -223,10 +226,9 @@ def _worker(
             coppock_bullish   = coppock_bullish,
             coppock_direction = coppock_direction,
             sector_rsc_map    = sector_rsc_map,
-            sem               = sem,
         )
         return result, motivo, ticker
-    except Exception as exc:
+    except Exception:
         return None, "error", ticker
 
 
@@ -242,6 +244,7 @@ def run_entry_scanner() -> pd.DataFrame:
     - ETFs sectoriales descargados en paralelo.
     - ~500 tickers descargados y evaluados en paralelo con short-circuit.
     - Filtros ordenados por coste: los más baratos eliminan antes.
+    - WMA30 calculada una única vez por ticker y reutilizada en F4 y MOM.
     """
     print("\n" + "═" * 72)
     print("  WEINSTEIN VERSION ALBERT — S&P 500 WEEKLY ENTRY SCANNER")
@@ -269,7 +272,6 @@ def run_entry_scanner() -> pd.DataFrame:
     print(f"\n[3/3] Escaneando {total_tickers} acciones (paralelo, {MAX_WORKERS} hilos)...")
     print("─" * 72)
 
-    sem        = Semaphore(MAX_WORKERS)
     resultados: list[dict] = []
     counters   = {"sin_datos": 0, "filtrado": 0, "errores": 0}
 
@@ -279,7 +281,7 @@ def run_entry_scanner() -> pd.DataFrame:
         futures = {
             pool.submit(
                 _worker, row, sp500_close,
-                coppock_bullish, coppock_direction, sector_rsc_map, sem,
+                coppock_bullish, coppock_direction, sector_rsc_map,
             ): row["Symbol"]
             for row in rows
         }

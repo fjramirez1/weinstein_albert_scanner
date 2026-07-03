@@ -13,8 +13,9 @@ Tests de `weinstein/data.py`.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -67,6 +68,40 @@ class TestLoadPositions:
         assert len(df) == 1
         assert df.iloc[0]["Ticker"] == "XOM"
 
+    def test_ticker_vacio_o_nan_se_descarta_sin_error(self, tmp_path):
+        """
+        Bug 1: antes de convertir explícitamente a str, un Ticker vacío/NaN
+        (p.ej. una celda de Excel mal formateada) podía colar valores basura
+        como "NAN" que no se filtraban con dropna(). Ahora deben descartarse
+        limpiamente sin lanzar excepción.
+        """
+        csv = tmp_path / "posiciones.csv"
+        pd.DataFrame({
+            "Ticker": ["XOM", np.nan, "  ", "cvx"],
+            "Sector": ["Energy", "Energy", "Energy", "Energy"],
+            "Precio_Entrada": ["154.08", "100.0", "50.0", "192.79"],
+            "Fecha_Entrada": ["2026-05-26", "2026-05-18", "2026-05-18", "2026-05-18"],
+        }).to_csv(csv, index=False)
+
+        df = load_positions(str(csv))
+
+        assert list(df["Ticker"]) == ["XOM", "CVX"]
+
+    def test_ticker_numerico_se_convierte_a_string_sin_fallar(self, tmp_path):
+        """Un Ticker cargado como número (autoformateo de Excel) no debe romper .str.strip()."""
+        csv = tmp_path / "posiciones.csv"
+        df_src = pd.DataFrame({
+            "Ticker": ["XOM"],
+            "Sector": ["Energy"],
+            "Precio_Entrada": [154.08],
+            "Fecha_Entrada": ["2026-05-26"],
+        })
+        df_src.to_csv(csv, index=False)
+
+        # No debe lanzar excepción y debe cargar la fila normalmente.
+        df = load_positions(str(csv))
+        assert list(df["Ticker"]) == ["XOM"]
+
 
 # ── download_weekly (mockeando yfinance) ───────────────────────────────
 
@@ -90,18 +125,19 @@ class TestDownloadWeeklyMocked:
         raw = pd.DataFrame({"Close": 1.0}, index=idx)
 
         with patch("weinstein.data.yf.download", return_value=raw):
-            resultado = download_weekly("TST")
+            resultado = download_weekly("TST", max_retries=1)
 
         assert resultado is None
 
     def test_dataframe_vacio_devuelve_none(self):
         with patch("weinstein.data.yf.download", return_value=pd.DataFrame()):
-            resultado = download_weekly("TST")
+            resultado = download_weekly("TST", max_retries=1)
         assert resultado is None
 
     def test_excepcion_en_descarga_devuelve_none(self):
         with patch("weinstein.data.yf.download", side_effect=Exception("network error")):
-            resultado = download_weekly("TST")
+            with patch("weinstein.data.time.sleep"):  # sin esperar backoff real en el test
+                resultado = download_weekly("TST", max_retries=2)
         assert resultado is None
 
     def test_multiindex_de_columnas_se_normaliza(self):
@@ -116,6 +152,23 @@ class TestDownloadWeeklyMocked:
 
         assert resultado is not None
         assert "Close" in resultado.columns
+
+    def test_reintenta_tras_fallo_puntual_y_luego_tiene_exito(self):
+        """Robustez: un fallo transitorio no debe impedir una descarga posterior exitosa."""
+        idx = pd.date_range("2020-01-06", periods=100, freq="W")
+        raw_ok = pd.DataFrame({
+            "Open": 1.0, "High": 1.0, "Low": 1.0, "Close": 1.0, "Volume": 100,
+        }, index=idx)
+
+        with patch(
+            "weinstein.data.yf.download",
+            side_effect=[Exception("rate limited"), raw_ok],
+        ):
+            with patch("weinstein.data.time.sleep"):
+                resultado = download_weekly("TST", max_retries=2)
+
+        assert resultado is not None
+        assert len(resultado) == 100
 
 
 # ── load_sp500_tickers (mockeando pandas.read_csv) ────────────────────
@@ -152,6 +205,23 @@ class TestLoadSP500TickersMocked:
             with patch("weinstein.data.pd.read_html", side_effect=Exception("wikipedia caída")):
                 with pytest.raises(SystemExit):
                     load_sp500_tickers()
+
+    def test_esquema_de_columnas_no_cambia_silenciosamente(self):
+        """
+        Smoke test de esquema (sin red): si el CSV fuente cambiara sus
+        nombres de columna de forma que ninguna coincida con los patrones
+        reconocidos, el resultado debe seguir teniendo Symbol/Name/Sector
+        (rellenadas con "N/A") en vez de fallar de forma silenciosa aguas
+        abajo del pipeline.
+        """
+        raw_con_columnas_desconocidas = pd.DataFrame({
+            "columna_rara_1": ["AAPL"],
+            "columna_rara_2": ["Apple Inc."],
+        })
+        with patch("weinstein.data.pd.read_csv", return_value=raw_con_columnas_desconocidas):
+            df = load_sp500_tickers()
+
+        assert list(df.columns) == ["Symbol", "Name", "Sector"]
 
 
 # ── Tests opcionales de red real (excluidos por defecto, ver pytest.ini) ──

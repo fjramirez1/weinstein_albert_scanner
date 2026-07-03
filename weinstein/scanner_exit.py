@@ -16,8 +16,18 @@ Optimizaciones respecto a la versión original
    conocido.
 2. **Descarga paralela**: las N posiciones se descargan concurrentemente
    con ThreadPoolExecutor (normalmente son pocas, pero el patrón escala).
-3. **Semáforo de concurrencia**: mismo patrón que el escáner de entrada
-   para no saturar yfinance.
+3. **Sin semáforo adicional**: el límite de concurrencia ya lo impone
+   `max_workers` del propio ThreadPoolExecutor (cada tarea hace una única
+   descarga), así que un `Semaphore` extra sería redundante.
+
+Nota sobre el histórico
+------------------------
+Los CSVs generados por versiones anteriores de este escáner (antes de
+`historial/salidas/posiciones_salidas_20260619_1342.csv`) usan la columna
+``S3 Coppock Bajista`` en lugar de ``S2 Coppock No Alcista``. Esa condición
+fue renombrada/simplificada; el código actual ya no distingue una "S3"
+independiente. Esos CSVs antiguos se conservan tal cual por motivos de
+historial y no reflejan el esquema de columnas actual.
 """
 
 from __future__ import annotations
@@ -25,13 +35,15 @@ from __future__ import annotations
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-from threading import Semaphore
 
 import pandas as pd
 
 from weinstein.config import (
     COPPOCK_RECENT_LOOKBACK,
     DOWNLOAD_PERIOD_EXIT,
+    EXIT_REASON_NONE,
+    EXIT_REASON_S1_LABEL,
+    EXIT_REASON_S2_LABEL,
     RSC_EXIT_THRESHOLD,
     RSC_SMA_PERIOD,
     SP500_INDEX,
@@ -49,7 +61,6 @@ def _evaluate_exit(
     fecha_entrada:    pd.Timestamp,
     sp500_close:      pd.Series,
     coppock_not_bull: bool,
-    sem:              Semaphore,
 ) -> dict:
     """
     Evalúa las condiciones de salida para un ticker individual.
@@ -60,7 +71,9 @@ def _evaluate_exit(
 
     Returns
     -------
-    Dict con el estado de cada condición y el veredicto final.
+    Dict con el estado de cada condición y el veredicto final. El campo
+    "Motivo" es siempre un string (nunca una lista intermedia), tanto en
+    los caminos de retorno anticipado como en el final.
     """
     result: dict = {
         "Ticker"               : ticker,
@@ -69,17 +82,16 @@ def _evaluate_exit(
         "S1 RSC < -0.5"        : None,
         "S2 Coppock No Alcista": coppock_not_bull,
         "SALIDA"               : False,
-        "Motivo"               : [],
+        "Motivo"               : EXIT_REASON_NONE,
         "Error"                : None,
     }
 
-    with sem:
-        data = download_weekly(ticker, period=DOWNLOAD_PERIOD_EXIT)
+    data = download_weekly(ticker, period=DOWNLOAD_PERIOD_EXIT)
 
     if data is None:
         result["Error"]  = "Sin datos o histórico insuficiente"
         result["SALIDA"] = coppock_not_bull   # S2 podría bastar
-        result["Motivo"] = "S2: Coppock SP500 no alcista" if coppock_not_bull else "—"
+        result["Motivo"] = EXIT_REASON_S2_LABEL if coppock_not_bull else EXIT_REASON_NONE
         return result
 
     close = data["Close"].copy()
@@ -104,15 +116,17 @@ def _evaluate_exit(
     elif not result["Error"]:
         result["Error"] = "Sin cierres desde la fecha de entrada"
 
-    # Veredicto final (OR)
+    # Veredicto final (OR). Se construye en una lista local de trabajo y
+    # se convierte a string una única vez al final, evitando el tipo
+    # inconsistente (list -> str) que tenía la versión anterior.
     motivos: list[str] = []
     if result.get("S1 RSC < -0.5"):
-        motivos.append(f"S1: RSC={result['RSC Mansfield']:+.3f} < {RSC_EXIT_THRESHOLD}")
+        motivos.append(f"{EXIT_REASON_S1_LABEL}={result['RSC Mansfield']:+.3f} < {RSC_EXIT_THRESHOLD}")
     if coppock_not_bull:
-        motivos.append("S2: Coppock SP500 no alcista")
+        motivos.append(EXIT_REASON_S2_LABEL)
 
     result["SALIDA"] = bool(motivos)
-    result["Motivo"] = " | ".join(motivos) if motivos else "—"
+    result["Motivo"] = " | ".join(motivos) if motivos else EXIT_REASON_NONE
     return result
 
 
@@ -122,7 +136,6 @@ def _worker_exit(
     fila:             pd.Series,
     sp500_close:      pd.Series,
     coppock_not_bull: bool,
-    sem:              Semaphore,
 ) -> dict:
     """Evalúa una posición e incorpora los campos de rentabilidad."""
     ticker         = fila["Ticker"]
@@ -135,12 +148,21 @@ def _worker_exit(
         fecha_entrada    = fecha_entrada,
         sp500_close      = sp500_close,
         coppock_not_bull = coppock_not_bull,
-        sem              = sem,
     )
     res["Sector"]         = sector
     res["Precio Entrada"] = precio_entrada
 
-    if precio_entrada and res["Precio Actual"]:
+    # Bug fix: "if precio_entrada and ..." trataba 0 como falsy y omitía
+    # la rentabilidad sin avisar cuando Precio_Entrada == 0 (dato corrupto).
+    # Se comprueba explícitamente que no sea None/NaN en vez de su verdad
+    # booleana, y se registra el caso en Error para que no pase inadvertido.
+    precio_entrada_valido = precio_entrada is not None and not pd.isna(precio_entrada)
+
+    if precio_entrada_valido and precio_entrada == 0:
+        res["Rentabilidad %"] = None
+        aviso = "Precio_Entrada = 0: rentabilidad no calculable"
+        res["Error"] = f"{res['Error']} | {aviso}" if res["Error"] else aviso
+    elif precio_entrada_valido and res["Precio Actual"] is not None:
         res["Rentabilidad %"] = round(
             ((res["Precio Actual"] / float(precio_entrada)) - 1) * 100, 2
         )
@@ -188,16 +210,15 @@ def run_exit_scanner(csv_path: str) -> pd.DataFrame:
         print("  ⚠️  S2 ACTIVA para TODAS las posiciones (Coppock no alcista)")
 
     n = len(posiciones)
-    workers = min(MAX_WORKERS, n)
+    workers = min(MAX_WORKERS, n) if n else 1
     print(f"\n[3/3] Evaluando {n} posiciones (paralelo, {workers} hilos)...")
     print("─" * 68)
 
-    sem        = Semaphore(workers)
     resultados: list[dict] = []
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {
-            pool.submit(_worker_exit, fila, sp500_close, coppock_not_bull, sem): fila["Ticker"]
+            pool.submit(_worker_exit, fila, sp500_close, coppock_not_bull): fila["Ticker"]
             for _, fila in posiciones.iterrows()
         }
         for fut in as_completed(futures):

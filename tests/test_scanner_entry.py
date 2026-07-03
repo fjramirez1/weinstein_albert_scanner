@@ -42,8 +42,7 @@ def ohlcv_que_pasa_todos_los_filtros() -> pd.DataFrame:
     return make_ohlcv(close, volume, idx)
 
 
-def _base_kwargs(sp500_close, sector_rsc_map=None, coppock_bullish=True, sem=None):
-    from threading import Semaphore
+def _base_kwargs(sp500_close, sector_rsc_map=None, coppock_bullish=True):
     return dict(
         ticker="TST",
         sector_name="Energy",
@@ -52,7 +51,6 @@ def _base_kwargs(sp500_close, sector_rsc_map=None, coppock_bullish=True, sem=Non
         coppock_bullish=coppock_bullish,
         coppock_direction="↑ Alcista" if coppock_bullish else "↓ Bajista",
         sector_rsc_map=sector_rsc_map if sector_rsc_map is not None else {"XLE": 0.5},
-        sem=sem or Semaphore(5),
     )
 
 

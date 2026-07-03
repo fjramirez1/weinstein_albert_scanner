@@ -19,6 +19,11 @@ DOWNLOAD_PERIOD_ENTRY = "6y"
 DOWNLOAD_PERIOD_EXIT  = "5y"
 MIN_BARS              = 70       # mínimo de velas semanales requeridas
 
+# Reintentos con backoff para descargas yfinance (robustez ante fallos
+# puntuales de red o rate-limiting).
+DOWNLOAD_MAX_RETRIES     = 3
+DOWNLOAD_RETRY_BACKOFF_S = 1.5    # segundos, se multiplica por el nº de intento
+
 # ── Indicadores técnicos ──────────────────────────────────────────────
 WMA30_PERIOD     = 30
 RSC_SMA_PERIOD   = 52    # ventana de la SMA en el cálculo RSC Mansfield
@@ -38,6 +43,14 @@ MAX_CANDIDATES      = 10      # número máximo de candidatos en el ranking
 
 # ── Filtros de salida (OR) ────────────────────────────────────────────
 RSC_EXIT_THRESHOLD = -0.5     # S1: RSC Mansfield activo < umbral → salida
+
+# Etiquetas de las condiciones de salida. Única fuente de verdad para los
+# prefijos usados en la columna "Motivo" del CSV de salidas — si el nombre
+# de una condición cambia (p.ej. renombrados anteriores S3 -> S2), basta
+# con actualizarlo aquí.
+EXIT_REASON_S1_LABEL = "S1: RSC"
+EXIT_REASON_S2_LABEL = "S2: Coppock SP500 no alcista"
+EXIT_REASON_NONE     = "—"
 
 # ── Mapeo sector GICS → ETF sectorial SPDR ───────────────────────────
 SECTOR_TO_ETF: dict[str, str] = {

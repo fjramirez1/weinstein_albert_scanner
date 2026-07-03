@@ -54,11 +54,17 @@ def rsc_mansfield(
     RSC(t) = (R(t) / SMA52(t) - 1) × 10
 
     Positivo → activo supera la media de su comportamiento relativo.
+
+    ``sma`` puede ser 0 en casos degenerados (p.ej. precios relativos
+    extremadamente pequeños en penny stocks); se sustituye por NaN antes
+    de dividir para evitar producir ``inf``/``-inf``, igual que ya se
+    hacía en ``vpm5`` con la desviación estándar.
     """
     asset, bench = price_asset.align(price_benchmark, join="inner")
     relative = asset / bench
     sma = relative.rolling(window=sma_period).mean()
-    return ((relative / sma) - 1.0) * 10.0
+    sma_safe = sma.replace(0, np.nan)
+    return ((relative / sma_safe) - 1.0) * 10.0
 
 
 # ── Volumen ───────────────────────────────────────────────────────────
@@ -89,32 +95,45 @@ def vpm5(
 def momentum_vs_wma(
     close: pd.Series,
     period: int = WMA30_PERIOD,
+    wma_series: pd.Series | None = None,
 ) -> float | None:
     """
     Momentum relativo: (precio_actual - WMA) / WMA.
 
     Devuelve ``None`` si no hay datos suficientes o la WMA es inválida.
     Usado para ordenar candidatos que superan todos los filtros.
+
+    Si el llamador ya calculó la WMA (p.ej. porque también la necesita
+    para ``distancia_wma_pct``), puede pasarla en ``wma_series`` para
+    evitar recalcularla — ``wma()`` es una operación cara
+    (``rolling().apply()`` sobre todo el histórico).
     """
     if len(close) < period:
         return None
-    wma_series = wma(close, period)
-    wma_val    = float(wma_series.iloc[-1])
+    wma_calc = wma_series if wma_series is not None else wma(close, period)
+    wma_val  = float(wma_calc.iloc[-1])
     if pd.isna(wma_val) or wma_val <= 0:
         return None
     return (float(close.iloc[-1]) - wma_val) / wma_val
 
 
-def distancia_wma_pct(close: pd.Series, period: int = WMA30_PERIOD) -> float | None:
+def distancia_wma_pct(
+    close: pd.Series,
+    period: int = WMA30_PERIOD,
+    wma_series: pd.Series | None = None,
+) -> float | None:
     """
     Distancia porcentual del precio actual a la WMA: (C - WMA) / WMA × 100.
 
     Devuelve ``None`` si la WMA no se puede calcular.
+
+    Acepta una ``wma_series`` precalculada (ver ``momentum_vs_wma``) para
+    evitar recomputar la misma WMA dos veces sobre el mismo histórico.
     """
     if len(close) < period:
         return None
-    wma_series = wma(close, period)
-    wma_val    = float(wma_series.iloc[-1])
+    wma_calc = wma_series if wma_series is not None else wma(close, period)
+    wma_val  = float(wma_calc.iloc[-1])
     if pd.isna(wma_val) or wma_val <= 0:
         return None
     return ((float(close.iloc[-1]) - wma_val) / wma_val) * 100.0
