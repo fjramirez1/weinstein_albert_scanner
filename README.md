@@ -18,6 +18,7 @@ weinstein/                  ← paquete principal
 │
 posiciones.csv              ← tus posiciones abiertas
 requirements.txt
+pytest.ini                  ← configuración de tests
 │
 scripts/
 │   run_entry.sh / run_entry.bat
@@ -26,6 +27,13 @@ scripts/
 historial/
 │   entradas/               ← CSVs generados por el escáner de entrada
 │   salidas/                ← CSVs generados por el escáner de salida
+│
+tests/                      ← suite de tests (pytest)
+│   conftest.py             ← fixtures compartidas
+│   test_indicators.py      ← WMA, RSC Mansfield, VPM5, Coppock, MOM, filtro F5/S2
+│   test_scanner_entry.py   ← filtros de entrada F1-F5 (mockeando descargas)
+│   test_scanner_exit.py    ← condiciones de salida S1-S2 (mockeando descargas)
+│   test_data.py            ← carga de posiciones y descargas (mockeadas + red real opcional)
 │
 docs/
     ESTRATEGIA.md           ← descripción técnica completa
@@ -135,12 +143,24 @@ weinstein_albert_scan_YYYYMMDD_HHMM.csv
 posiciones_salidas_YYYYMMDD_HHMM.csv
 ```
 
+## Testing
+
+Hay tests (`pytest`) que verifican los cálculos de cada filtro (F1-F5, S1-S2) de forma aislada
+con datos sintéticos, sin depender del estado real del mercado ni de red.
+
+```bash
+pip install -r requirements.txt
+pytest                # suite completa
+pytest -m network     # opcional: tests que sí golpean APIs externas reales
+```
+
 ## Troubleshooting
 
 - **`python` no reconocido**: instalar Python 3.11+ y añadir al PATH.
 - **Descarga de datos falla**: comprobar conexión; `yfinance` puede tener interrupciones puntuales.
 - **Columnas faltantes en `posiciones.csv`**: verificar que existen `Ticker`, `Sector`, `Precio_Entrada` y `Fecha_Entrada`.
 - **El proceso tarda mucho**: normal; descargar ~500 tickers lleva varios minutos.
+- **Los tests no encuentran el paquete `weinstein`**: ejecutar `pytest` desde la raíz del proyecto (usa `python -m pytest` si el problema persiste).
 
 ## Referencias
 
