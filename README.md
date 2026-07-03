@@ -9,12 +9,12 @@ detección de candidatos de entrada y evaluación de salidas para posiciones abi
 weinstein/                  ← paquete principal
 │   __init__.py
 │   __main__.py             ← CLI unificado (python -m weinstein)
-│   config.py                ← todos los parámetros en un único lugar
-│   indicators.py            ← cálculos técnicos (WMA, RSC, VPM5, Coppock, MOM)
-│   data.py                  ← descarga de precios y carga de tickers S&P 500
-│   scanner_entry.py         ← lógica del escáner de entrada
-│   scanner_exit.py          ← lógica del escáner de salida
-│   exporter.py              ← exportación CSV con historial
+│   config.py               ← todos los parámetros en un único lugar
+│   indicators.py           ← cálculos técnicos (WMA, RSC, VPM5, Coppock, MOM)
+│   data.py                 ← descarga de precios y carga de tickers S&P 500
+│   scanner_entry.py        ← lógica del escáner de entrada
+│   scanner_exit.py         ← lógica del escáner de salida
+│   exporter.py             ← exportación CSV con historial
 │
 posiciones.csv              ← tus posiciones abiertas
 requirements.txt
