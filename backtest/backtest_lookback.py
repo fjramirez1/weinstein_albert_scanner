@@ -123,7 +123,7 @@ def sp500_alcista_at(
 
     start_bullish = False
     if idx >= recent_lookback:
-        window = coppock.iloc[idx - recent_lookback: idx]  # las N previas a "previous"... 
+        window = coppock.iloc[idx - recent_lookback: idx]  # las N previas a "previous"...
         # Nota: replicamos EXACTAMENTE la semántica de indicators.py:
         # recent_window = valid.iloc[-(recent_lookback+1):-1] tomado sobre
         # la serie ya truncada en "current". Aquí, sobre índices
@@ -288,6 +288,142 @@ def download_sp500(period: str) -> pd.DataFrame:
     return raw
 
 
+# ── Impresión legible de resultados ────────────────────────────────────
+
+def _fmt_pct(value: float | None, decimals: int = 2) -> str:
+    """Formatea un porcentaje con signo explícito, o '—' si es None."""
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return "—"
+    return f"{value:+.{decimals}f}%"
+
+
+def _fmt_plain(value: float | None, decimals: int = 1, suffix: str = "") -> str:
+    """Formatea un número sin signo (conteos, retrasos), o '—' si es None."""
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return "—"
+    if decimals == 0:
+        return f"{int(round(value))}{suffix}"
+    return f"{value:.{decimals}f}{suffix}"
+
+
+def print_readable_summary(
+    rows: list[dict],
+    horizons: list[int],
+) -> None:
+    """
+    Imprime los resultados como una tabla legible por consola, en vez de
+    depender de `DataFrame.to_string()` (que con muchas columnas numéricas
+    se ensancha más de lo que cabe en una terminal normal y se corta o
+    se envuelve mal).
+
+    Estrategia: una tabla COMPACTA con las columnas clave (Nº señales,
+    retorno medio y % señales negativas por horizonte, retraso), y
+    justo debajo, un bloque de detalle por horizonte con también la
+    mediana, para quien quiera profundizar sin saturar la tabla principal.
+    """
+    lookbacks = [r["Lookback"] for r in rows]
+
+    # ── Tabla compacta (una fila por lookback, columnas por horizonte) ──
+    col_lb = "Lookback"
+    col_n = "Señales"
+    w_lb = max(len(col_lb), max(len(str(lb)) for lb in lookbacks)) + 2
+    w_n = max(len(col_n), 7) + 2
+    w_h = 15  # ancho por bloque de horizonte (ret. medio + % negativas)
+
+    # Ancho de celda de datos: "+9.52%*" (8) + espacio + "38.6%" (6) = 15
+    col_w = 15
+
+    header = f"{col_lb:>{w_lb}} | {col_n:>{w_n}}"
+    subheader = f"{'':>{w_lb}} | {'':>{w_n}}"
+    for h in horizons:
+        label = f"{h} semanas"
+        header += f" | {label:^{col_w}}"
+        sub = f"{'ret.medio':>8} {'%neg':>6}"
+        subheader += f" | {sub:^{col_w}}"
+
+    total_width = len(header)
+    print("┌" + "─" * total_width + "┐")
+    print("  RETORNO MEDIO DEL S&P 500 TRAS CADA SEÑAL, POR VENTANA DE LOOKBACK")
+    print("└" + "─" * total_width + "┘")
+    print(header)
+    print(subheader)
+    print("─" * total_width)
+
+    best_ret = {}
+    for h in horizons:
+        vals = [r.get(f"Ret. medio {h}w (%)") for r in rows]
+        vals = [v for v in vals if v is not None]
+        best_ret[h] = max(vals) if vals else None
+
+    for r in rows:
+        lb = r["Lookback"]
+        n = r["N Señales"]
+        line = f"{lb:>{w_lb}} | {n:>{w_n}}"
+        for h in horizons:
+            ret = r.get(f"Ret. medio {h}w (%)")
+            neg = r.get(f"% señales negativas a {h}w")
+            marca = "★" if best_ret[h] is not None and ret == best_ret[h] else " "
+            ret_s = (_fmt_pct(ret) + marca) if marca.strip() else _fmt_pct(ret)
+            neg_s = _fmt_plain(neg, decimals=1, suffix="%")
+            cell = f"{ret_s:>8} {neg_s:>6}"
+            line += f" | {cell:^{col_w}}"
+        print(line)
+
+    print("─" * total_width)
+    print("  ★ = mejor retorno medio de la columna   |   % neg. = % de señales con retorno negativo a ese horizonte")
+
+    # ── Bloque de detalle: mediana y retraso ────────────────────────────
+    print()
+    print("┌" + "─" * total_width + "┐")
+    print("  DETALLE: MEDIANA DE RETORNO Y RETRASO FRENTE AL MÍNIMO REAL DEL COPPOCK")
+    print("└" + "─" * total_width + "┘")
+
+    w_delay = 12
+    header2 = f"{col_lb:>{w_lb}} |"
+    for h in horizons:
+        header2 += f" {'mediana ' + str(h) + 'w':>13} |"
+    header2 += f" {'retraso (sem)':>{w_delay}}"
+    print(header2)
+    print("─" * len(header2))
+
+    for r in rows:
+        lb = r["Lookback"]
+        line = f"{lb:>{w_lb}} |"
+        for h in horizons:
+            med = r.get(f"Ret. mediana {h}w (%)")
+            line += f" {_fmt_pct(med):>13} |"
+        delay = r.get("Retraso medio vs mínimo real (semanas)")
+        line += f" {_fmt_plain(delay, decimals=1):>{w_delay}}"
+        print(line)
+
+    print("─" * len(header2))
+
+    # ── Meseta / rango sin cambios (detección automática) ───────────────
+    print()
+    key_cols = [f"Ret. medio {h}w (%)" for h in horizons] + ["N Señales"]
+    grupos: list[list[int]] = []
+    for r in rows:
+        firma = tuple(r.get(c) for c in key_cols)
+        if grupos and _firma_de(rows, grupos[-1][-1], key_cols) == firma:
+            grupos[-1].append(r["Lookback"])
+        else:
+            grupos.append([r["Lookback"]])
+
+    mesetas = [g for g in grupos if len(g) > 1]
+    if mesetas:
+        print("  Nota — rangos con resultados IDÉNTICOS (ninguna señal cambia en ese tramo):")
+        for g in mesetas:
+            print(f"    · lookback {g[0]}–{g[-1]}: {len(g)} valores probados, mismo resultado exacto")
+        print("    → Dentro de estos rangos el parámetro es indiferente para este periodo histórico.")
+
+
+def _firma_de(rows: list[dict], lookback: int, key_cols: list[str]) -> tuple:
+    for r in rows:
+        if r["Lookback"] == lookback:
+            return tuple(r.get(c) for c in key_cols)
+    return ()
+
+
 # ── Main ────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -330,33 +466,26 @@ def main() -> None:
         res = run_backtest_for_lookback(copk, close, lb, horizons, real_minima)
         rows.append(res.summary_row(horizons))
 
-    summary = pd.DataFrame(rows).set_index("Lookback")
-
-    pd.set_option("display.width", 160)
-    pd.set_option("display.max_columns", None)
-
-    print("═" * 100)
-    print("  RESULTADOS DEL BACKTEST — sensibilidad de COPPOCK_RECENT_LOOKBACK")
-    print("═" * 100)
-    print(summary.to_string())
-    print("═" * 100)
+    print()
+    print_readable_summary(rows, horizons)
 
     print("""
 Cómo leer esta tabla
 ---------------------
-- N Señales: cuántas veces se activó start_bullish/continuation_bullish
+- Señales: cuántas veces se activó start_bullish/continuation_bullish
   (transición False->True) durante el periodo. Muy pocas señales indica
   que el filtro rara vez deja entrar; muchas señales indica que es
   permisivo (más riesgo de ruido).
-- Ret. medio/mediana Xw (%): rentabilidad del S&P 500 en las X semanas
-  siguientes a cada señal. Más alto es mejor, pero compáralo también con
-  la mediana (la media puede estar distorsionada por pocos casos extremos).
-- % señales negativas a Xw: proporción de señales que resultaron en
-  pérdida a X semanas — una proxy de "señales falsas". Más bajo es mejor.
-- Retraso medio vs. mínimo real: cuántas semanas tarda la señal en
-  aparecer después de un suelo real del Coppock (detectado con
-  retrospectiva). Más bajo significa que entras más cerca del suelo real;
-  más alto significa que entras tarde (el movimiento ya lleva recorrido).
+- Ret. medio Xw: rentabilidad del S&P 500 en las X semanas siguientes a
+  cada señal. Más alto es mejor, pero compáralo también con la mediana
+  del bloque de detalle (la media puede estar distorsionada por pocos
+  casos extremos).
+- % neg.: proporción de señales que resultaron en pérdida a X semanas —
+  una proxy de "señales falsas". Más bajo es mejor.
+- Retraso (sem): cuántas semanas tarda la señal en aparecer después de
+  un suelo real del Coppock (detectado con retrospectiva). Más bajo
+  significa que entras más cerca del suelo real; más alto significa que
+  entras tarde (el movimiento ya lleva recorrido).
 
 Qué NO concluir de esta tabla
 -------------------------------
