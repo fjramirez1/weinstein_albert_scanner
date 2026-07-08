@@ -38,6 +38,9 @@ tests/                       ← suite de tests (pytest)
 │
 docs/
     ESTRATEGIA.md             ← descripción técnica completa
+│
+backtest/
+    backtest_lookback.py       ← backtest de sensibilidad de COPPOCK_RECENT_LOOKBACK (F5)
 ```
 
 ## Quickstart (3 pasos)
@@ -190,6 +193,19 @@ pytest -m network     # opcional: tests que sí golpean APIs externas reales
 - **Columnas faltantes en `posiciones.csv`**: verificar que existen `Ticker`, `Sector`, `Precio_Entrada` y `Fecha_Entrada`.
 - **El proceso tarda mucho**: normal; descargar ~500 tickers lleva varios minutos.
 - **Los tests no encuentran el paquete `weinstein`**: ejecutar `pytest` desde la raíz del proyecto (usa `python -m pytest` si el problema persiste).
+
+## Backtest
+
+`backtest/backtest_lookback.py` evalúa distintos valores de `COPPOCK_RECENT_LOOKBACK` (filtro F5,
+mercado alcista) sobre el histórico real del S&P 500: retorno futuro a varios horizontes, % de
+señales negativas y retraso frente al mínimo real del Coppock. Es un backtest del filtro de
+mercado en aislamiento, no de la estrategia completa.
+
+```bash
+pip install yfinance pandas numpy scipy --break-system-packages
+python backtest/backtest_lookback.py
+python backtest/backtest_lookback.py --period 15y --lookbacks 2,3,4,6,8,12
+```
 
 ## Referencias
 
