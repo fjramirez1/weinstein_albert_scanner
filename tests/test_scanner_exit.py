@@ -3,10 +3,21 @@ Tests de `weinstein/scanner_exit.py`.
 
 `_evaluate_exit` mezcla lógica pura con I/O (descarga vía `download_weekly`),
 así que se mockea la descarga para testear las condiciones OR de salida
-(S1: RSC activo < -0.5, S2: Coppock no alcista) de forma aislada.
+(S1: RSC activo < -0.5, S2: Coppock bajista) de forma aislada.
 
 `_worker_exit` se testea aparte para cubrir el cálculo de Rentabilidad %,
 incluido el caso de `Precio_Entrada == 0` (bug 5).
+
+Nota sobre el parámetro `coppock_bearish`
+------------------------------------------
+Antes de la corrección de S2 (ver docstring en scanner_exit.py), este
+parámetro se llamaba `coppock_not_bull` y representaba `not
+sp500_alcista(...)`. Ahora representa `sp500_bajista(...)`, una condición
+propia fiel a la fuente original de la estrategia. A nivel de estos tests
+(que ya reciben el booleano directamente, sin calcularlo) el cambio es
+solo de nombre, pero es importante no confundirlo: `coppock_bearish=False`
+ya no significa "el mercado es alcista", significa "el mercado no está en
+fase bajista confirmada" (puede estar en el tercer estado neutro).
 """
 
 from __future__ import annotations
@@ -42,7 +53,7 @@ class TestEvaluateExit:
 
         with patch.object(scanner_exit, "download_weekly", return_value=df):
             resultado = scanner_exit._evaluate_exit(
-                "TST", fecha_entrada, sp500_close_base, coppock_not_bull=False
+                "TST", fecha_entrada, sp500_close_base, coppock_bearish=False
             )
 
         assert resultado["SALIDA"] is True
@@ -57,7 +68,7 @@ class TestEvaluateExit:
 
         with patch.object(scanner_exit, "download_weekly", return_value=df):
             resultado = scanner_exit._evaluate_exit(
-                "TST", fecha_entrada, sp500_close_base, coppock_not_bull=True
+                "TST", fecha_entrada, sp500_close_base, coppock_bearish=True
             )
 
         assert resultado["SALIDA"] is True
@@ -72,7 +83,7 @@ class TestEvaluateExit:
 
         with patch.object(scanner_exit, "download_weekly", return_value=df):
             resultado = scanner_exit._evaluate_exit(
-                "TST", fecha_entrada, sp500_close_base, coppock_not_bull=True
+                "TST", fecha_entrada, sp500_close_base, coppock_bearish=True
             )
 
         assert resultado["SALIDA"] is True
@@ -86,7 +97,7 @@ class TestEvaluateExit:
 
         with patch.object(scanner_exit, "download_weekly", return_value=df):
             resultado = scanner_exit._evaluate_exit(
-                "TST", fecha_entrada, sp500_close_base, coppock_not_bull=False
+                "TST", fecha_entrada, sp500_close_base, coppock_bearish=False
             )
 
         assert resultado["SALIDA"] is False
@@ -100,13 +111,13 @@ class TestEvaluateExit:
 
         with patch.object(scanner_exit, "download_weekly", return_value=df):
             resultado = scanner_exit._evaluate_exit(
-                "TST", fecha_entrada, sp500_close_base, coppock_not_bull=False
+                "TST", fecha_entrada, sp500_close_base, coppock_bearish=False
             )
         assert isinstance(resultado["Motivo"], str)
 
         with patch.object(scanner_exit, "download_weekly", return_value=None):
             resultado_sin_datos = scanner_exit._evaluate_exit(
-                "TST", fecha_entrada, sp500_close_base, coppock_not_bull=True
+                "TST", fecha_entrada, sp500_close_base, coppock_bearish=True
             )
         assert isinstance(resultado_sin_datos["Motivo"], str)
 
@@ -114,17 +125,17 @@ class TestEvaluateExit:
         """Aunque falle la descarga, S2 (conocido de antemano) puede bastar para activar SALIDA."""
         with patch.object(scanner_exit, "download_weekly", return_value=None):
             resultado = scanner_exit._evaluate_exit(
-                "TST", fecha_entrada, sp500_close_base, coppock_not_bull=True
+                "TST", fecha_entrada, sp500_close_base, coppock_bearish=True
             )
 
         assert resultado["SALIDA"] is True
         assert resultado["Error"] is not None
         assert "S2" in resultado["Motivo"]
 
-    def test_sin_datos_y_mercado_alcista_no_activa_salida(self, sp500_close_base, fecha_entrada):
+    def test_sin_datos_y_mercado_no_bajista_no_activa_salida(self, sp500_close_base, fecha_entrada):
         with patch.object(scanner_exit, "download_weekly", return_value=None):
             resultado = scanner_exit._evaluate_exit(
-                "TST", fecha_entrada, sp500_close_base, coppock_not_bull=False
+                "TST", fecha_entrada, sp500_close_base, coppock_bearish=False
             )
 
         assert resultado["SALIDA"] is False
@@ -138,7 +149,7 @@ class TestEvaluateExit:
 
         with patch.object(scanner_exit, "download_weekly", return_value=df):
             resultado = scanner_exit._evaluate_exit(
-                "TST", fecha_entrada, sp500_close_base, coppock_not_bull=False
+                "TST", fecha_entrada, sp500_close_base, coppock_bearish=False
             )
 
         precio_esperado = round(float(close.loc[close.index >= fecha_entrada].iloc[-1]), 2)
@@ -167,7 +178,7 @@ class TestWorkerExitRentabilidad:
 
         with patch.object(scanner_exit, "download_weekly", return_value=df):
             resultado = scanner_exit._worker_exit(
-                self._fila(0), sp500_close_base, coppock_not_bull=False
+                self._fila(0), sp500_close_base, coppock_bearish=False
             )
 
         assert resultado["Rentabilidad %"] is None
@@ -181,7 +192,7 @@ class TestWorkerExitRentabilidad:
 
         with patch.object(scanner_exit, "download_weekly", return_value=df):
             resultado = scanner_exit._worker_exit(
-                self._fila(150.0), sp500_close_base, coppock_not_bull=False
+                self._fila(150.0), sp500_close_base, coppock_bearish=False
             )
 
         assert resultado["Rentabilidad %"] is not None
@@ -193,7 +204,7 @@ class TestWorkerExitRentabilidad:
 
         with patch.object(scanner_exit, "download_weekly", return_value=df):
             resultado = scanner_exit._worker_exit(
-                self._fila(np.nan), sp500_close_base, coppock_not_bull=False
+                self._fila(np.nan), sp500_close_base, coppock_bearish=False
             )
 
         assert resultado["Rentabilidad %"] is None

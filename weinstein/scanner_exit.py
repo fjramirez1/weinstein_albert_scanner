@@ -6,11 +6,11 @@ Operador OR: cualquiera de las condiciones activa la señal de salida.
 Condiciones
 -----------
 S1: RSC Mansfield del activo < −0.5  (pérdida de fuerza relativa)
-S2: Coppock SP500 no alcista          (filtro de mercado invertido)
+S2: Coppock SP500 bajista             (filtro de mercado, condición propia)
 
 Optimizaciones respecto a la versión original
 ---------------------------------------------
-1. **Short-circuit en S2**: si el Coppock no es alcista, S2 ya activa
+1. **Short-circuit en S2**: si el Coppock es bajista, S2 ya activa
    SALIDA=True para todas las posiciones. Se sigue descargando para
    calcular el RSC actual y la rentabilidad, pero el veredicto ya es
    conocido.
@@ -20,6 +20,29 @@ Optimizaciones respecto a la versión original
    `max_workers` del propio ThreadPoolExecutor (cada tarea hace una única
    descarga), así que un `Semaphore` extra sería redundante.
 
+Corrección de S2 (importante)
+------------------------------
+Versiones anteriores calculaban S2 como ``not sp500_alcista(...)``, es
+decir, como el complemento lógico exacto del filtro de entrada F5. Esto
+NO coincide con la fuente original de la estrategia (vídeo de
+referencia — ver README), que define ``Sp500bajista`` como una condición
+**independiente**:
+
+  1. Cruce a negativo: Coppock pasa de positivo/cero a negativo.
+  2. Confirmación de bajista: Coppock ya es negativo y sigue cayendo.
+
+Usar ``not sp500_alcista`` en su lugar provocaba salidas espurias en un
+tercer estado ("ni alcista ni bajista") que la fuente original no
+contempla como señal de salida — por ejemplo, cuando el Coppock está en
+negativo y subiendo, pero ese rebote ya no es el "primer" rebote exacto
+desde el mínimo reciente que exige ``sp500_alcista`` (ver
+``weinstein/indicators.py::sp500_alcista`` vs. ``sp500_bajista``). En la
+práctica esto obligaba a menudo a salir de una posición la semana
+siguiente a haber entrado, incluso con el mercado todavía mejorando.
+
+Ahora S2 usa ``sp500_bajista()``, fiel a la definición original. El
+estado neutro (ni alcista ni bajista) ya no fuerza salidas.
+
 Nota sobre el histórico
 ------------------------
 Los CSVs generados por versiones anteriores de este escáner (antes de
@@ -27,7 +50,10 @@ Los CSVs generados por versiones anteriores de este escáner (antes de
 ``S3 Coppock Bajista`` en lugar de ``S2 Coppock No Alcista``. Esa condición
 fue renombrada/simplificada; el código actual ya no distingue una "S3"
 independiente. Esos CSVs antiguos se conservan tal cual por motivos de
-historial y no reflejan el esquema de columnas actual.
+historial y no reflejan el esquema de columnas actual. Los CSVs generados
+ANTES de esta corrección (donde S2 = not F5) tampoco reflejan la lógica
+actual de S2; solo los generados después de este cambio usan la
+definición fiel a la fuente original.
 """
 
 from __future__ import annotations
@@ -39,7 +65,6 @@ from datetime import datetime
 import pandas as pd
 
 from weinstein.config import (
-    COPPOCK_RECENT_LOOKBACK,
     DOWNLOAD_PERIOD_EXIT,
     EXIT_REASON_NONE,
     EXIT_REASON_S1_LABEL,
@@ -49,7 +74,7 @@ from weinstein.config import (
     SP500_INDEX,
 )
 from weinstein.data import download_weekly, load_positions
-from weinstein.indicators import coppock_curve, rsc_mansfield, sp500_alcista
+from weinstein.indicators import coppock_curve, rsc_mansfield, sp500_bajista
 
 MAX_WORKERS = 10  # las posiciones suelen ser pocas; 10 es más que suficiente
 
@@ -60,14 +85,15 @@ def _evaluate_exit(
     ticker:           str,
     fecha_entrada:    pd.Timestamp,
     sp500_close:      pd.Series,
-    coppock_not_bull: bool,
+    coppock_bearish:  bool,
 ) -> dict:
     """
     Evalúa las condiciones de salida para un ticker individual.
 
-    Short-circuit: si S2 ya es True, el veredicto SALIDA=True es
-    inmediato. Aun así se descarga el ticker para obtener precio
-    actual y RSC (información útil para el trader).
+    Short-circuit: si S2 ya es True (mercado bajista, ver
+    ``sp500_bajista()``), el veredicto SALIDA=True es inmediato. Aun así
+    se descarga el ticker para obtener precio actual y RSC (información
+    útil para el trader).
 
     Returns
     -------
@@ -80,7 +106,7 @@ def _evaluate_exit(
         "Precio Actual"        : None,
         "RSC Mansfield"        : None,
         "S1 RSC < -0.5"        : None,
-        "S2 Coppock No Alcista": coppock_not_bull,
+        "S2 Coppock No Alcista": coppock_bearish,
         "SALIDA"               : False,
         "Motivo"               : EXIT_REASON_NONE,
         "Error"                : None,
@@ -90,8 +116,8 @@ def _evaluate_exit(
 
     if data is None:
         result["Error"]  = "Sin datos o histórico insuficiente"
-        result["SALIDA"] = coppock_not_bull   # S2 podría bastar
-        result["Motivo"] = EXIT_REASON_S2_LABEL if coppock_not_bull else EXIT_REASON_NONE
+        result["SALIDA"] = coppock_bearish   # S2 podría bastar
+        result["Motivo"] = EXIT_REASON_S2_LABEL if coppock_bearish else EXIT_REASON_NONE
         return result
 
     close = data["Close"].copy()
@@ -122,7 +148,7 @@ def _evaluate_exit(
     motivos: list[str] = []
     if result.get("S1 RSC < -0.5"):
         motivos.append(f"{EXIT_REASON_S1_LABEL}={result['RSC Mansfield']:+.3f} < {RSC_EXIT_THRESHOLD}")
-    if coppock_not_bull:
+    if coppock_bearish:
         motivos.append(EXIT_REASON_S2_LABEL)
 
     result["SALIDA"] = bool(motivos)
@@ -135,7 +161,7 @@ def _evaluate_exit(
 def _worker_exit(
     fila:             pd.Series,
     sp500_close:      pd.Series,
-    coppock_not_bull: bool,
+    coppock_bearish:  bool,
 ) -> dict:
     """Evalúa una posición e incorpora los campos de rentabilidad."""
     ticker         = fila["Ticker"]
@@ -144,10 +170,10 @@ def _worker_exit(
     fecha_entrada  = fila["Fecha_Entrada"]
 
     res = _evaluate_exit(
-        ticker           = ticker,
-        fecha_entrada    = fecha_entrada,
-        sp500_close      = sp500_close,
-        coppock_not_bull = coppock_not_bull,
+        ticker          = ticker,
+        fecha_entrada   = fecha_entrada,
+        sp500_close     = sp500_close,
+        coppock_bearish = coppock_bearish,
     )
     res["Sector"]         = sector
     res["Precio Entrada"] = precio_entrada
@@ -199,15 +225,14 @@ def run_exit_scanner(csv_path: str) -> pd.DataFrame:
 
     sp500_close = sp500_data["Close"].copy()
     copk = coppock_curve(sp500_close)
-    coppock_bullish, estado_mkt = sp500_alcista(copk, recent_lookback=COPPOCK_RECENT_LOOKBACK)
-    coppock_not_bull = not coppock_bullish
+    coppock_bearish, estado_mkt = sp500_bajista(copk)
 
     print(f"  Coppock actual   : {float(copk.iloc[-1]):+.4f}")
     print(f"  Coppock anterior : {float(copk.iloc[-2]):+.4f}")
     print(f"  Estado mercado   : {estado_mkt}")
 
-    if coppock_not_bull:
-        print("  ⚠️  S2 ACTIVA para TODAS las posiciones (Coppock no alcista)")
+    if coppock_bearish:
+        print("  ⚠️  S2 ACTIVA para TODAS las posiciones (Coppock bajista)")
 
     n = len(posiciones)
     workers = min(MAX_WORKERS, n) if n else 1
@@ -218,7 +243,7 @@ def run_exit_scanner(csv_path: str) -> pd.DataFrame:
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {
-            pool.submit(_worker_exit, fila, sp500_close, coppock_not_bull): fila["Ticker"]
+            pool.submit(_worker_exit, fila, sp500_close, coppock_bearish): fila["Ticker"]
             for _, fila in posiciones.iterrows()
         }
         for fut in as_completed(futures):

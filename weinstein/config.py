@@ -34,7 +34,12 @@ VPM_SMOOTHING    = 5     # periodos de la SMA que suaviza el VPM
 COPPOCK_ROC_LONG        = 12
 COPPOCK_ROC_SHORT       = 6
 COPPOCK_WMA_PERIOD      = 10
-COPPOCK_RECENT_LOOKBACK = 4    # ventana para detectar mínimo reciente
+# Ventana usada SOLO por sp500_alcista() (F5) para detectar el mínimo
+# reciente del "inicio de tendencia alcista". sp500_bajista() (S2) no usa
+# esta ventana: su condición de bajista no depende de un mínimo/máximo
+# reciente, solo de la comparación con la semana inmediatamente anterior
+# (ver weinstein/indicators.py::sp500_bajista y docs/ESTRATEGIA.md sec. 4).
+COPPOCK_RECENT_LOOKBACK = 4
 
 # ── Filtros de entrada (AND) ──────────────────────────────────────────
 SECTOR_RSC_MIN      = 0.10    # F1: RSC Mansfield sector >= umbral
@@ -49,6 +54,10 @@ RSC_EXIT_THRESHOLD = -0.5     # S1: RSC Mansfield activo < umbral → salida
 # de una condición cambia (p.ej. renombrados anteriores S3 -> S2), basta
 # con actualizarlo aquí.
 EXIT_REASON_S1_LABEL = "S1: RSC"
+# S2 refleja sp500_bajista() (condición de mercado bajista propia, ver
+# weinstein/indicators.py y docs/ESTRATEGIA.md sec. 4) — NO es el
+# complemento lógico de sp500_alcista(). El texto de la etiqueta se
+# mantiene igual por compatibilidad con CSVs/herramientas existentes.
 EXIT_REASON_S2_LABEL = "S2: Coppock SP500 no alcista"
 EXIT_REASON_NONE     = "—"
 

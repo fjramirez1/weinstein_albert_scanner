@@ -9,34 +9,35 @@ detección de candidatos de entrada y evaluación de salidas para posiciones abi
 weinstein/                  ← paquete principal
 │   __init__.py
 │   __main__.py             ← CLI unificado (python -m weinstein)
-│   config.py               ← todos los parámetros en un único lugar
-│   indicators.py           ← cálculos técnicos (WMA, RSC, VPM5, Coppock, MOM)
-│   data.py                 ← descarga de precios y carga de tickers S&P 500
-│   scanner_entry.py        ← lógica del escáner de entrada
-│   scanner_exit.py         ← lógica del escáner de salida
-│   exporter.py             ← exportación CSV con historial
+│   config.py                ← todos los parámetros en un único lugar
+│   indicators.py             ← cálculos técnicos (WMA, RSC, VPM5, Coppock, MOM)
+│   data.py                  ← descarga de precios y carga de tickers S&P 500
+│   scanner_entry.py          ← lógica del escáner de entrada
+│   scanner_exit.py           ← lógica del escáner de salida
+│   exporter.py               ← exportación CSV con historial
 │
-posiciones.csv              ← tus posiciones abiertas
+posiciones.csv               ← tus posiciones abiertas
 requirements.txt
-pytest.ini                  ← configuración de tests
+pytest.ini                   ← configuración de tests
 │
 scripts/
 │   run_entry.sh / run_entry.bat
 │   run_exit.sh  / run_exit.bat
 │
 historial/
-│   entradas/               ← CSVs generados por el escáner de entrada
-│   salidas/                ← CSVs generados por el escáner de salida
+│   entradas/                ← CSVs generados por el escáner de entrada
+│   salidas/                 ← CSVs generados por el escáner de salida
 │
-tests/                      ← suite de tests (pytest)
-│   conftest.py             ← fixtures compartidas
-│   test_indicators.py      ← WMA, RSC Mansfield, VPM5, Coppock, MOM, filtro F5/S2
-│   test_scanner_entry.py   ← filtros de entrada F1-F5 (mockeando descargas)
-│   test_scanner_exit.py    ← condiciones de salida S1-S2 (mockeando descargas)
-│   test_data.py            ← carga de posiciones y descargas (mockeadas + red real opcional)
+tests/                       ← suite de tests (pytest)
+│   conftest.py               ← fixtures compartidas
+│   test_indicators.py        ← WMA, RSC Mansfield, VPM5, Coppock, MOM, filtro F5
+│   test_sp500_bajista.py     ← condición de mercado bajista (S2) y su relación con F5
+│   test_scanner_entry.py     ← filtros de entrada F1-F5 (mockeando descargas)
+│   test_scanner_exit.py      ← condiciones de salida S1-S2 (mockeando descargas)
+│   test_data.py              ← carga de posiciones y descargas (mockeadas + red real opcional)
 │
 docs/
-    ESTRATEGIA.md           ← descripción técnica completa
+    ESTRATEGIA.md             ← descripción técnica completa
 ```
 
 ## Quickstart (3 pasos)
@@ -102,7 +103,7 @@ Aplica 5 filtros **AND** sobre el universo del S&P 500:
 | F2 | VPM5 (volumen normalizado) | > 0 |
 | F3 | RSC Mansfield del activo | > 0 |
 | F4 | Distancia precio / WMA30 | < +8 % |
-| F5 | Coppock SP500 alcista | True |
+| F5 | Coppock SP500 alcista (`sp500_alcista()`) | True |
 
 Los candidatos se ordenan por Momentum Relativo (MOM) descendente. La WMA30 se calcula una
 única vez por ticker y se reutiliza tanto para F4 como para MOM.
@@ -114,14 +115,26 @@ Aplica 2 condiciones **OR** sobre las posiciones abiertas:
 | # | Condición | Umbral |
 |---|-----------|--------|
 | S1 | RSC Mansfield del activo | < −0.5 |
-| S2 | Coppock SP500 no alcista | True |
+| S2 | Coppock SP500 bajista (`sp500_bajista()`) | True |
+
+> **S2 es una condición propia, no el complemento de F5.** `sp500_bajista()` se activa solo en
+> dos casos: (a) el Coppock cruza de positivo/cero a negativo, o (b) el Coppock ya es negativo y
+> sigue cayendo respecto a la semana anterior. Existe un **tercer estado neutro** (ni alcista ni
+> bajista) — por ejemplo, un rebote en negativo que aún no es el "primer" rebote que exige F5, o
+> un Coppock positivo pero ya decreciente — en el que ni F5 ni S2 se activan. Antes de esta
+> corrección, S2 se calculaba como `not sp500_alcista(...)`, lo que colapsaba ese estado neutro
+> dentro de "salida" y podía forzar el cierre de una posición la semana inmediatamente siguiente
+> a haber entrado, incluso con el mercado todavía en mejora. Ver `docs/ESTRATEGIA.md` sección 4
+> y el docstring de `weinstein/scanner_exit.py` para el detalle completo.
 
 > **Nota sobre `historial/salidas/`**: los CSVs con fecha anterior a
 > `posiciones_salidas_20260619_1342.csv` usan la columna `S3 Coppock Bajista` en vez de
 > `S2 Coppock No Alcista`. Corresponden a una versión anterior del escáner con un esquema
-> ligeramente distinto; se conservan sin modificar por motivos de historial. El código actual
-> solo genera `S1`/`S2` como se describe arriba — ver `docs/ESTRATEGIA.md` sección 4 para más
-> detalle.
+> ligeramente distinto; se conservan sin modificar por motivos de historial. Además, los CSVs
+> generados **antes** de la corrección de S2 descrita arriba usaban `S2 = not sp500_alcista(...)`
+> en vez de `sp500_bajista()` propiamente dicha; tampoco reflejan la lógica actual, aunque su
+> esquema de columnas ya coincida. El código vigente solo genera `S1`/`S2` como se describe en
+> esta sección — ver `docs/ESTRATEGIA.md` sección 4 para más detalle.
 
 ### Módulos del paquete
 
@@ -129,7 +142,7 @@ Aplica 2 condiciones **OR** sobre las posiciones abiertas:
 |--------|----------------|
 | `__main__.py` | CLI unificado con subcomandos `entry` y `exit` |
 | `config.py` | Constantes y umbrales de la estrategia |
-| `indicators.py` | Cálculos puros: WMA, RSC Mansfield, VPM5, Coppock, MOM |
+| `indicators.py` | Cálculos puros: WMA, RSC Mansfield, VPM5, Coppock, MOM, `sp500_alcista`, `sp500_bajista` |
 | `data.py` | Descarga yfinance (con reintentos/backoff), carga de tickers S&P 500, lectura de posiciones |
 | `scanner_entry.py` | Orquestación del escáner de entrada |
 | `scanner_exit.py` | Orquestación del escáner de salida |
@@ -160,7 +173,9 @@ posiciones_salidas_YYYYMMDD_HHMM.csv
 ## Testing
 
 Hay tests (`pytest`) que verifican los cálculos de cada filtro (F1-F5, S1-S2) de forma aislada
-con datos sintéticos, sin depender del estado real del mercado ni de red.
+con datos sintéticos, sin depender del estado real del mercado ni de red. En particular,
+`tests/test_sp500_bajista.py` cubre explícitamente que `sp500_alcista()` y `sp500_bajista()` no
+son complementarias y verifica el estado neutro descrito en la sección anterior.
 
 ```bash
 pip install -r requirements.txt

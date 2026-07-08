@@ -10,7 +10,7 @@ Este documento amplía y explica con más detalle los criterios operativos usado
 - **VPM5 (Volumen Proporcional Medio 5 semanas)**: volumen estandarizado respecto a las últimas 52 semanas, suavizado con una SMA de 5 semanas. Indica si el volumen actual es atípico respecto al histórico.
 - **WMA30 / MA30**: media móvil ponderada de 30 sesiones; referencia de tendencia de medio plazo.
 - **Distancia % respecto a WMA30**: distancia relativa del precio al WMA30: Dist% = (Precio Actual − WMA30) / WMA30 (expresado en %).
-- **Coppock semanal**: indicador de estado de mercado construido como WMA(10) de la suma de dos ROC semanales (12 semanas y 6 semanas). Se usa como filtro de mercado alcista/bajista.
+- **Coppock semanal**: indicador de estado de mercado construido como WMA(10) de la suma de dos ROC semanales (12 semanas y 6 semanas). Se usa como filtro de mercado, tanto en el sentido alcista (entrada, F5) como en el sentido bajista (salida, S2) — son dos condiciones **independientes** calculadas sobre la misma curva, no una el complemento de la otra (ver sección 4).
 - **MOM (Momentum relativo para desempate)**: medida relativa del precio sobre su WMA30: MOM = (C − WMA30) / WMA30.
 
 ## 2. Cálculos resumidos (cómo se obtienen)
@@ -54,9 +54,9 @@ Este documento amplía y explica con más detalle los criterios operativos usado
 5. **Filtro de Mercado — Coppock Alcista (Sp500alcista = True)**
    - Objetivo: abrir posiciones largas solo cuando el mercado general muestra inicio o continuación de tendencia alcista.
    - Cómputo: Coppock semanal = WMA(10) de (ROC_12 + ROC_6) sobre el S&P 500.
-   - Criterio operativo:
-     - *Inicio de alcista desde negativo*: Coppock está en terreno negativo, ha marcado un mínimo reciente y comienza a girar al alza. Señala que el mercado podría estar comenzando una nueva fase alcista.
-     - *Continuación de alcista positivo*: Coppock está por encima de 0 y sigue aumentando.
+   - Criterio operativo (implementado en `sp500_alcista()`):
+     - *Inicio de alcista desde negativo*: Coppock está en terreno negativo, el valor de la semana anterior ha marcado el mínimo de las últimas 4 semanas (`COPPOCK_RECENT_LOOKBACK`) y el valor actual sube por encima de ese mínimo. Señala que el mercado podría estar comenzando una nueva fase alcista. Esta condición solo se cumple en la semana exacta de ese primer rebote — no en cualquier semana de recuperación posterior dentro de terreno negativo (ver nota en sección 4).
+     - *Continuación de alcista positivo*: Coppock está por encima de 0 y sigue aumentando respecto a la semana anterior.
    - El flag `Sp500alcista` se activa en cualquiera de las dos situaciones anteriores.
 
 > Idea operativa: todas las condiciones anteriores deben cumplirse para que una acción sea considerada candidata de compra.
@@ -67,13 +67,26 @@ Este documento amplía y explica con más detalle los criterios operativos usado
    - Si `rsMan < -0.5` la acción es marcada para salida inmediata: está rindiendo sustancialmente peor que el mercado.
    - En el CSV de salida esta condición se etiqueta como **S1** en la columna `Motivo`.
 
-2. **Coppock no alcista (filtro de mercado)**
-   - Si el Coppock semanal deja de señalar mercado alcista (`Sp500alcista = False`), se cierran las posiciones largas. Esta condición es la imagen inversa del filtro de entrada F5: la salida se activa exactamente cuando dejaría de cumplirse la condición de entrada de mercado.
-   - En el CSV de salida esta condición se etiqueta como **S2** en la columna `Motivo` (columna `S2 Coppock No Alcista` en el CSV).
+2. **Coppock bajista (filtro de mercado, condición propia — `Sp500bajista`)**
+   - Objetivo: salir de posiciones largas cuando el mercado general (S&P 500) muestra debilidad o inicio/confirmación de tendencia bajista.
+   - Cómputo (implementado en `sp500_bajista()`):
+     - *Cruce a negativo*: el Coppock estaba en terreno positivo (o cero) la semana anterior y pasa a negativo esta semana. Señala el fin de una tendencia alcista.
+     - *Confirmación de bajista*: el Coppock ya es negativo y sigue cayendo respecto a la semana anterior. Señala que la tendencia bajista se mantiene y se fortalece.
+   - El flag `Sp500bajista` se activa en cualquiera de las dos situaciones anteriores.
+   - En el CSV de salida esta condición se etiqueta como **S2** en la columna `Motivo` (columna `S2 Coppock No Alcista` en el CSV — el nombre de columna se mantiene por compatibilidad histórica, aunque desde la corrección descrita abajo representa `Sp500bajista`, no `not Sp500alcista`).
 
-Si cualquiera de las condiciones se cumple, el escáner etiqueta la posición como `SALIDA=True` e incluye el `Motivo` en el CSV de salida. Los prefijos `S1`/`S2` usados en `Motivo` están centralizados en `weinstein/config.py` (`EXIT_REASON_S1_LABEL`, `EXIT_REASON_S2_LABEL`) para que sea la única fuente de verdad si alguna vez se renombran.
+### `Sp500alcista` y `Sp500bajista` NO son complementarias
 
-> **Nota sobre el histórico**: los CSVs guardados en `historial/salidas/` con fecha anterior a `posiciones_salidas_20260619_1342.csv` usan la columna `S3 Coppock Bajista` en lugar de `S2 Coppock No Alcista`. Esa condición existía en una versión anterior del escáner con un esquema de columnas ligeramente distinto al actual. El código vigente (`weinstein/scanner_exit.py`) solo genera `S1`/`S2` tal como se describe arriba; los CSVs antiguos se conservan sin modificar por motivos de historial y no deben interpretarse como si reflejaran el esquema de columnas actual.
+Es un error común (y el que tenía este proyecto hasta esta corrección) asumir que "mercado bajista" es simplemente `not Sp500alcista`. **No lo es.** Existe un **tercer estado neutro** — ni alcista ni bajista — en el que ninguna de las dos condiciones se cumple. Dos ejemplos:
+
+- **Rebote tardío en negativo**: el Coppock está en negativo y sube respecto a la semana anterior, pero el valor de la semana anterior ya no es el mínimo de las últimas 4 semanas (porque el suelo real quedó más atrás). Esto no cumple `Sp500alcista` (exige que sea *justo* el primer rebote desde ese mínimo), pero tampoco cumple `Sp500bajista` (el Coppock está subiendo, no cayendo).
+- **Positivo mermando**: el Coppock está por encima de 0 pero cae respecto a la semana anterior. No es "continuación alcista" (`Sp500alcista` exige `current > previous`), pero tampoco ha cruzado a negativo, así que tampoco es `Sp500bajista`.
+
+**Corrección aplicada (importante para quien revise el historial)**: en versiones anteriores del código, `scanner_exit.py` calculaba S2 como `not sp500_alcista(...)` en lugar de una condición de bajista propiamente dicha. Esto colapsaba el estado neutro descrito arriba dentro de "salida", provocando que una posición pudiera activarse en entrada (F5 cumplido en el momento exacto del rebote) y verse forzada a salir la semana siguiente (S2 = `not F5` ya no se cumple, aunque el mercado siguiera mejorando y no fuera objetivamente bajista según la definición original de la estrategia). El código actual usa `sp500_bajista()`, una función independiente, fiel a la definición de la fuente original: el estado neutro ya no fuerza salidas.
+
+Si cualquiera de las condiciones S1/S2 se cumple, el escáner etiqueta la posición como `SALIDA=True` e incluye el `Motivo` en el CSV de salida. Los prefijos `S1`/`S2` usados en `Motivo` están centralizados en `weinstein/config.py` (`EXIT_REASON_S1_LABEL`, `EXIT_REASON_S2_LABEL`) para que sea la única fuente de verdad si alguna vez se renombran.
+
+> **Nota sobre el histórico**: los CSVs guardados en `historial/salidas/` con fecha anterior a `posiciones_salidas_20260619_1342.csv` usan la columna `S3 Coppock Bajista` en lugar de `S2 Coppock No Alcista`. Esa condición existía en una versión anterior del escáner con un esquema de columnas ligeramente distinto al actual. Además, los CSVs generados **después** de ese cambio de esquema pero **antes** de la corrección de S2 descrita arriba calculaban S2 como `not sp500_alcista(...)`, no como `sp500_bajista()`; por tanto, para esos archivos, `SALIDA=True` por S2 puede incluir casos del estado neutro que el código vigente ya no consideraría salida. El código actual (`weinstein/scanner_exit.py`) genera `S1`/`S2` tal como se describe arriba usando `sp500_bajista()`; los CSVs antiguos se conservan sin modificar por motivos de historial y no deben interpretarse como si reflejaran la lógica vigente.
 
 ## 5. Regla de desempate y selección final (ranking)
 
@@ -89,6 +102,7 @@ Si cualquiera de las condiciones se cumple, el escáner etiqueta la posición co
 - `MAX_DISTANCIA_WMA30 = 8.0` (%) — cota superior; sin cota inferior
 - `RSC_EXIT_THRESHOLD = -0.5` (umbral de salida por RSC del activo)
 - `COPPOCK_ROC_LONG = 12`, `COPPOCK_ROC_SHORT = 6`, `COPPOCK_WMA_PERIOD = 10` (Coppock semanal)
+- `COPPOCK_RECENT_LOOKBACK = 4` (ventana de mínimo reciente usada solo por `sp500_alcista()` / F5; `sp500_bajista()` / S2 no usa esta ventana, ver sección 4)
 - `DOWNLOAD_MAX_RETRIES = 3`, `DOWNLOAD_RETRY_BACKOFF_S = 1.5` (reintentos con backoff ante fallos puntuales de descarga en yfinance)
 
 Notas: los nombres y ubicaciones de las constantes están en el código; consulta directamente `weinstein/config.py`, que es la única fuente de verdad de umbrales y periodos. El universo se carga desde la fuente de constituyentes por ticker, así que su tamaño puede variar con rebalanceos y clases múltiples.
@@ -111,16 +125,19 @@ MSFT,Technology,415.00,421.92,1.67,-1.8943,True,False,True,"S1: RSC=-1.894 < -0.
 
 Cuando la descarga de un ticker falla, el CSV incluye además una columna `Error` con el motivo (no forma parte del ejemplo anterior por brevedad, pero siempre está presente en la salida real).
 
+Recuerda que la columna `S2 Coppock No Alcista` refleja el resultado de `sp500_bajista()` (ver sección 4) desde la corrección aplicada — su nombre histórico se ha mantenido para no romper compatibilidad con CSVs y herramientas existentes, pero su significado ya no es "not Sp500alcista".
+
 ## 8. Referencias de implementación (para quien edite el código)
 
-- Cálculos y utilidades: [`weinstein/indicators.py`](../weinstein/indicators.py) — funciones importantes: `rsc_mansfield()`, `vpm5()`, `wma()`, `coppock_curve()`, `sp500_alcista()`, `momentum_vs_wma()`, `distancia_wma_pct()`.
+- Cálculos y utilidades: [`weinstein/indicators.py`](../weinstein/indicators.py) — funciones importantes: `rsc_mansfield()`, `vpm5()`, `wma()`, `coppock_curve()`, `sp500_alcista()`, `sp500_bajista()`, `momentum_vs_wma()`, `distancia_wma_pct()`.
 - Acceso a datos: [`weinstein/data.py`](../weinstein/data.py) — `download_weekly()` (con reintentos y backoff), `load_sp500_tickers()`, `load_positions()`.
 - Parámetros y umbrales: [`weinstein/config.py`](../weinstein/config.py) — única fuente de verdad para constantes de la estrategia.
 - Puntos de filtrado de entrada: [`weinstein/scanner_entry.py`](../weinstein/scanner_entry.py) — búsqueda de candidatos y aplicación de filtros F1-F5.
-- Puntos de evaluación de salida: [`weinstein/scanner_exit.py`](../weinstein/scanner_exit.py) — condiciones OR (S1-S2) para cerrar posiciones.
+- Puntos de evaluación de salida: [`weinstein/scanner_exit.py`](../weinstein/scanner_exit.py) — condiciones OR (S1-S2) para cerrar posiciones; ver docstring del módulo para el detalle de la corrección de S2.
 - Exportación a CSV: [`weinstein/exporter.py`](../weinstein/exporter.py).
+- Tests que documentan el comportamiento esperado: [`tests/test_indicators.py`](../tests/test_indicators.py) (F5 / `sp500_alcista`) y [`tests/test_sp500_bajista.py`](../tests/test_sp500_bajista.py) (S2 / `sp500_bajista`, incluyendo los casos del estado neutro descritos en la sección 4).
 
 ## 9. Notas finales
 
 - Este documento pretende ser complementario a la explicación de uso; no modifica la lógica del código ni los parámetros por defecto. Para ajustar umbrales o lógica, editar las constantes y funciones referenciadas en el código y mantener la coherencia con estas notas.
-- Referencia original explicativa (video): https://youtu.be/reQWjzedlX0?si=xSsagVeCSqrX7miV
+- Referencia original explicativa (video): https://youtu.be/reQWjzedlX0?si=xSsagVeCSqrX7miVpip install yfinance pandas numpy scipy --break-system-packages

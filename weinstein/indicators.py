@@ -197,3 +197,53 @@ def sp500_alcista(
     bullish   = start_bullish or continuation_bullish
     direction = "↑ Alcista" if bullish else "↓ Bajista"
     return bullish, direction
+
+
+def sp500_bajista(
+    coppock: pd.Series,
+) -> tuple[bool, str]:
+    """
+    Determina si el S&P 500 está en fase bajista según el Coppock, tal
+    como se define en la fuente original de la estrategia (vídeo de
+    referencia — ver README, sección "Referencias"). NO es simplemente
+    el complemento lógico de ``sp500_alcista()``.
+
+    Señal bajista en dos casos:
+    1. Cruce a negativo: Coppock estaba en terreno positivo (o cero) la
+       semana anterior y pasa a negativo esta semana. Señala el fin de
+       una tendencia alcista.
+    2. Confirmación de bajista: Coppock ya es negativo y sigue cayendo
+       respecto a la semana anterior. Señala que la tendencia bajista
+       se mantiene y se fortalece.
+
+    A diferencia de ``sp500_alcista()``, esta función no exige que el
+    valor previo sea el mínimo de una ventana reciente: basta con que
+    el valor actual sea menor que el anterior estando ya en negativo.
+
+    Importante — estado neutro: ``sp500_alcista()`` y ``sp500_bajista()``
+    NO son complementarias. Existe un tercer estado ("ni alcista ni
+    bajista") para tramos de transición, por ejemplo:
+      - Un rebote en negativo que no es el primer rebote desde el
+        mínimo reciente (no cumple ``sp500_alcista``, y tampoco cae
+        respecto a la semana anterior, así que no cumple
+        ``sp500_bajista``).
+      - Un Coppock positivo pero decreciente: ya no es "continuación
+        alcista" (exige ``current > previous``), pero tampoco ha
+        cruzado a negativo, así que no es "bajista" según esta función.
+    En ese estado neutro ambas funciones devuelven False.
+
+    Retorna (bool, str) → bandera bajista y etiqueta legible.
+    """
+    valid = coppock.dropna()
+    if len(valid) < 2:
+        return False, "→ Neutral"
+
+    current  = float(valid.iloc[-1])
+    previous = float(valid.iloc[-2])
+
+    cruce_a_negativo     = previous >= 0.0 and current < 0.0
+    confirmacion_bajista = current < 0.0 and current < previous
+
+    bajista   = cruce_a_negativo or confirmacion_bajista
+    direction = "↓ Bajista" if bajista else "→ Neutral"
+    return bajista, direction
