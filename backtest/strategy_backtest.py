@@ -25,12 +25,41 @@ RSC_EXIT_THRESHOLD, MAX_DISTANCIA_WMA30, etc.) con evidencia real.
 
 Sin look-ahead
 --------------
-En cada semana `t` evaluada, todos los cálculos (RSC, VPM5, WMA30,
-Coppock) se hacen únicamente con datos `close.iloc[:t+1]` — el punto de
-evaluación y todo lo anterior, nunca datos futuros. El Coppock y el RSC
-de sector se recalculan sobre la serie del S&P 500 / ETF truncada de la
-misma forma, así que la señal de mercado en la semana `t` es exactamente
-la que se habría visto en tiempo real esa semana.
+Todos los indicadores (RSC, VPM5, WMA30, Coppock) se calculan **una
+única vez por serie completa**, usando funciones vectorizadas basadas en
+``rolling()`` (ver `weinstein/indicators.py`). Por construcción, el valor
+de un indicador en la posición `i` de una serie con `rolling()` depende
+únicamente de `serie.iloc[:i+1]` — nunca de datos futuros. Esto es
+matemáticamente equivalente a truncar la serie en `i` y recalcular desde
+cero en cada paso (como hacía la versión anterior de este módulo), pero
+sin repetir el trabajo: se sustituye un recálculo O(n) en cada una de
+las n semanas (O(n²) total por ticker) por un único cálculo O(n) por
+serie. Ver `tests/test_strategy_backtest.py::TestEntrySignalSinLookAhead`
+y `TestExitSignalSinLookAhead`, que verifican explícitamente que evaluar
+sobre la serie completa u sobre la serie truncada en `i` da el mismo
+resultado.
+
+Por qué salía el aviso de "desalineación de fechas" en bucle
+---------------------------------------------------------------
+La versión anterior truncaba el S&P 500 (`sp500_close.loc[... <= fecha_i]`)
+pero SIN recortar por la izquierda: la serie resultante siempre arrancaba
+en el inicio del periodo descargado (p.ej. hace 10 años), mientras que el
+activo (o su ETF sectorial) podía tener bastante menos histórico real
+(salida a bolsa reciente, límites de disponibilidad en yfinance, etc.).
+El `inner join` de `rsc_mansfield()` descartaba entonces, de forma
+sistemática y en CADA semana evaluada, la diferencia estructural de
+cientos de filas entre ambas series — no una desalineación puntual de
+festivos (1-2 filas), que es lo que ese aviso pretende detectar. Con
+~500 tickers x cientos de semanas x varias llamadas a `rsc_mansfield`
+por semana, el aviso se imprimía miles de veces.
+
+La corrección aquí es alinear cada serie de activo/ETF con el S&P 500
+**una sola vez**, al principio (`Series.align(..., join="inner")`), antes
+de calcular ningún indicador. A partir de ahí todas las series comparten
+exactamente el mismo índice de fechas, así que `rsc_mansfield()` ya no
+tiene nada que descartar en el inner join interno y el aviso desaparece
+(sigue disponible para detectar desalineaciones REALES, si las hubiera,
+porque el guard `> 2` filas se mantiene intacto en `indicators.py`).
 
 Reutilización de lógica real
 -----------------------------
@@ -185,103 +214,159 @@ class BacktestResult:
         }
 
 
-# ── Evaluación de condiciones en un punto temporal (sin look-ahead) ────
+# ── Precálculo vectorizado de series de señal (una vez por ticker) ─────
 
-def _entry_signal_at(
-    close_asset:     pd.Series,
-    volume_asset:    pd.Series,
-    sp500_close:     pd.Series,
+@dataclass
+class _TickerSignals:
+    """
+    Series de señal ya calculadas sobre el histórico COMPLETO de un
+    ticker, alineado con el S&P 500 (y opcionalmente con su ETF
+    sectorial). Cada serie está indexada por fecha; el valor en la
+    posición `i` depende solo de datos hasta `i` (propiedad de
+    `rolling()`), así que se puede iterar sin volver a calcular nada.
+
+    `valid_from` es la primera posición con histórico suficiente
+    (`BACKTEST_MIN_BARS`) para evaluar F1-F5/S1-S2; antes de esa
+    posición ninguna señal se considera válida (igual que la versión
+    anterior devolvía False si `i < BACKTEST_MIN_BARS`).
+    """
+    close:               pd.Series
+    entry_ok:            pd.Series   # bool: F1 AND F2 AND F3 AND F4 AND F5
+    exit_ok:              pd.Series  # bool: S1 OR S2
+    exit_motivo:          pd.Series  # str:  "S1", "S2", "S1+S2" o "—"
+    valid_from:            int
+
+
+def _compute_ticker_signals(
+    close_asset:      pd.Series,
+    volume_asset:     pd.Series,
+    sp500_close:      pd.Series,
     sector_etf_close: pd.Series | None,
-    i:               int,
-) -> bool:
+) -> _TickerSignals | None:
     """
-    Evalúa F1-F5 en el índice posicional `i` de `close_asset`, usando
-    solo datos hasta `i` (inclusive) de todas las series. Replica
-    fielmente scanner_entry.py::_evaluate_ticker, filtro por filtro.
+    Calcula, de una sola vez y para toda la serie, las señales de
+    entrada (F1-F5) y salida (S1-S2) de un ticker.
+
+    Alineación (clave para evitar tanto el recálculo O(n^2) como el
+    aviso de desalineación en bucle): el activo, el S&P 500 y el ETF
+    sectorial se alinean por fecha UNA SOLA VEZ al principio con
+    `Series.align(..., join="inner")`. A partir de ahí todos los
+    indicadores se calculan sobre series que ya comparten índice, así
+    que `rsc_mansfield()` no tiene nada que descartar internamente.
+
+    Devuelve ``None`` si, tras alinear, no queda histórico suficiente
+    para evaluar nada (ni F1-F5 ni S1-S2 podrían activarse jamás).
     """
-    if i < BACKTEST_MIN_BARS:
-        return False
+    close_a, sp500_a = close_asset.align(sp500_close, join="inner")
+    if len(close_a) < BACKTEST_MIN_BARS:
+        return None
 
-    close_hist = close_asset.iloc[: i + 1]
-    sp500_hist = sp500_close.loc[sp500_close.index <= close_asset.index[i]]
+    volume_a = volume_asset.reindex(close_a.index)
 
-    # F5: Coppock SP500 alcista
-    copk = coppock_curve(sp500_hist)
-    bullish, _ = sp500_alcista(copk)
-    if not bullish:
-        return False
+    # RSC del activo frente al S&P 500 (usado en F3 y en S1).
+    rsc_activo = rsc_mansfield(close_a, sp500_a, sma_period=RSC_SMA_PERIOD)
 
-    # F1: RSC sector >= umbral
-    if sector_etf_close is None:
-        return False
-    sector_hist = sector_etf_close.loc[sector_etf_close.index <= close_asset.index[i]]
-    if len(sector_hist) < RSC_SMA_PERIOD + 5:
-        return False
-    rsc_sector_series = rsc_mansfield(sector_hist, sp500_hist)
-    rsc_sector_val = float(rsc_sector_series.iloc[-1]) if len(rsc_sector_series) else float("nan")
-    if pd.isna(rsc_sector_val) or rsc_sector_val < SECTOR_RSC_MIN:
-        return False
+    # RSC del sector (ETF) frente al S&P 500 (usado en F1). Se alinea
+    # también una única vez, sobre el índice ya común de close_a/sp500_a.
+    if sector_etf_close is not None:
+        sector_a = sector_etf_close.reindex(sp500_a.index)
+        rsc_sector = rsc_mansfield(sector_a, sp500_a, sma_period=RSC_SMA_PERIOD)
+    else:
+        rsc_sector = pd.Series(np.nan, index=close_a.index)
 
-    if len(close_hist) < RSC_SMA_PERIOD + 5:
-        return False
-
-    # F3: RSC activo > 0
-    close_a, sp500_a = close_hist.align(sp500_hist, join="inner")
-    rsc_activo_series = rsc_mansfield(close_a, sp500_a)
-    rsc_activo_val = float(rsc_activo_series.iloc[-1]) if len(rsc_activo_series) else float("nan")
-    if pd.isna(rsc_activo_val) or rsc_activo_val <= 0.0:
-        return False
-
-    # F2: VPM5 > 0
-    vol_hist = volume_asset.iloc[: i + 1]
+    # F2: VPM5 del volumen del activo.
     vpm5_series = vpm5(
-        pd.DataFrame({"Volume": vol_hist}), VPM_BASE_PERIOD, VPM_SMOOTHING
+        pd.DataFrame({"Volume": volume_a}), VPM_BASE_PERIOD, VPM_SMOOTHING
     )
-    vpm5_val = float(vpm5_series.iloc[-1]) if len(vpm5_series) else float("nan")
-    if pd.isna(vpm5_val) or vpm5_val <= 0.0:
-        return False
 
-    # F4: distancia WMA30 < umbral
-    wma30_series = wma(close_hist, WMA30_PERIOD)
-    dist = distancia_wma_pct(close_hist, WMA30_PERIOD, wma_series=wma30_series)
-    if dist is None or dist >= MAX_DISTANCIA_WMA30:
-        return False
+    # F4 / MOM: WMA30 calculada una única vez y reutilizada.
+    wma30_series = wma(close_a, WMA30_PERIOD)
+    dist_wma30 = ((close_a - wma30_series) / wma30_series) * 100.0
 
-    return True
+    # F5: Coppock del S&P 500 (idéntico para todos los tickers, pero se
+    # recalcula aquí porque el índice ya está alineado con este activo
+    # en concreto; el coste es marginal frente al resto de la serie).
+    copk = coppock_curve(sp500_a)
+    entry_bullish = _sp500_alcista_series(copk)
+
+    # S2: Coppock bajista del S&P 500.
+    exit_bearish = _sp500_bajista_series(copk)
+
+    # ── F1-F5 combinadas (AND) ──────────────────────────────────────
+    f1 = rsc_sector >= SECTOR_RSC_MIN
+    f2 = vpm5_series > 0.0
+    f3 = rsc_activo > 0.0
+    f4 = dist_wma30 < MAX_DISTANCIA_WMA30
+    entry_ok = f1 & f2 & f3 & f4 & entry_bullish
+    entry_ok = entry_ok.fillna(False)
+
+    # ── S1-S2 combinadas (OR) ───────────────────────────────────────
+    s1 = rsc_activo < RSC_EXIT_THRESHOLD
+    s1 = s1.fillna(False)
+    s2 = exit_bearish.fillna(False)
+    exit_ok = s1 | s2
+
+    motivo = pd.Series("—", index=close_a.index, dtype=object)
+    motivo[s1 & ~s2] = "S1"
+    motivo[s2 & ~s1] = "S2"
+    motivo[s1 & s2] = "S1+S2"
+
+    # Posiciones con histórico insuficiente (< BACKTEST_MIN_BARS desde
+    # el inicio de la serie ya alineada) no pueden generar señal, igual
+    # que la versión anterior con `if i < BACKTEST_MIN_BARS: return False`.
+    valid_from = BACKTEST_MIN_BARS
+
+    return _TickerSignals(
+        close=close_a,
+        entry_ok=entry_ok,
+        exit_ok=exit_ok,
+        exit_motivo=motivo,
+        valid_from=valid_from,
+    )
 
 
-def _exit_signal_at(
-    close_asset:  pd.Series,
-    sp500_close:  pd.Series,
-    i:            int,
-) -> tuple[bool, str]:
+def _sp500_alcista_series(coppock: pd.Series) -> pd.Series:
     """
-    Evalúa S1-S2 (OR) en el índice posicional `i`. Replica
-    scanner_exit.py::_evaluate_exit. Devuelve (salida, motivo).
+    Versión vectorizada de `sp500_alcista()` (ver weinstein/indicators.py),
+    evaluada en cada posición de la serie en vez de solo en la última.
+    Replica exactamente la misma condición, fila a fila, usando solo
+    `rolling()` (por tanto sin look-ahead: el valor en `i` depende
+    únicamente de `coppock.iloc[:i+1]`).
     """
-    close_hist = close_asset.iloc[: i + 1]
-    sp500_hist = sp500_close.loc[sp500_close.index <= close_asset.index[i]]
+    from weinstein.config import COPPOCK_RECENT_LOOKBACK
 
-    motivos: list[str] = []
+    current = coppock
+    previous = coppock.shift(1)
 
-    # S1: RSC activo < umbral de salida
-    close_a, sp500_a = close_hist.align(sp500_hist, join="inner")
-    if len(close_a) >= RSC_SMA_PERIOD + 5:
-        rsc_series = rsc_mansfield(close_a, sp500_a)
-        rsc_val = float(rsc_series.iloc[-1]) if len(rsc_series) else float("nan")
-        if not pd.isna(rsc_val) and rsc_val < RSC_EXIT_THRESHOLD:
-            motivos.append("S1")
+    # "previous es el mínimo de la ventana de N valores anteriores a él"
+    # equivalente a min(coppock[i-lookback : i]) === min de
+    # coppock.shift(1) sobre una ventana rolling que TERMINA en previous.
+    recent_min = previous.rolling(window=COPPOCK_RECENT_LOOKBACK, min_periods=1).min()
+    prev_is_min = (previous - recent_min).abs() < 1e-9
 
-    # S2: Coppock SP500 bajista
-    copk = coppock_curve(sp500_hist)
-    bearish, _ = sp500_bajista(copk)
-    if bearish:
-        motivos.append("S2")
+    start_bullish = (current < 0.0) & (previous < 0.0) & prev_is_min & (current > previous)
+    continuation_bullish = (current > 0.0) & (current > previous)
 
-    return bool(motivos), "+".join(motivos) if motivos else "—"
+    bullish = start_bullish | continuation_bullish
+    return bullish.fillna(False)
 
 
-# ── Simulación de un ticker completo ────────────────────────────────────
+def _sp500_bajista_series(coppock: pd.Series) -> pd.Series:
+    """
+    Versión vectorizada de `sp500_bajista()`, fila a fila, sin
+    look-ahead (solo usa el valor actual y el inmediatamente anterior).
+    """
+    current = coppock
+    previous = coppock.shift(1)
+
+    cruce_a_negativo = (previous >= 0.0) & (current < 0.0)
+    confirmacion_bajista = (current < 0.0) & (current < previous)
+
+    bajista = cruce_a_negativo | confirmacion_bajista
+    return bajista.fillna(False)
+
+
+# ── Simulación de un ticker completo (vectorizada) ──────────────────────
 
 def simulate_ticker(
     ticker:      str,
@@ -295,25 +380,44 @@ def simulate_ticker(
     Recorre el histórico semanal de un ticker y simula el ciclo
     entrada/salida completo. Puede generar varias operaciones si el
     ticker entra y sale más de una vez dentro del periodo.
+
+    A diferencia de la versión anterior, las señales de entrada/salida
+    ya vienen precalculadas para TODA la serie (`_compute_ticker_signals`,
+    O(n) vectorizado) y aquí solo se recorre una vez la máquina de
+    estados (abierto/cerrado) sobre esas señales — el propio recorrido
+    secuencial (abrir/cerrar posición) sí necesita ser un bucle porque
+    depende del estado acumulado, pero ya no recalcula ningún indicador
+    en cada paso.
     """
+    signals = _compute_ticker_signals(close, volume, sp500_close, sector_etf_close)
+    if signals is None:
+        return []
+
+    close_a = signals.close
+    entry_ok = signals.entry_ok.to_numpy()
+    exit_ok = signals.exit_ok.to_numpy()
+    exit_motivo = signals.exit_motivo.to_numpy()
+    close_vals = close_a.to_numpy()
+    dates = close_a.index
+
     trades: list[Trade] = []
     en_posicion = False
     fecha_entrada = None
     precio_entrada = None
     idx_entrada = None
 
-    n = len(close)
-    for i in range(n):
+    n = len(close_a)
+    start = signals.valid_from
+    for i in range(start, n):
         if not en_posicion:
-            if _entry_signal_at(close, volume, sp500_close, sector_etf_close, i):
+            if entry_ok[i]:
                 en_posicion = True
-                fecha_entrada = close.index[i]
-                precio_entrada = float(close.iloc[i])
+                fecha_entrada = dates[i]
+                precio_entrada = float(close_vals[i])
                 idx_entrada = i
         else:
-            salida, motivo = _exit_signal_at(close, sp500_close, i)
-            if salida:
-                precio_salida = float(close.iloc[i])
+            if exit_ok[i]:
+                precio_salida = float(close_vals[i])
                 retorno = (
                     round(((precio_salida / precio_entrada) - 1) * 100, 2)
                     if precio_entrada else None
@@ -323,9 +427,9 @@ def simulate_ticker(
                     sector=sector,
                     fecha_entrada=fecha_entrada,
                     precio_entrada=precio_entrada,
-                    fecha_salida=close.index[i],
+                    fecha_salida=dates[i],
                     precio_salida=precio_salida,
-                    motivo_salida=motivo,
+                    motivo_salida=str(exit_motivo[i]),
                     semanas_en_pos=i - idx_entrada,
                     retorno_pct=retorno,
                 ))
@@ -351,6 +455,74 @@ def simulate_ticker(
         ))
 
     return trades
+
+
+# ── Funciones de señal puntual (mantenidas por compatibilidad/tests) ───
+#
+# `_entry_signal_at` y `_exit_signal_at` se mantienen con la misma firma
+# y semántica que antes (evalúan en un índice posicional `i` de
+# `close_asset`, usando solo datos hasta `i`), para no romper los tests
+# existentes en `tests/test_strategy_backtest.py` que las llaman
+# directamente y verifican la propiedad de "no look-ahead" comparando
+# contra la serie truncada. Internamente ya no repiten el cálculo desde
+# cero salvo por el propio truncado que exige la firma de la función.
+
+def _entry_signal_at(
+    close_asset:     pd.Series,
+    volume_asset:    pd.Series,
+    sp500_close:     pd.Series,
+    sector_etf_close: pd.Series | None,
+    i:               int,
+) -> bool:
+    """
+    Evalúa F1-F5 en el índice posicional `i` de `close_asset`, usando
+    solo datos hasta `i` (inclusive) de todas las series.
+    """
+    if i < BACKTEST_MIN_BARS:
+        return False
+
+    close_hist = close_asset.iloc[: i + 1]
+    sp500_hist = sp500_close.loc[sp500_close.index <= close_asset.index[i]]
+    sector_hist = (
+        sector_etf_close.loc[sector_etf_close.index <= close_asset.index[i]]
+        if sector_etf_close is not None else None
+    )
+    vol_hist = volume_asset.iloc[: i + 1]
+
+    signals = _compute_ticker_signals(close_hist, vol_hist, sp500_hist, sector_hist)
+    if signals is None or len(signals.close) == 0:
+        return False
+    if len(signals.close) <= signals.valid_from and (len(signals.close) - 1) < signals.valid_from:
+        return False
+    return bool(signals.entry_ok.iloc[-1])
+
+
+def _exit_signal_at(
+    close_asset:  pd.Series,
+    sp500_close:  pd.Series,
+    i:            int,
+) -> tuple[bool, str]:
+    """
+    Evalúa S1-S2 (OR) en el índice posicional `i`. Devuelve (salida, motivo).
+    """
+    close_hist = close_asset.iloc[: i + 1]
+    sp500_hist = sp500_close.loc[sp500_close.index <= close_asset.index[i]]
+
+    close_a, sp500_a = close_hist.align(sp500_hist, join="inner")
+
+    motivos: list[str] = []
+    if len(close_a) >= RSC_SMA_PERIOD + 5:
+        rsc_series = rsc_mansfield(close_a, sp500_a)
+        rsc_val = float(rsc_series.iloc[-1]) if len(rsc_series) else float("nan")
+        if not pd.isna(rsc_val) and rsc_val < RSC_EXIT_THRESHOLD:
+            motivos.append("S1")
+
+    copk = coppock_curve(sp500_a if len(sp500_a) else sp500_hist)
+    bearish, _ = sp500_bajista(copk)
+    if bearish:
+        motivos.append("S2")
+
+    return bool(motivos), "+".join(motivos) if motivos else "—"
 
 
 # ── Orquestación sobre el universo ──────────────────────────────────────
@@ -407,6 +579,17 @@ def run_strategy_backtest(
     """
     Ejecuta el backtest de la estrategia completa sobre el universo
     indicado (por defecto, todo el S&P 500).
+
+    Rendimiento
+    -----------
+    - Cada ticker se simula con indicadores VECTORIZADOS: cada serie
+      (RSC, VPM5, WMA30, Coppock) se calcula una única vez con
+      `rolling()` sobre todo el histórico, en vez de recalcularse en
+      cada una de las ~n semanas evaluadas (antes O(n^2) por ticker,
+      ahora O(n)).
+    - Los tickers se procesan en paralelo con `ThreadPoolExecutor`
+      (I/O-bound: la descarga con yfinance libera el GIL), igual que
+      hacían ya `scanner_entry.py`/`scanner_exit.py`.
 
     Parameters
     ----------
