@@ -44,7 +44,7 @@ COPPOCK_RECENT_LOOKBACK = 4
 # ── Filtros de entrada (AND) ──────────────────────────────────────────
 SECTOR_RSC_MIN      = 0.10    # F1: RSC Mansfield sector >= umbral
 MAX_DISTANCIA_WMA30 = 8.0     # F4: precio no supera WMA30 en más de X %
-MAX_CANDIDATES      = 10      # número máximo de candidatos en el ranking
+MAX_CANDIDATES       = 10      # número máximo de candidatos en el ranking
 
 # ── Filtros de salida (OR) ────────────────────────────────────────────
 RSC_EXIT_THRESHOLD = -0.5     # S1: RSC Mansfield activo < umbral → salida
@@ -96,3 +96,11 @@ SECTOR_TO_ETF: dict[str, str] = {
 DEFAULT_POSITIONS_CSV = "posiciones.csv"
 HISTORY_ENTRIES_DIR   = "historial/entradas"
 HISTORY_EXITS_DIR     = "historial/salidas"
+
+# ── Backtest de estrategia completa ───────────────────────────────────
+# Parámetros específicos del motor de backtest (backtest/strategy_backtest.py).
+# Separados de los umbrales de la estrategia en sí para no mezclar
+# "cómo se simula" con "qué significa cada filtro".
+BACKTEST_PERIOD_DEFAULT       = "10y"   # histórico a descargar por ticker
+BACKTEST_MIN_BARS             = RSC_SMA_PERIOD + WMA30_PERIOD + 10  # barras mínimas para poder evaluar F1-F5/S1-S2
+BACKTEST_MAX_WORKERS          = 20      # hilos concurrentes para descargar tickers
