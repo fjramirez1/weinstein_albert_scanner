@@ -51,15 +51,31 @@ RSC_EXIT_THRESHOLD = -0.5     # S1: RSC Mansfield activo < umbral → salida
 
 # Etiquetas de las condiciones de salida. Única fuente de verdad para los
 # prefijos usados en la columna "Motivo" del CSV de salidas — si el nombre
-# de una condición cambia (p.ej. renombrados anteriores S3 -> S2), basta
-# con actualizarlo aquí.
+# de una condición cambia, basta con actualizarlo aquí.
 EXIT_REASON_S1_LABEL = "S1: RSC"
 # S2 refleja sp500_bajista() (condición de mercado bajista propia, ver
 # weinstein/indicators.py y docs/ESTRATEGIA.md sec. 4) — NO es el
-# complemento lógico de sp500_alcista(). El texto de la etiqueta se
-# mantiene igual por compatibilidad con CSVs/herramientas existentes.
-EXIT_REASON_S2_LABEL = "S2: Coppock SP500 no alcista"
+# complemento lógico de sp500_alcista().
+EXIT_REASON_S2_LABEL = "S2: Coppock SP500 bajista"
 EXIT_REASON_NONE     = "—"
+
+# ── Versión de la lógica del escáner ──────────────────────────────────
+# Se añade como columna en cada CSV exportado (entradas y salidas) para
+# poder distinguir programáticamente, sin ambigüedad, con qué versión de
+# la lógica se generó cada archivo histórico. Incrementar este valor
+# cada vez que cambie el significado/cálculo de alguna condición (F1-F5,
+# S1-S2), no solo su nombre de columna o etiqueta.
+#
+# Historial de versiones:
+#   v1 -> S2 calculada como "S3 Coppock Bajista" (esquema de columna antiguo)
+#   v2 -> S2 calculada como `not sp500_alcista(...)` (bug, columna ya
+#         renombrada a "S2 Coppock No Alcista")
+#   v3 -> S2 calculada como `sp500_bajista()` (condición propia, corregida);
+#         columna renombrada a "S2 Coppock Bajista"
+# Los CSVs generados antes de introducir esta constante no la incluyen;
+# para esos, consulta la fecha del archivo y el historial en README/
+# docs/ESTRATEGIA.md para saber a qué versión corresponden.
+SCANNER_LOGIC_VERSION = "v3"
 
 # ── Mapeo sector GICS → ETF sectorial SPDR ───────────────────────────
 SECTOR_TO_ETF: dict[str, str] = {

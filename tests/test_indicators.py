@@ -87,6 +87,39 @@ class TestRSCMansfield:
 
         assert not np.isinf(rsc.dropna()).any()
 
+    def test_desalineacion_pequena_no_lanza_error(self, capsys):
+        """
+        Diferencias de 1-2 fechas entre activo y benchmark (algo normal,
+        p.ej. festivos de mercado distintos) no deben lanzar excepción ni
+        generar el aviso de desalineación grande.
+        """
+        idx_asset = weekly_index(60)
+        idx_bench = weekly_index(59, start=str(idx_asset[1].date()))
+        asset = pd.Series(np.linspace(100, 150, 60), index=idx_asset)
+        bench = pd.Series(np.linspace(100, 110, 59), index=idx_bench)
+
+        rsc = rsc_mansfield(asset, bench, sma_period=10)
+        assert isinstance(rsc, pd.Series)
+
+        captured = capsys.readouterr()
+        assert "desalineación" not in captured.err
+
+    def test_desalineacion_grande_registra_aviso_en_stderr(self, capsys):
+        """
+        Bug 2.2: si el inner join descarta muchas filas (fechas muy
+        distintas entre activo y benchmark), debe quedar un aviso en
+        stderr en vez de fallar en silencio.
+        """
+        idx_asset = weekly_index(60, start="2020-01-06")
+        idx_bench = weekly_index(60, start="2021-06-06")  # solapamiento mínimo
+        asset = pd.Series(np.linspace(100, 150, 60), index=idx_asset)
+        bench = pd.Series(np.linspace(100, 110, 60), index=idx_bench)
+
+        rsc_mansfield(asset, bench, sma_period=10)
+
+        captured = capsys.readouterr()
+        assert "desalineación" in captured.err
+
 
 # ── vpm5 ─────────────────────────────────────────────────────────────
 

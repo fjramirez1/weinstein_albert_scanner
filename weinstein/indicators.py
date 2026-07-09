@@ -7,6 +7,8 @@ series o escalares. No dependen de configuración externa ni de I/O.
 
 from __future__ import annotations
 
+import sys
+
 import numpy as np
 import pandas as pd
 
@@ -59,8 +61,28 @@ def rsc_mansfield(
     extremadamente pequeños en penny stocks); se sustituye por NaN antes
     de dividir para evitar producir ``inf``/``-inf``, igual que ya se
     hacía en ``vpm5`` con la desviación estándar.
+
+    El alineado por fecha (``align(join="inner")``) descarta las fechas
+    que no coinciden exactamente entre ``price_asset`` y
+    ``price_benchmark`` (p.ej. festivos de mercado distintos o refrescos
+    parciales de caché en la fuente de datos). Normalmente la diferencia
+    es de 0-1 filas y es inofensiva, pero si es grande indica que algo
+    va mal en los datos de entrada, así que se registra un aviso en
+    stderr para poder detectarlo en vez de que pase inadvertido.
     """
     asset, bench = price_asset.align(price_benchmark, join="inner")
+
+    dropped_asset = len(price_asset) - len(asset)
+    dropped_bench = len(price_benchmark) - len(bench)
+    if max(dropped_asset, dropped_bench) > 2:
+        print(
+            f"  ⚠ rsc_mansfield: desalineación de fechas al hacer inner join "
+            f"(activo: {len(price_asset)} -> {len(asset)} filas, "
+            f"benchmark: {len(price_benchmark)} -> {len(bench)} filas). "
+            "Revisa si las fuentes de datos tienen fechas de cierre distintas.",
+            file=sys.stderr,
+        )
+
     relative = asset / bench
     sma = relative.rolling(window=sma_period).mean()
     sma_safe = sma.replace(0, np.nan)

@@ -20,40 +20,33 @@ Optimizaciones respecto a la versión original
    `max_workers` del propio ThreadPoolExecutor (cada tarea hace una única
    descarga), así que un `Semaphore` extra sería redundante.
 
-Corrección de S2 (importante)
-------------------------------
-Versiones anteriores calculaban S2 como ``not sp500_alcista(...)``, es
-decir, como el complemento lógico exacto del filtro de entrada F5. Esto
-NO coincide con la fuente original de la estrategia (vídeo de
-referencia — ver README), que define ``Sp500bajista`` como una condición
-**independiente**:
+S2: condición de mercado bajista propia
+-----------------------------------------
+``sp500_bajista()`` define la condición de salida de mercado tal como la
+describe la fuente original de la estrategia (vídeo de referencia — ver
+README):
 
   1. Cruce a negativo: Coppock pasa de positivo/cero a negativo.
   2. Confirmación de bajista: Coppock ya es negativo y sigue cayendo.
 
-Usar ``not sp500_alcista`` en su lugar provocaba salidas espurias en un
-tercer estado ("ni alcista ni bajista") que la fuente original no
-contempla como señal de salida — por ejemplo, cuando el Coppock está en
-negativo y subiendo, pero ese rebote ya no es el "primer" rebote exacto
-desde el mínimo reciente que exige ``sp500_alcista`` (ver
-``weinstein/indicators.py::sp500_alcista`` vs. ``sp500_bajista``). En la
-práctica esto obligaba a menudo a salir de una posición la semana
-siguiente a haber entrado, incluso con el mercado todavía mejorando.
-
-Ahora S2 usa ``sp500_bajista()``, fiel a la definición original. El
-estado neutro (ni alcista ni bajista) ya no fuerza salidas.
+Esto es una condición **independiente** de ``sp500_alcista()`` (F5), no su
+complemento lógico. Existe un tercer estado ("ni alcista ni bajista") en
+el que ninguna de las dos se activa — ver
+``weinstein/indicators.py::sp500_alcista`` vs. ``sp500_bajista`` para el
+detalle completo.
 
 Nota sobre el histórico
 ------------------------
-Los CSVs generados por versiones anteriores de este escáner (antes de
-`historial/salidas/posiciones_salidas_20260619_1342.csv`) usan la columna
-``S3 Coppock Bajista`` en lugar de ``S2 Coppock No Alcista``. Esa condición
-fue renombrada/simplificada; el código actual ya no distingue una "S3"
-independiente. Esos CSVs antiguos se conservan tal cual por motivos de
-historial y no reflejan el esquema de columnas actual. Los CSVs generados
-ANTES de esta corrección (donde S2 = not F5) tampoco reflejan la lógica
-actual de S2; solo los generados después de este cambio usan la
-definición fiel a la fuente original.
+Los CSVs generados por versiones anteriores de este escáner usan esquemas
+de columnas distintos al actual (columna ``S3 Coppock Bajista``, o una
+columna ``S2`` calculada como ``not sp500_alcista(...)`` en vez de
+``sp500_bajista()``). Desde esta versión, cada CSV exportado incluye la
+columna ``Versión Lógica`` (``SCANNER_LOGIC_VERSION`` en
+``weinstein/config.py``) para poder distinguir programáticamente con qué
+lógica se generó cada archivo, sin depender de inferir la versión por la
+fecha o el nombre de columna. Los CSVs antiguos, generados antes de
+introducir esta columna, no la incluyen; para esos, consulta la fecha del
+archivo y el historial en README/docs/ESTRATEGIA.md.
 """
 
 from __future__ import annotations
@@ -71,6 +64,7 @@ from weinstein.config import (
     EXIT_REASON_S2_LABEL,
     RSC_EXIT_THRESHOLD,
     RSC_SMA_PERIOD,
+    SCANNER_LOGIC_VERSION,
     SP500_INDEX,
 )
 from weinstein.data import download_weekly, load_positions
@@ -106,7 +100,7 @@ def _evaluate_exit(
         "Precio Actual"        : None,
         "RSC Mansfield"        : None,
         "S1 RSC < -0.5"        : None,
-        "S2 Coppock No Alcista": coppock_bearish,
+        "S2 Coppock Bajista"   : coppock_bearish,
         "SALIDA"               : False,
         "Motivo"               : EXIT_REASON_NONE,
         "Error"                : None,
@@ -262,11 +256,15 @@ def run_exit_scanner(csv_path: str) -> pd.DataFrame:
     df.drop(columns=["_sort"], inplace=True)
     df.reset_index(drop=True, inplace=True)
 
+    # Versión de la lógica del escáner, para poder distinguir sin
+    # ambigüedad, en histórico futuro, con qué cálculo se generó cada CSV.
+    df["Versión Lógica"] = SCANNER_LOGIC_VERSION
+
     cols_output = [
         c for c in [
             "Ticker", "Sector", "Precio Entrada", "Precio Actual",
             "Rentabilidad %", "RSC Mansfield", "S1 RSC < -0.5",
-            "S2 Coppock No Alcista", "SALIDA", "Motivo",
+            "S2 Coppock Bajista", "SALIDA", "Motivo", "Versión Lógica",
         ] if c in df.columns
     ]
 

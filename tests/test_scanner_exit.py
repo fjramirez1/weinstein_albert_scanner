@@ -7,17 +7,6 @@ así que se mockea la descarga para testear las condiciones OR de salida
 
 `_worker_exit` se testea aparte para cubrir el cálculo de Rentabilidad %,
 incluido el caso de `Precio_Entrada == 0` (bug 5).
-
-Nota sobre el parámetro `coppock_bearish`
-------------------------------------------
-Antes de la corrección de S2 (ver docstring en scanner_exit.py), este
-parámetro se llamaba `coppock_not_bull` y representaba `not
-sp500_alcista(...)`. Ahora representa `sp500_bajista(...)`, una condición
-propia fiel a la fuente original de la estrategia. A nivel de estos tests
-(que ya reciben el booleano directamente, sin calcularlo) el cambio es
-solo de nombre, pero es importante no confundirlo: `coppock_bearish=False`
-ya no significa "el mercado es alcista", significa "el mercado no está en
-fase bajista confirmada" (puede estar en el tercer estado neutro).
 """
 
 from __future__ import annotations
@@ -154,6 +143,15 @@ class TestEvaluateExit:
 
         precio_esperado = round(float(close.loc[close.index >= fecha_entrada].iloc[-1]), 2)
         assert resultado["Precio Actual"] == precio_esperado
+
+    def test_columna_s2_se_llama_coppock_bajista(self, sp500_close_base, fecha_entrada):
+        """El resultado usa el nombre de columna actual: 'S2 Coppock Bajista'."""
+        with patch.object(scanner_exit, "download_weekly", return_value=None):
+            resultado = scanner_exit._evaluate_exit(
+                "TST", fecha_entrada, sp500_close_base, coppock_bearish=True
+            )
+        assert "S2 Coppock Bajista" in resultado
+        assert resultado["S2 Coppock Bajista"] is True
 
 
 class TestWorkerExitRentabilidad:

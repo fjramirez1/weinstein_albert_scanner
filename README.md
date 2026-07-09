@@ -90,7 +90,7 @@ DOWNLOAD_MAX_RETRIES     = 3      # reintentos ante fallos puntuales de descarga
 DOWNLOAD_RETRY_BACKOFF_S = 1.5    # segundos de espera entre reintentos (con backoff lineal)
 ```
 
-Los textos de motivo de salida (`S1: RSC...`, `S2: Coppock SP500 no alcista`) también están
+Los textos de motivo de salida (`S1: RSC...`, `S2: Coppock SP500 bajista`) también están
 centralizados aquí (`EXIT_REASON_S1_LABEL`, `EXIT_REASON_S2_LABEL`, `EXIT_REASON_NONE`), así
 que si alguna vez cambian de nombre solo hay que tocarlos en un sitio.
 
@@ -124,20 +124,16 @@ Aplica 2 condiciones **OR** sobre las posiciones abiertas:
 > dos casos: (a) el Coppock cruza de positivo/cero a negativo, o (b) el Coppock ya es negativo y
 > sigue cayendo respecto a la semana anterior. Existe un **tercer estado neutro** (ni alcista ni
 > bajista) — por ejemplo, un rebote en negativo que aún no es el "primer" rebote que exige F5, o
-> un Coppock positivo pero ya decreciente — en el que ni F5 ni S2 se activan. Antes de esta
-> corrección, S2 se calculaba como `not sp500_alcista(...)`, lo que colapsaba ese estado neutro
-> dentro de "salida" y podía forzar el cierre de una posición la semana inmediatamente siguiente
-> a haber entrado, incluso con el mercado todavía en mejora. Ver `docs/ESTRATEGIA.md` sección 4
-> y el docstring de `weinstein/scanner_exit.py` para el detalle completo.
+> un Coppock positivo pero ya decreciente — en el que ni F5 ni S2 se activan, y por tanto no
+> fuerza salidas. Ver `docs/ESTRATEGIA.md` sección 4 y el docstring de `weinstein/scanner_exit.py`
+> para el detalle completo.
 
-> **Nota sobre `historial/salidas/`**: los CSVs con fecha anterior a
-> `posiciones_salidas_20260619_1342.csv` usan la columna `S3 Coppock Bajista` en vez de
-> `S2 Coppock No Alcista`. Corresponden a una versión anterior del escáner con un esquema
-> ligeramente distinto; se conservan sin modificar por motivos de historial. Además, los CSVs
-> generados **antes** de la corrección de S2 descrita arriba usaban `S2 = not sp500_alcista(...)`
-> en vez de `sp500_bajista()` propiamente dicha; tampoco reflejan la lógica actual, aunque su
-> esquema de columnas ya coincida. El código vigente solo genera `S1`/`S2` como se describe en
-> esta sección — ver `docs/ESTRATEGIA.md` sección 4 para más detalle.
+> **Nota sobre `historial/`**: los CSVs no reflejan todos la misma versión de la lógica de S2.
+> No hagas mucho caso a los CSVs de `historial/` como fuente para decisiones automáticas — pueden
+> corresponder a versiones anteriores del proyecto y se conservan solo por historial. Desde esta
+> versión, cada CSV exportado incluye una columna `Versión Lógica`
+> (`SCANNER_LOGIC_VERSION` en `config.py`) que identifica sin ambigüedad con qué lógica se generó
+> — ver `docs/ESTRATEGIA.md` sección 4 para el detalle de versiones anteriores a esta columna.
 
 ### Módulos del paquete
 

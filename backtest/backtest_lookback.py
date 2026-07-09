@@ -46,11 +46,19 @@ Uso
     python backtest_lookback.py
     python backtest_lookback.py --period 15y --lookbacks 2,3,4,6,8,12
     python backtest_lookback.py --horizons 4,8,12,26
+
+Nota de implementación
+-----------------------
+`wma()` y `coppock_curve()` se importan directamente de
+`weinstein/indicators.py` (no se duplican), para que este backtest use
+siempre exactamente el mismo cálculo que el escáner real, incluso si
+esas funciones cambian en el futuro.
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from dataclasses import dataclass, field
 
@@ -68,31 +76,21 @@ try:
 except ImportError:
     HAS_SCIPY = False
 
+# ── Reutilización real de las fórmulas del proyecto ────────────────────
+# Antes este módulo duplicaba literalmente wma() y coppock_curve() de
+# weinstein/indicators.py. Riesgo de esa duplicación: si el original
+# cambia (p.ej. se corrige un bug), el backtest queda silenciosamente
+# desincronizado y deja de medir lo que dice medir.
+#
+# Ahora se importan directamente desde weinstein.indicators. Se añade la
+# raíz del proyecto a sys.path (el script puede ejecutarse tanto desde
+# backtest/ como desde la raíz) para que `import weinstein` funcione sin
+# necesidad de instalar el paquete.
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
 
-# ── Reutilización exacta de las fórmulas del proyecto ─────────────────
-# (copiadas literalmente de weinstein/indicators.py para que el backtest
-#  use EXACTAMENTE los mismos cálculos que el escáner real, sin
-#  reimplementar con matices distintos que invalidarían la comparación)
-
-def wma(series: pd.Series, period: int) -> pd.Series:
-    weights = np.arange(1, period + 1, dtype=float)
-    w_sum = weights.sum()
-    return series.rolling(window=period).apply(
-        lambda x: np.dot(x, weights) / w_sum,
-        raw=True,
-    )
-
-
-def coppock_curve(
-    price: pd.Series,
-    roc_long: int = 12,
-    roc_short: int = 6,
-    wma_period: int = 10,
-) -> pd.Series:
-    roc_l = price.pct_change(periods=roc_long) * 100.0
-    roc_s = price.pct_change(periods=roc_short) * 100.0
-    combined = roc_l + roc_s
-    return wma(combined, wma_period)
+from weinstein.indicators import coppock_curve, wma  # noqa: E402  (después del sys.path fix)
 
 
 def sp500_alcista_at(

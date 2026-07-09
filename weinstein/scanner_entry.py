@@ -40,6 +40,7 @@ from weinstein.config import (
     MAX_CANDIDATES,
     MAX_DISTANCIA_WMA30,
     RSC_SMA_PERIOD,
+    SCANNER_LOGIC_VERSION,
     SECTOR_RSC_MIN,
     SECTOR_TO_ETF,
     SP500_INDEX,
@@ -331,6 +332,10 @@ def run_entry_scanner() -> pd.DataFrame:
         .head(MAX_CANDIDATES)
         .reset_index(drop=True)
     )
+
+    # Versión de la lógica del escáner, para poder distinguir sin
+    # ambigüedad, en histórico futuro, con qué cálculo se generó cada CSV.
+    df["Versión Lógica"] = SCANNER_LOGIC_VERSION
 
     print(f"\n  [TOP {MAX_CANDIDATES}] {len(df)} stocks con mayor Momentum Relativo")
     print("─" * 72)
