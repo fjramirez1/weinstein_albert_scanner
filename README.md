@@ -6,29 +6,29 @@ detección de candidatos de entrada y evaluación de salidas para posiciones abi
 ## Estructura del proyecto
 
 ```
-weinstein/                  ← paquete principal
+weinstein/                    ← paquete principal
 │   __init__.py
-│   __main__.py             ← CLI unificado (python -m weinstein)
-│   config.py                ← todos los parámetros en un único lugar
+│   __main__.py               ← CLI unificado (python -m weinstein)
+│   config.py                 ← todos los parámetros en un único lugar
 │   indicators.py             ← cálculos técnicos (WMA, RSC, VPM5, Coppock, MOM)
-│   data.py                  ← descarga de precios y carga de tickers S&P 500
+│   data.py                   ← descarga de precios y carga de tickers S&P 500
 │   scanner_entry.py          ← lógica del escáner de entrada
 │   scanner_exit.py           ← lógica del escáner de salida
 │   exporter.py               ← exportación CSV con historial
 │
-posiciones.csv               ← tus posiciones abiertas
+posiciones.csv                ← tus posiciones abiertas
 requirements.txt
-pytest.ini                   ← configuración de tests
+pytest.ini                    ← configuración de tests
 │
 scripts/
 │   run_entry.sh / run_entry.bat
 │   run_exit.sh  / run_exit.bat
 │
 historial/
-│   entradas/                ← CSVs generados por el escáner de entrada
-│   salidas/                 ← CSVs generados por el escáner de salida
+│   entradas/                 ← CSVs generados por el escáner de entrada
+│   salidas/                  ← CSVs generados por el escáner de salida
 │
-tests/                       ← suite de tests (pytest)
+tests/                        ← suite de tests (pytest)
 │   conftest.py               ← fixtures compartidas
 │   test_indicators.py        ← WMA, RSC Mansfield, VPM5, Coppock, MOM, filtro F5
 │   test_sp500_bajista.py     ← condición de mercado bajista (S2) y su relación con F5
@@ -40,7 +40,7 @@ docs/
     ESTRATEGIA.md             ← descripción técnica completa
 │
 backtest/
-    backtest_lookback.py       ← backtest de sensibilidad de COPPOCK_RECENT_LOOKBACK (F5)
+    backtest_lookback.py      ← backtest de sensibilidad de COPPOCK_RECENT_LOOKBACK (F5)
 ```
 
 ## Quickstart (3 pasos)
