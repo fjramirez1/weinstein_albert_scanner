@@ -32,6 +32,11 @@ from backtest.strategy_config import StrategyConfig
 N = 60
 
 
+def _first_true_idx(mask: pd.Series) -> int:
+    first_true = mask[mask].index[0]
+    return int(mask.index.get_loc(first_true))
+
+
 @pytest.fixture
 def sp500_alcista_estable():
     """
@@ -75,7 +80,7 @@ class TestSucesionEntradaSalidaMismaSemana:
 
     def test_ticker_con_mayor_momentum_entra_primero(self, sp500_alcista_estable):
         sp500_close, bullish, bearish = sp500_alcista_estable
-        f5_start = int((~bullish).sum())  # primer índice con F5 = True
+        f5_start = _first_true_idx(bullish)
 
         close_a = np.linspace(50, 100, N)
         rsc_a = np.full(N, 1.0)
@@ -97,7 +102,7 @@ class TestSucesionEntradaSalidaMismaSemana:
 
     def test_salida_y_entrada_en_la_misma_semana(self, sp500_alcista_estable):
         sp500_close, bullish, bearish = sp500_alcista_estable
-        f5_start = int((~bullish).sum())
+        f5_start = _first_true_idx(bullish)
 
         close_a = np.linspace(50, 100, N)
         rsc_a = np.full(N, 1.0)
@@ -126,7 +131,7 @@ class TestSucesionEntradaSalidaMismaSemana:
 
     def test_tamano_de_bbb_usa_valor_de_cartera_actualizado_tras_cierre_de_aaa(self, sp500_alcista_estable):
         sp500_close, bullish, bearish = sp500_alcista_estable
-        f5_start = int((~bullish).sum())
+        f5_start = _first_true_idx(bullish)
 
         close_a = np.linspace(50, 100, N)
         rsc_a = np.full(N, 1.0)
@@ -217,7 +222,7 @@ class TestMetricsResultado:
 
     def test_metrics_incluyen_todas_las_claves_esperadas(self, sp500_alcista_estable):
         sp500_close, bullish, bearish = sp500_alcista_estable
-        f5_start = int((~bullish).sum())
+        f5_start = _first_true_idx(bullish)
         close_a = np.linspace(50, 100, N)
         rsc_a = np.full(N, 1.0)
         rsc_a[f5_start + 10:] = -1.0
