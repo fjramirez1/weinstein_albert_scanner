@@ -184,3 +184,6 @@ __marimo__/
 
 # Ignore agent customization file
 AGENTS.md
+
+# Caché de datos del backtest de cartera (se regenera con yfinance)
+backtest/.cache/
