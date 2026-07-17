@@ -23,6 +23,9 @@ import argparse
 import os
 import sys
 import warnings
+from dotenv import load_dotenv
+
+load_dotenv()
 
 warnings.filterwarnings("ignore")
 

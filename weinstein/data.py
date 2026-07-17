@@ -3,13 +3,16 @@ Capa de acceso a datos de la estrategia Weinstein-Albert.
 
 Responsabilidades
 -----------------
-- Descargar datos OHLCV semanales desde yfinance.
+- Descargar datos OHLCV semanales desde yfinance (con fallback a Tiingo
+  para tickers delistados que Yahoo ya no sirve, ver
+  ``download_weekly_tiingo`` / ``_try_tiingo_fallback``).
 - Cargar la lista de constituyentes del S&P 500.
 - Cargar el CSV de posiciones abiertas.
 """
 
 from __future__ import annotations
 
+import os
 import sys
 import time
 from pathlib import Path
@@ -17,6 +20,9 @@ from pathlib import Path
 import pandas as pd
 import requests
 import yfinance as yf
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from weinstein.config import (
     DEFAULT_POSITIONS_CSV,
@@ -26,7 +32,207 @@ from weinstein.config import (
     MIN_BARS,
     SP500_CSV_URL,
     SP500_WIKIPEDIA_URL,
+    TIINGO_BASE_URL,
 )
+
+
+# ── Fallback Tiingo para tickers delistados ───────────────────────────
+#
+# yfinance (Yahoo Finance) deja de servir histórico de un ticker en
+# cuanto este se deslistó por completo del mercado (quiebra, fusión,
+# adquisición, exclusión de bolsa, o -- caso más reciente -- salida a
+# manos privadas como WBA en 2025). Esto NO es un fallo transitorio de
+# red: es una limitación permanente de la fuente para ese ticker en
+# concreto, y ningún número de reintentos de yfinance lo soluciona (ver
+# ``DOWNLOAD_MAX_RETRIES``/``DOWNLOAD_RETRY_BACKOFF_S``).
+#
+# Se probó primero Stooq como fallback (scraping de su endpoint CSV
+# público), pero Stooq bloquea activamente el acceso automatizado
+# (robots.txt lo prohíbe explícitamente, y el endpoint /q/d/l/ devuelve
+# 404 de forma poco fiable incluso para tickers que sí existen ahí --
+# ver historial de incidencias equivalente en pandas-datareader). Se
+# sustituyó por Tiingo (https://api.tiingo.com), que ofrece una REST API
+# real con autenticación por token, sin necesidad de scraping. Tiene un
+# tier gratuito (con límite de peticiones/hora) suficiente para tapar
+# huecos puntuales de un backtest, no para sustituir yfinance como
+# fuente principal.
+#
+# Requiere una API key gratuita de Tiingo, configurada en la variable de
+# entorno TIINGO_API_KEY (nunca hardcodeada en el repositorio). Si la
+# variable no está definida, el fallback se desactiva automáticamente
+# con un único aviso (no se repite por cada ticker) en vez de fallar
+# silenciosamente en cada intento.
+
+_tiingo_missing_key_warned = False
+
+
+def _tiingo_api_key() -> str | None:
+    """
+    Lee la API key de Tiingo desde la variable de entorno TIINGO_API_KEY.
+    ...
+    """
+    return os.environ.get("TIINGO_API_KEY")
+
+
+# Alias de tickers que cambiaron de símbolo sin deslistarse realmente
+# (la empresa sigue cotizando bajo el símbolo nuevo). Se prueba SOLO
+# como último recurso dentro del fallback Tiingo, cuando el símbolo
+# original no devuelve nada.
+_KNOWN_TICKER_RENAMES: dict[str, str] = {
+    "WLTW": "WTW",   # Willis Towers Watson, cambio de ticker 2022-01-10
+}
+
+
+def download_weekly_tiingo(
+    ticker: str,
+    period_years: int = 15,
+    min_bars: int = MIN_BARS,
+) -> pd.DataFrame | None:
+    """
+    Descarga histórico semanal desde Tiingo como fuente de RESPALDO,
+    pensada para usarse solo cuando ``yf.download`` ya falló (ver
+    ``download_weekly``). No reintenta con backoff como la descarga
+    primaria: un fallo aquí normalmente significa que el ticker tampoco
+    está disponible en Tiingo (o la API key no tiene acceso a él), no un
+    problema transitorio de red puntual.
+
+    ``period_years`` es una aproximación deliberadamente generosa del
+    periodo pedido a yfinance (que usa strings tipo "8y"): Tiingo pide
+    fechas concretas, así que se usa una ventana lo bastante amplia
+    hacia atrás y se deja que el llamador recorte lo que necesite, igual
+    que hace `download_weekly` con MIN_BARS después de la descarga.
+
+    Devuelve un DataFrame con columnas [Open, High, Low, Close, Volume]
+    (mismo esquema que ``download_weekly``, usando los precios YA
+    ajustados por splits/dividendos de Tiingo -- adjOpen/adjHigh/adjLow/
+    adjClose/adjVolume --, coherente con ``auto_adjust=True`` en la
+    descarga primaria de yfinance) o ``None`` si no hay datos
+    suficientes o falta la API key.
+    """
+    global _tiingo_missing_key_warned
+
+    api_key = _tiingo_api_key()
+    if not api_key:
+        if not _tiingo_missing_key_warned:
+            print(
+                "  ⚠ Fallback Tiingo desactivado: falta la variable de entorno "
+                "TIINGO_API_KEY (regístrate gratis en https://www.tiingo.com para "
+                "obtener una). Este aviso solo se muestra una vez.",
+                file=sys.stderr,
+            )
+            _tiingo_missing_key_warned = True
+        return None
+
+    symbol = ticker.strip().upper().replace("-", ".")  # Tiingo usa BRK.B, no BRK-B
+    start_date = (pd.Timestamp.today() - pd.DateOffset(years=period_years)).strftime("%Y-%m-%d")
+
+    url = f"{TIINGO_BASE_URL}/{symbol}/prices"
+    params = {
+        "startDate": start_date,
+        "format": "json",
+        "resampleFreq": "weekly",
+        "token": api_key,
+    }
+
+    try:
+        response = requests.get(url, params=params, timeout=20)
+    except Exception as exc:
+        print(f"  ⚠ [{ticker}] Tiingo: error de red: {exc}", file=sys.stderr)
+        return None
+
+    if response.status_code == 404:
+        # Ticker no reconocido por Tiingo -- puede ser un cambio de
+        # símbolo conocido (ver _KNOWN_TICKER_RENAMES) antes de darlo
+        # por perdido.
+        alias = _KNOWN_TICKER_RENAMES.get(ticker.strip().upper())
+        if alias:
+            print(f"  → [{ticker}] probando alias conocido de símbolo: {alias}", file=sys.stderr)
+            return download_weekly_tiingo(alias, period_years=period_years, min_bars=min_bars)
+        return None
+    if response.status_code == 401:
+        print(
+            f"  ✗ [{ticker}] Tiingo: token inválido o sin permisos (HTTP 401). "
+            "Revisa TIINGO_API_KEY.",
+            file=sys.stderr,
+        )
+        return None
+    if response.status_code == 429:
+        print(f"  ⚠ [{ticker}] Tiingo: límite de peticiones alcanzado (HTTP 429).", file=sys.stderr)
+        return None
+    try:
+        response.raise_for_status()
+    except Exception as exc:
+        print(f"  ⚠ [{ticker}] Tiingo: HTTP {response.status_code}: {exc}", file=sys.stderr)
+        return None
+
+    try:
+        payload = response.json()
+    except Exception as exc:
+        print(f"  ⚠ [{ticker}] Tiingo: respuesta no es JSON válido: {exc}", file=sys.stderr)
+        return None
+
+    if not payload:
+        alias = _KNOWN_TICKER_RENAMES.get(ticker.strip().upper())
+        if alias:
+            print(f"  → [{ticker}] probando alias conocido de símbolo: {alias}", file=sys.stderr)
+            return download_weekly_tiingo(alias, period_years=period_years, min_bars=min_bars)
+        return None
+
+    raw = pd.DataFrame(payload)
+    if raw.empty or "date" not in raw.columns:
+        return None
+
+    raw["date"] = pd.to_datetime(raw["date"], errors="coerce", utc=True).dt.tz_localize(None)
+    raw = raw.dropna(subset=["date"]).set_index("date").sort_index()
+
+    # Usar precios AJUSTADOS (adj*) para ser coherentes con
+    # auto_adjust=True de la descarga primaria de yfinance.
+    rename = {
+        "adjOpen": "Open", "adjHigh": "High", "adjLow": "Low",
+        "adjClose": "Close", "adjVolume": "Volume",
+    }
+    missing_adj = [c for c in rename if c not in raw.columns]
+    if missing_adj:
+        # Fallback dentro del fallback: si por lo que sea Tiingo no trae
+        # columnas ajustadas para este ticker, usar las brutas antes que
+        # descartar el dato por completo.
+        rename = {"open": "Open", "high": "High", "low": "Low", "close": "Close", "volume": "Volume"}
+
+    cols_presentes = [c for c in rename if c in raw.columns]
+    raw = raw[cols_presentes].rename(columns=rename)
+    raw.dropna(subset=["Close"], inplace=True)
+
+    if len(raw) >= min_bars:
+        print(f"  ✓ [{ticker}] recuperado vía Tiingo (fallback, {len(raw)} velas)")
+        return raw
+
+    # Histórico insuficiente con este símbolo -- probar alias conocido
+    # antes de rendirse (ver _KNOWN_TICKER_RENAMES).
+    alias = _KNOWN_TICKER_RENAMES.get(ticker.strip().upper())
+    if alias:
+        print(f"  → [{ticker}] probando alias conocido de símbolo: {alias}", file=sys.stderr)
+        return download_weekly_tiingo(alias, period_years=period_years, min_bars=min_bars)
+
+    return None
+
+
+def _try_tiingo_fallback(ticker: str) -> pd.DataFrame | None:
+    """
+    Punto único de entrada al fallback de Tiingo desde ``download_weekly``.
+
+    Aislado en su propia función para poder desactivarlo globalmente con
+    ``TIINGO_FALLBACK_ENABLED`` (weinstein/config.py) sin tocar la
+    lógica de reintentos de yfinance, y para que el log distinga
+    claramente "yfinance agotó reintentos, probando Tiingo" de un fallo
+    silencioso.
+    """
+    from weinstein.config import TIINGO_FALLBACK_ENABLED  # import local: mantiene el acoplamiento explícito y mínimo
+
+    if not TIINGO_FALLBACK_ENABLED:
+        return None
+
+    print(f"  → [{ticker}] yfinance sin datos, probando fallback Tiingo...", file=sys.stderr)
+    return download_weekly_tiingo(ticker)
 
 
 # ── Descarga OHLCV semanal ────────────────────────────────────────────
@@ -44,8 +250,18 @@ def download_weekly(
     peticiones concurrentes). Registra en stderr el motivo del fallo
     final para poder distinguir "sin datos" de "error de red".
 
+    Si yfinance agota todos los reintentos sin éxito (tanto por
+    excepción, por "sin datos devueltos" como por histórico
+    insuficiente), se intenta un único fallback a Tiingo
+    (``_try_tiingo_fallback``) antes de rendirse: esto cubre el caso --
+    frecuente en el backtest con universo histórico -- de tickers ya
+    delistados de Yahoo Finance (quiebras, fusiones, adquisiciones,
+    exclusiones de bolsa) que Tiingo sí puede tener archivados. Ver
+    docstring de la sección "Fallback Tiingo" más arriba.
+
     Retorna un DataFrame con columnas [Open, High, Low, Close, Volume]
-    o ``None`` si la descarga falla o el histórico es insuficiente.
+    o ``None`` si la descarga falla en ambas fuentes o el histórico es
+    insuficiente en ambas.
     """
     last_exc: Exception | None = None
 
@@ -68,7 +284,7 @@ def download_weekly(
                 f"  ✗ [{ticker}] descarga falló tras {max_retries} intentos: {exc}",
                 file=sys.stderr,
             )
-            return None
+            return _try_tiingo_fallback(ticker)
 
         if raw is None or raw.empty:
             # No es necesariamente un error de red: puede ser un ticker
@@ -78,7 +294,7 @@ def download_weekly(
                 time.sleep(DOWNLOAD_RETRY_BACKOFF_S * intento)
                 continue
             print(f"  ⚠ [{ticker}] sin datos devueltos por yfinance", file=sys.stderr)
-            return None
+            return _try_tiingo_fallback(ticker)
 
         # Normalizar MultiIndex que yfinance introduce en algunas versiones.
         if isinstance(raw.columns, pd.MultiIndex):
@@ -93,13 +309,13 @@ def download_weekly(
                 f"  ⚠ [{ticker}] histórico insuficiente ({len(raw)} < {MIN_BARS} velas)",
                 file=sys.stderr,
             )
-            return None
+            return _try_tiingo_fallback(ticker)
 
         return raw
 
     if last_exc is not None:
         print(f"  ✗ [{ticker}] error de descarga: {last_exc}", file=sys.stderr)
-    return None
+    return _try_tiingo_fallback(ticker)
 
 
 # ── Constituyentes del S&P 500 ────────────────────────────────────────

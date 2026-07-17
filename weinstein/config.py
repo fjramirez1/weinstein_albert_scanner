@@ -24,6 +24,22 @@ DOWNLOAD_PERIOD_ENTRY = "6y"
 DOWNLOAD_PERIOD_EXIT  = "5y"
 MIN_BARS              = 70       # mínimo de velas semanales requeridas
 
+# ── Fallback Tiingo (tickers delistados que yfinance ya no sirve) ─────
+# yfinance deja de servir histórico en cuanto un ticker se deslista por
+# completo (quiebra, fusión, adquisición, exclusión de bolsa...). Esto
+# NO se soluciona con más reintentos: es una ausencia permanente de la
+# fuente para ese ticker. Se probó Stooq como respaldo, pero bloquea el
+# acceso automatizado (robots.txt + 404 poco fiables, ver historial de
+# incidencias en weinstein/data.py). Tiingo (https://api.tiingo.com)
+# ofrece una REST API real con token, usada como respaldo de última
+# instancia en `weinstein/data.py::download_weekly` (nunca como fuente
+# primaria). Requiere la variable de entorno TIINGO_API_KEY (API key
+# gratuita, ver https://www.tiingo.com); si no está definida, el
+# fallback se desactiva solo con un aviso, sin fallar.
+# Desactivar poniendo esto a False si se prefiere no depender de Tiingo.
+TIINGO_FALLBACK_ENABLED = True
+TIINGO_BASE_URL = "https://api.tiingo.com/tiingo/daily"
+
 # Reintentos con backoff para descargas yfinance (robustez ante fallos
 # puntuales de red o rate-limiting).
 DOWNLOAD_MAX_RETRIES     = 3
