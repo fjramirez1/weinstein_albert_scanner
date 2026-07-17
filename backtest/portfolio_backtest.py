@@ -16,20 +16,33 @@ Es la herramienta pensada para responder "si hubiera operado esta
 estrategia de verdad, con este capital y estas reglas, ¿qué resultado
 habría tenido?" — y para poder variar reglas/parámetros y comparar.
 
-Sesgo de supervivencia (limitación conocida, documentada)
-------------------------------------------------------------
-El universo de tickers usado es el S&P 500 ACTUAL (constituyentes de
-hoy), no una reconstrucción histórica de qué empresas estaban en el
-índice cada semana del pasado. Esto introduce sesgo de supervivencia:
-empresas que quebraron, fueron adquiridas o salieron del índice durante
-el periodo simulado no aparecen, así que el universo está sesgado hacia
-"empresas que han ido bien" (sobrevivieron hasta hoy). Por eso se
-recomienda usar periodos NO demasiado largos (p.ej. 5-8 años) y tratar
-los resultados como orientativos, no como una réplica exacta de qué
-habría pasado invirtiendo en tiempo real. Este aviso se imprime también
-en la salida del backtest. Ver README para la hoja de ruta hacia un
-universo histórico reconstruido (con sus propias limitaciones de
-cobertura de datos en yfinance).
+Universo: constituyentes ACTUALES vs. HISTÓRICOS (parámetro `universe`)
+--------------------------------------------------------------------------
+Por defecto (`universe="current"`) el universo de tickers candidatos es
+el S&P 500 de HOY para todo el periodo simulado — esto introduce sesgo de
+supervivencia (ver sección siguiente). El modo `universe="historical"`
+usa `backtest/sp500_historical.py` para reconstruir, semana a semana, qué
+tickers pertenecían realmente al índice en cada fecha (a partir de la
+tabla de altas/bajas de Wikipedia), y solo permite ABRIR posiciones
+nuevas en tickers que estaban en el índice esa semana. Una posición ya
+abierta se sigue gestionando con normalidad aunque el ticker salga del
+índice mientras tanto (igual que en la vida real: no se te obliga a
+vender solo porque el índice reponderó).
+
+Sesgo de supervivencia — mitigado en modo "historical", NO eliminado
+------------------------------------------------------------------------
+Incluso reconstruyendo bien la membresía histórica, una parte de los
+tickers que estuvieron en el índice en el pasado (sobre todo empresas
+excluidas hace muchos años por quiebra, exclusión de bolsa o absorción
+total) ya no tienen datos de precio disponibles en yfinance, que solo
+cubre tickers que cotizan hoy o cotizaron hasta hace relativamente poco.
+Esos tickers se cuentan y reportan explícitamente
+(`tickers_historicos_sin_precio` en el resultado de `prepare_universe`),
+no se descartan en silencio. En modo `universe="current"` este problema
+es más severo (ni siquiera se INTENTA incluir esos tickers como
+candidatos). Se recomienda además no alargar demasiado el periodo de
+backtest (`--period`, por defecto `8y`) en cualquiera de los dos modos,
+para limitar el tramo de historia afectado.
 
 Rendimiento
 ------------
@@ -41,7 +54,11 @@ semana a semana solo hace lookups (`.iloc[i]`) sobre series ya
 calculadas, no recalcula indicadores — así que aunque el bucle en sí es
 Python puro (necesario porque hay estado compartido de cartera entre
 tickers), es rápido: la parte cara es la descarga de datos, que la
-caché elimina en ejecuciones repetidas.
+caché elimina en ejecuciones repetidas. El calendario de membresía
+histórica (modo `universe="historical"`) también se calcula una única
+vez, vectorizado sobre la tabla de cambios completa (ver
+`backtest/sp500_historical.py::build_membership_calendar`), no semana a
+semana dentro del bucle de simulación.
 """
 
 from __future__ import annotations
@@ -49,6 +66,7 @@ from __future__ import annotations
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
 
 import pandas as pd
 
@@ -67,12 +85,29 @@ from backtest.portfolio_engine import (
     evaluate_entry_mask,
     evaluate_exit_masks,
 )
+from backtest.sp500_historical import build_membership_calendar_cached, universe_union
 from backtest.strategy_config import StrategyConfig
 from weinstein.config import SECTOR_TO_ETF, SP500_INDEX
 from weinstein.data import load_sp500_tickers
 
 DEFAULT_BACKTEST_PERIOD = "8y"   # ventana recomendada para limitar el sesgo de supervivencia
 MAX_WORKERS = 20
+
+
+@dataclass
+class UniverseInfo:
+    """
+    Metadatos del universo preparado, además de los datos en sí.
+
+    `membership_calendar` es ``None`` en modo "current" (no aplica; el
+    universo es fijo en todas las fechas). `tickers_historicos_sin_precio`
+    solo se rellena en modo "historical": tickers que en algún momento
+    pertenecieron al índice pero no se pudo obtener su precio (sesgo de
+    supervivencia residual, ver docstring del módulo).
+    """
+    mode: str
+    membership_calendar: dict[pd.Timestamp, set[str]] | None = None
+    tickers_historicos_sin_precio: list[str] = field(default_factory=list)
 
 
 # ── Descarga + precálculo de contexto (una vez, se reutiliza entre configs) ──
@@ -117,40 +152,104 @@ def _build_context_worker(
         return None, "error"
 
 
+def _build_historical_universe_rows(
+    period: str,
+    sp500_close: pd.Series,
+) -> tuple[pd.DataFrame, dict[pd.Timestamp, set[str]], list[str]]:
+    """
+    Construye el calendario de membresía histórica y el DataFrame de
+    filas [Symbol, Name, Sector] a procesar: la UNIÓN de todos los
+    tickers que pertenecieron al índice en algún momento del periodo
+    simulado (superset de lo que hará falta semana a semana).
+
+    El sector de cada ticker se toma de los constituyentes ACTUALES
+    cuando están disponibles ahí; para tickers que ya no cotizan (y por
+    tanto no aparecen en la lista de hoy), el sector se marca "Unknown"
+    — esto solo afecta a F1 (RSC sector), que no podrá evaluarse para
+    esos tickers concretos si no se puede mapear un ETF sectorial, pero
+    no impide intentar descargar su precio ni evaluar el resto.
+    """
+    dates = list(sp500_close.index)
+    print("  → Reconstruyendo membresía histórica del S&P 500 (Wikipedia, con caché)...")
+    calendar = build_membership_calendar_cached(dates)
+    union = universe_union(calendar)
+    print(f"  ✓ {len(union)} tickers distintos pertenecieron al índice en algún momento del periodo")
+
+    current_df = load_sp500_tickers()
+    sector_map = dict(zip(current_df["Symbol"], current_df["Sector"]))
+    name_map = dict(zip(current_df["Symbol"], current_df["Name"]))
+
+    rows = pd.DataFrame({
+        "Symbol": sorted(union),
+    })
+    rows["Name"] = rows["Symbol"].map(name_map).fillna(rows["Symbol"])
+    rows["Sector"] = rows["Symbol"].map(sector_map).fillna("Unknown")
+
+    return rows, calendar, []
+
+
 def prepare_universe(
     period: str = DEFAULT_BACKTEST_PERIOD,
     tickers: list[str] | None = None,
     max_tickers: int | None = None,
-) -> tuple[pd.Series, pd.Series, pd.Series, dict[str, TickerContext]]:
+    universe: str = "current",
+) -> tuple[pd.Series, pd.Series, pd.Series, dict[str, TickerContext], UniverseInfo]:
     """
     Descarga (con caché) y precalcula TODO lo necesario para simular:
-    el S&P 500, las series de mercado F5/S2 precalculadas, y el
-    `TickerContext` de cada ticker del universo.
+    el S&P 500, las series de mercado F5/S2 precalculadas, el
+    `TickerContext` de cada ticker del universo, y metadatos del
+    universo usado (`UniverseInfo`).
 
     Esta preparación es independiente de la `StrategyConfig`: se hace
     una sola vez y se reutiliza para lanzar varias configuraciones
     distintas sobre los MISMOS datos (ver `sweep.py`), evitando
     recalcular indicadores por cada configuración probada.
 
+    Parameters
+    ----------
+    universe : "current" (por defecto) usa los constituyentes ACTUALES
+        del S&P 500 para todo el periodo (sesgo de supervivencia
+        conocido, ver README). "historical" reconstruye la membresía
+        semana a semana a partir de la tabla de cambios de Wikipedia
+        (ver `backtest/sp500_historical.py`) y descarga la UNIÓN de
+        todos los tickers que pertenecieron al índice en algún momento
+        del periodo — el motor de simulación filtra por membresía real
+        semana a semana en `run_portfolio_backtest`.
+
     Returns
     -------
-    (sp500_close, coppock_bullish, coppock_bearish, {ticker: TickerContext})
+    (sp500_close, coppock_bullish, coppock_bearish, {ticker: TickerContext}, UniverseInfo)
     """
-    print("\n[1/4] Cargando universo de tickers (S&P 500 actual)...")
-    if tickers:
-        sp500_df = pd.DataFrame({"Symbol": tickers, "Name": tickers, "Sector": "Unknown"})
-    else:
-        sp500_df = load_sp500_tickers()
-    if max_tickers:
-        sp500_df = sp500_df.head(max_tickers)
-    print(f"  ✓ {len(sp500_df)} tickers a procesar")
+    if universe not in ("current", "historical"):
+        raise ValueError(f"universe debe ser 'current' o 'historical', recibido: '{universe}'")
 
-    print("\n[2/4] Descargando/cacheando S&P 500 (benchmark)...")
+    print("\n[1/4] Descargando/cacheando S&P 500 (benchmark)...")
     sp500_data = get_cached_weekly(SP500_INDEX, period)
     if sp500_data is None:
         print("  ✗ ERROR CRÍTICO: no se pudo obtener el S&P 500. Abortando.")
         sys.exit(1)
     sp500_close = sp500_data["Close"].squeeze()
+
+    print("\n[2/4] Cargando universo de tickers...")
+    membership_calendar: dict[pd.Timestamp, set[str]] | None = None
+
+    if tickers:
+        sp500_df = pd.DataFrame({"Symbol": tickers, "Name": tickers, "Sector": "Unknown"})
+        if universe == "historical":
+            print("  ⚠ universe='historical' se ignora cuando se pasa una lista explícita de --tickers.")
+    elif universe == "historical":
+        sp500_df, membership_calendar, _ = _build_historical_universe_rows(period, sp500_close)
+    else:
+        sp500_df = load_sp500_tickers()
+
+    if max_tickers:
+        sp500_df = sp500_df.head(max_tickers)
+        if membership_calendar is not None:
+            kept = set(sp500_df["Symbol"])
+            membership_calendar = {
+                fecha: (tks & kept) for fecha, tks in membership_calendar.items()
+            }
+    print(f"  ✓ {len(sp500_df)} tickers a procesar")
 
     print("\n[3/4] Precalculando condición de mercado (F5/S2) semana a semana...")
     coppock_bullish, coppock_bearish = precompute_market_series(sp500_close)
@@ -161,6 +260,7 @@ def prepare_universe(
 
     contexts: dict[str, TickerContext] = {}
     n_sin_datos = 0
+    tickers_sin_precio: list[str] = []
     rows = [row for _, row in sp500_df.iterrows()]
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
@@ -170,17 +270,35 @@ def prepare_universe(
         }
         done = 0
         for fut in as_completed(futures):
+            ticker = futures[fut]
             ctx, estado = fut.result()
             done += 1
             if estado == "ok":
                 contexts[ctx.ticker] = ctx
             else:
                 n_sin_datos += 1
+                tickers_sin_precio.append(ticker)
             if done % 100 == 0:
                 print(f"  … {done}/{len(rows)} procesados | contexto OK: {len(contexts)}")
 
     print(f"  ✓ {len(contexts)} tickers con contexto listo | {n_sin_datos} sin datos suficientes")
-    return sp500_close, coppock_bullish, coppock_bearish, contexts
+
+    info = UniverseInfo(
+        mode=universe if not tickers else "current",
+        membership_calendar=membership_calendar,
+        tickers_historicos_sin_precio=(
+            sorted(tickers_sin_precio) if universe == "historical" and not tickers else []
+        ),
+    )
+
+    if info.tickers_historicos_sin_precio:
+        print(
+            f"  ⚠ {len(info.tickers_historicos_sin_precio)} tickers pertenecieron al índice "
+            "históricamente pero no tienen datos de precio disponibles en yfinance "
+            "(sesgo de supervivencia PARCIAL, no eliminado — ver docstring de portfolio_backtest.py)."
+        )
+
+    return sp500_close, coppock_bullish, coppock_bearish, contexts, info
 
 
 # ── Simulación de cartera para UNA configuración ────────────────────────
@@ -191,6 +309,7 @@ def run_portfolio_backtest(
     coppock_bullish: pd.Series,
     coppock_bearish: pd.Series,
     contexts: dict[str, TickerContext],
+    universe_info: UniverseInfo | None = None,
     verbose: bool = True,
 ) -> PortfolioBacktestResult:
     """
@@ -203,9 +322,18 @@ def run_portfolio_backtest(
       1. Evaluar y cerrar salidas de posiciones abiertas.
       2. Evaluar candidatos de entrada, rankear, abrir hasta llenar huecos.
       3. Registrar punto de la curva de equity.
+
+    Filtro de membresía histórica (si `universe_info.membership_calendar`
+    está presente): en el paso 2, un ticker solo se considera candidato
+    de ENTRADA esa semana si pertenecía al S&P 500 en esa fecha según el
+    calendario reconstruido. No afecta al paso 1: una posición ya
+    abierta se gestiona con normalidad aunque el ticker haya salido del
+    índice mientras tanto.
     """
     t0 = time.time()
     extra = {"coppock_bullish": coppock_bullish, "coppock_bearish": coppock_bearish}
+
+    membership_calendar = universe_info.membership_calendar if universe_info else None
 
     # Precalcular máscaras de entrada/salida para cada ticker una vez
     # (vectorizado), y no en cada iteración semanal.
@@ -272,11 +400,18 @@ def run_portfolio_backtest(
         # ── Paso 2: evaluar entradas y llenar huecos libres ─────────────
         huecos_libres = config.max_positions - len(open_positions)
         if huecos_libres > 0:
+            tickers_vigentes = membership_calendar.get(fecha) if membership_calendar is not None else None
+
             candidatos: list[tuple[str, float]] = []  # (ticker, score)
             for ticker, ctx in contexts.items():
                 if ticker in open_positions:
                     continue
                 if fecha not in ctx.close.index:
+                    continue
+                # Filtro de membresía histórica: solo se puede ABRIR una
+                # posición nueva en un ticker que pertenecía al índice
+                # esa semana. No aplica a posiciones ya abiertas (paso 1).
+                if tickers_vigentes is not None and ticker not in tickers_vigentes:
                     continue
                 mask = entry_masks.get(ticker)
                 if mask is None or fecha not in mask.index:
@@ -353,7 +488,7 @@ def run_portfolio_backtest(
     return result
 
 
-def print_report(result: PortfolioBacktestResult) -> None:
+def print_report(result: PortfolioBacktestResult, universe_info: UniverseInfo | None = None) -> None:
     """Imprime un resumen legible de los resultados por consola."""
     m = result.metrics()
     cfg = result.config
@@ -381,6 +516,16 @@ def print_report(result: PortfolioBacktestResult) -> None:
     print(f"  Semanas medias en posición   : {m['semanas_medias_en_pos']}")
     print(f"  % semanas con capital invertido: {m['pct_semanas_invertido']}%")
     print("═" * 72)
-    print("  ⚠ Universo = S&P 500 ACTUAL (sesgo de supervivencia). Ver docstring")
-    print("    de portfolio_backtest.py para más detalle sobre esta limitación.")
+
+    if universe_info is not None and universe_info.mode == "historical":
+        print("  ✓ Universo = S&P 500 HISTÓRICO reconstruido (altas/bajas reales por fecha).")
+        if universe_info.tickers_historicos_sin_precio:
+            n = len(universe_info.tickers_historicos_sin_precio)
+            print(f"  ⚠ Sesgo de supervivencia PARCIAL: {n} tickers que pertenecieron al índice")
+            print("    no tienen datos de precio en yfinance y no pudieron evaluarse (ver docstring")
+            print("    de portfolio_backtest.py). El sesgo se reduce respecto a universe='current',")
+            print("    NO se elimina.")
+    else:
+        print("  ⚠ Universo = S&P 500 ACTUAL (sesgo de supervivencia). Usa --universe historical")
+        print("    para mitigarlo (ver docstring de portfolio_backtest.py para el detalle).")
     print("═" * 72)

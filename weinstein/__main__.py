@@ -10,6 +10,7 @@ Uso
     python -m weinstein backtest --period 8y --max-tickers 50 --export out.csv
     python -m weinstein portfolio-backtest
     python -m weinstein portfolio-backtest --period 6y --max-positions 8
+    python -m weinstein portfolio-backtest --universe historical
     python -m weinstein portfolio-backtest --sweep-demo
 
 Ejecutar desde la raíz del proyecto (donde está posiciones.csv).
@@ -90,17 +91,21 @@ def _cmd_portfolio_backtest(args: argparse.Namespace) -> None:
             period=args.period,
             tickers=tickers,
             max_tickers=args.max_tickers,
+            universe=args.universe,
         )
         return
 
     config = _build_config_from_args(args)
     print(f"\n  Configuración: {config.describe()}")
 
-    sp500_close, coppock_bullish, coppock_bearish, contexts = prepare_universe(
-        period=args.period, tickers=tickers, max_tickers=args.max_tickers,
+    sp500_close, coppock_bullish, coppock_bearish, contexts, universe_info = prepare_universe(
+        period=args.period, tickers=tickers, max_tickers=args.max_tickers, universe=args.universe,
     )
-    result = run_portfolio_backtest(config, sp500_close, coppock_bullish, coppock_bearish, contexts)
-    print_report(result)
+    result = run_portfolio_backtest(
+        config, sp500_close, coppock_bullish, coppock_bearish, contexts,
+        universe_info=universe_info,
+    )
+    print_report(result, universe_info=universe_info)
 
     if args.export:
         df = result.to_trades_dataframe()
@@ -197,6 +202,9 @@ def main() -> None:
     pbt_parser.add_argument("--export", default=None, metavar="CSV", help="Ruta donde exportar el detalle de operaciones")
     pbt_parser.add_argument("--sweep-demo", action="store_true", help="Compara un set de configuraciones de ejemplo")
     pbt_parser.add_argument("--clear-cache", action="store_true", help="Vacía la caché de datos en disco antes de ejecutar")
+    pbt_parser.add_argument("--universe", default="current", choices=["current", "historical"],
+                             help="'current' (default) o 'historical' (reconstruye altas/bajas reales del "
+                                  "índice para mitigar el sesgo de supervivencia, ver backtest/sp500_historical.py)")
 
     args = parser.parse_args()
 

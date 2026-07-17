@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 
 import pandas as pd
+import requests
 import yfinance as yf
 
 from weinstein.config import (
@@ -24,6 +25,7 @@ from weinstein.config import (
     DOWNLOAD_RETRY_BACKOFF_S,
     MIN_BARS,
     SP500_CSV_URL,
+    SP500_WIKIPEDIA_URL,
 )
 
 
@@ -103,13 +105,21 @@ def download_weekly(
 # ── Constituyentes del S&P 500 ────────────────────────────────────────
 
 def _sp500_from_wikipedia() -> pd.DataFrame:
-    """Fuente de respaldo: tabla HTML de Wikipedia."""
+    """
+    Fuente de respaldo: tabla HTML de Wikipedia.
+
+    No se pasa la URL directamente a ``pd.read_html`` porque descarga vía
+    ``urllib`` sin cabeceras, y Wikipedia devuelve 403 Forbidden a
+    peticiones sin ``User-Agent`` identificable. Se descarga el HTML con
+    ``requests`` (con User-Agent explícito) y se le pasa el contenido ya
+    en memoria a ``pd.read_html``.
+    """
     print("  → Fallback: leyendo desde Wikipedia...")
     try:
-        tables = pd.read_html(
-            "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
-            attrs={"id": "constituents"},
-        )
+        headers = {"User-Agent": "weinstein-albert-scanner/1.0 python-requests"}
+        response = requests.get(SP500_WIKIPEDIA_URL, headers=headers, timeout=30)
+        response.raise_for_status()
+        tables = pd.read_html(response.text, attrs={"id": "constituents"})
         df = tables[0].copy()
         df = df.rename(columns={"Security": "Name", "GICS Sector": "Sector"})
         df["Symbol"] = df["Symbol"].astype(str).str.replace(".", "-", regex=False)

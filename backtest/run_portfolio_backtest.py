@@ -14,6 +14,11 @@ Uso
     # Cambiar el criterio de desempate:
     python backtest/run_portfolio_backtest.py --ranking rsc_activo
 
+    # Usar el universo HISTÓRICO reconstruido (altas/bajas reales del
+    # índice) en vez del S&P 500 actual, para mitigar el sesgo de
+    # supervivencia (ver docstring de backtest/sp500_historical.py):
+    python backtest/run_portfolio_backtest.py --universe historical
+
     # Sweep: comparar varias configuraciones predefinidas de ejemplo:
     python backtest/run_portfolio_backtest.py --sweep-demo
 
@@ -26,6 +31,7 @@ Uso
 Uso como módulo del paquete
 ------------------------------
     python -m weinstein portfolio-backtest --period 8y --max-positions 10
+    python -m weinstein portfolio-backtest --universe historical
 """
 
 from __future__ import annotations
@@ -124,6 +130,10 @@ def main() -> None:
     parser.add_argument("--export", default=None, metavar="CSV", help="Ruta donde exportar el detalle de operaciones")
     parser.add_argument("--sweep-demo", action="store_true", help="Ignora el resto de flags de condiciones y compara un set de configuraciones de ejemplo")
     parser.add_argument("--clear-cache", action="store_true", help="Vacía la caché de datos en disco antes de ejecutar")
+    parser.add_argument("--universe", default="current", choices=["current", "historical"],
+                         help="'current' (default): constituyentes ACTUALES del S&P 500 para todo el periodo "
+                              "(sesgo de supervivencia). 'historical': reconstruye altas/bajas reales por fecha "
+                              "desde Wikipedia (mitiga el sesgo, no lo elimina — ver backtest/sp500_historical.py)")
     args = parser.parse_args()
 
     if args.clear_cache:
@@ -141,18 +151,22 @@ def main() -> None:
             period=args.period,
             tickers=tickers,
             max_tickers=args.max_tickers,
+            universe=args.universe,
         )
         return
 
     config = _build_config_from_args(args)
     print(f"\n  Configuración: {config.describe()}")
 
-    sp500_close, coppock_bullish, coppock_bearish, contexts = prepare_universe(
-        period=args.period, tickers=tickers, max_tickers=args.max_tickers,
+    sp500_close, coppock_bullish, coppock_bearish, contexts, universe_info = prepare_universe(
+        period=args.period, tickers=tickers, max_tickers=args.max_tickers, universe=args.universe,
     )
 
-    result = run_portfolio_backtest(config, sp500_close, coppock_bullish, coppock_bearish, contexts)
-    print_report(result)
+    result = run_portfolio_backtest(
+        config, sp500_close, coppock_bullish, coppock_bearish, contexts,
+        universe_info=universe_info,
+    )
+    print_report(result, universe_info=universe_info)
 
     if args.export:
         df = result.to_trades_dataframe()

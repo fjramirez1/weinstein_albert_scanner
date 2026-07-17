@@ -20,20 +20,25 @@ def run_sweep(
     period: str = "8y",
     tickers: list[str] | None = None,
     max_tickers: int | None = None,
+    universe: str = "current",
 ) -> pd.DataFrame:
     """
     Ejecuta el backtest de cartera para cada config en `configs`, sobre
     el mismo universo preparado una única vez, y devuelve una tabla
     comparativa (una fila por configuración) ordenada por rentabilidad
     total descendente.
+
+    Parameters
+    ----------
+    universe : "current" o "historical", ver `prepare_universe`.
     """
     if not configs:
         raise ValueError("run_sweep necesita al menos una StrategyConfig")
 
     print(f"\n{'═' * 72}\n  SWEEP DE {len(configs)} CONFIGURACIONES\n{'═' * 72}")
 
-    sp500_close, coppock_bullish, coppock_bearish, contexts = prepare_universe(
-        period=period, tickers=tickers, max_tickers=max_tickers,
+    sp500_close, coppock_bullish, coppock_bearish, contexts, universe_info = prepare_universe(
+        period=period, tickers=tickers, max_tickers=max_tickers, universe=universe,
     )
 
     filas = []
@@ -41,6 +46,7 @@ def run_sweep(
         print(f"\n[{i}/{len(configs)}] Simulando: {config.describe()}")
         result = run_portfolio_backtest(
             config, sp500_close, coppock_bullish, coppock_bearish, contexts,
+            universe_info=universe_info,
         )
         m = result.metrics()
         filas.append({
@@ -62,7 +68,10 @@ def run_sweep(
     print(f"\n{'═' * 72}\n  TABLA COMPARATIVA\n{'═' * 72}")
     print(df.to_string(index=True))
     print("═" * 72)
-    print("  ⚠ Universo = S&P 500 ACTUAL (sesgo de supervivencia).")
+    if universe_info.mode == "historical":
+        print("  ✓ Universo = S&P 500 HISTÓRICO reconstruido (ver detalle arriba por configuración).")
+    else:
+        print("  ⚠ Universo = S&P 500 ACTUAL (sesgo de supervivencia). Usa universe='historical' para mitigarlo.")
     print("═" * 72)
 
     return df

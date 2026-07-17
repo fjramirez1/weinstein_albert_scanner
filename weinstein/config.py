@@ -14,6 +14,11 @@ SP500_CSV_URL = (
     "/master/data/constituents.csv"
 )
 
+# URL de la página de Wikipedia usada tanto para el fallback de
+# constituyentes actuales (weinstein/data.py) como para la tabla de
+# cambios históricos (backtest/sp500_historical.py).
+SP500_WIKIPEDIA_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+
 # ── Descarga de datos ─────────────────────────────────────────────────
 DOWNLOAD_PERIOD_ENTRY = "6y"
 DOWNLOAD_PERIOD_EXIT  = "5y"
