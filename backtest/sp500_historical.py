@@ -59,14 +59,42 @@ nombre de columnas varias veces a lo largo de los años (p.ej. "Date" vs
 "Effective Date", "Ticker" vs "Added Ticker") y puede tener filas con
 huecos (una entrada de "Added" sin "Removed" correspondiente, o
 viceversa, es NORMAL — no todo cambio es un reemplazo 1:1). El parser:
-  - normaliza columnas por patrón (contiene "date" / "added" / "removed"),
-    igual que `weinstein/data.py::load_sp500_tickers()` hace con la tabla
-    de constituyentes actuales;
   - trata cada fila de forma independiente: una fila puede aportar solo
     una alta, solo una baja, o ambas;
   - descarta y cuenta (sin abortar) filas sin fecha parseable, y avisa en
     stderr si el número de filas descartadas es alto, para poder detectar
     un cambio de formato en la tabla en vez de que falle en silencio.
+
+Parsing manual con BeautifulSoup (fix — ver historial de incidencias)
+------------------------------------------------------------------------
+Este módulo NO usa ``pandas.read_html`` para la tabla de cambios. Dos
+problemas encontrados en la práctica lo descartaron:
+
+1. Wikipedia sirve esta página renderizada con **Parsoid**
+   (``useParsoid=1``), cuyo HTML anida mucho más marcado (``<div>``,
+   ``<section>``, navboxes, etc.) que el HTML "clásico" de MediaWiki.
+   Pasar el documento COMPLETO a
+   ``pd.read_html(html, attrs={"id": "changes"})`` no aísla de forma
+   fiable los límites del nodo: en la práctica devolvía contenido
+   mezclado con otras zonas de la página (el navbox de constituyentes
+   por sector, más abajo en el documento).
+
+2. Aislar primero el nodo exacto ``<table id="changes">`` con
+   BeautifulSoup y pasar SOLO ese fragmento a ``pd.read_html`` tampoco
+   funciona: ``pd.read_html`` interpreta el string de entrada con una
+   heurística que, para fragmentos HTML largos, puede tratarlo como una
+   posible RUTA DE ARCHIVO en vez de HTML en memoria, y lanza
+   ``FileNotFoundError`` (el propio fragmento HTML aparece, de forma
+   confusa, como parte del mensaje de la excepción).
+
+Ambos problemas se evitan recorriendo el árbol DOM que ya construye
+BeautifulSoup directamente (``<tr>`` -> ``<td>``/``<th>``), sin volver a
+pasar por ``pd.read_html`` en ningún momento. Esto además da control
+explícito sobre el layout real de la tabla (dos filas de cabecera,
+"Effective Date" / "Added" / "Removed" / "Reason", con sub-cabeceras
+"Ticker"/"Security"), en vez de depender de que pandas infiera
+correctamente un `MultiIndex` de columnas a partir de celdas con
+``colspan``/``rowspan``.
 """
 
 from __future__ import annotations
@@ -76,6 +104,7 @@ from pathlib import Path
 
 import pandas as pd
 import requests
+from bs4 import BeautifulSoup
 
 from weinstein.config import SP500_WIKIPEDIA_URL
 from weinstein.data import load_sp500_tickers
@@ -100,54 +129,30 @@ def _normalize_ticker(raw: str) -> str | None:
     return val.replace(".", "-")
 
 
-def _rename_changes_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Normaliza el esquema de columnas de la tabla de cambios por PATRÓN,
-    no por nombre exacto, porque Wikipedia lo ha renombrado varias veces
-    ("Date" -> "Effective Date", "Ticker" -> "Added Ticker", etc.).
-
-    La tabla puede venir con MultiIndex de columnas (cabeceras agrupadas
-    "Added" / "Removed" con subcolumnas "Ticker"/"Security"); se aplana
-    primero para que el patrón por substring funcione igual en ambos casos.
-    """
-    if isinstance(df.columns, pd.MultiIndex):
-        flat = []
-        for tup in df.columns:
-            parts = [str(p) for p in tup if p and "Unnamed" not in str(p)]
-            flat.append(" ".join(parts).strip())
-        df = df.copy()
-        df.columns = flat
-    else:
-        df = df.copy()
-        df.columns = [str(c).strip() for c in df.columns]
-
-    rename: dict[str, str] = {}
-    for col in df.columns:
-        low = col.lower()
-        if "date" in low:
-            rename[col] = "Date"
-        elif "added" in low and "ticker" in low:
-            rename[col] = "Added_Ticker"
-        elif "removed" in low and "ticker" in low:
-            rename[col] = "Removed_Ticker"
-        elif low.strip() == "ticker":
-            # Esquemas antiguos sin agrupar "Added"/"Removed": se resuelve
-            # por posición más abajo si hace falta; aquí solo se marca.
-            rename.setdefault(col, col)
-    df = df.rename(columns=rename)
-    return df
-
-
 def _fetch_changes_table_raw() -> pd.DataFrame:
     """
-    Descarga la tabla de cambios cruda desde Wikipedia (sin caché).
+    Descarga la tabla de cambios cruda desde Wikipedia (sin caché) y la
+    parsea manualmente con BeautifulSoup (ver docstring del módulo para
+    por qué NO se usa ``pandas.read_html`` aquí).
 
-    IMPORTANTE: no se le pasa la URL directamente a ``pd.read_html`` — lo
-    hace vía ``urllib`` sin cabeceras, y Wikipedia devuelve 403 Forbidden
-    a peticiones sin ``User-Agent`` identificable (las trata como bot no
-    identificado). Se descarga el HTML con ``requests`` (con un
-    User-Agent explícito) y se le pasa el contenido ya en memoria a
-    ``pd.read_html``, evitando ese bloqueo.
+    IMPORTANTE sobre la descarga: no se le pasa la URL directamente a
+    ningún parser HTTP-aware de pandas — se descarga con ``requests``
+    (con un ``User-Agent`` explícito, ya que Wikipedia devuelve 403
+    Forbidden a peticiones sin uno identificable) y se parsea el HTML ya
+    en memoria.
+
+    Layout real de la tabla (dos filas de cabecera, verificado contra el
+    HTML real de la página):
+        Fila 0: Effective Date | Added (colspan 2) | Removed (colspan 2) | Reason
+        Fila 1:                | Ticker | Security  | Ticker | Security  |
+        Fila 2+: datos, en el mismo orden de 6 columnas:
+            [Date, Added_Ticker, Added_Security, Removed_Ticker, Removed_Security, Reason]
+
+    Se construye directamente un DataFrame con las columnas ya en el
+    esquema esperado por ``_parse_changes_table``. Si el número de
+    columnas de una fila no coincide con 6 (celda vacía por
+    ``colspan``/fila corta, formato inesperado), la fila se descarta y
+    se cuenta — igual que las filas sin fecha parseable más adelante.
     """
     headers = {
         "User-Agent": (
@@ -159,23 +164,77 @@ def _fetch_changes_table_raw() -> pd.DataFrame:
     response = requests.get(SP500_WIKIPEDIA_URL, headers=headers, timeout=30)
     response.raise_for_status()
 
-    tables = pd.read_html(response.text, attrs={"id": "changes"})
-    if not tables:
-        raise ValueError("No se encontró la tabla 'changes' en la página de Wikipedia")
-    return tables[0]
+    soup = BeautifulSoup(response.text, "lxml")
+    table = soup.find("table", id="changes")
+    if table is None:
+        raise ValueError("No se encontró el nodo <table id=\"changes\"> en la página de Wikipedia")
+
+    body = table.find("tbody") or table
+    all_rows = body.find_all("tr", recursive=False)
+
+    # Las filas de cabecera contienen <th>; las de datos, solo <td>. Se
+    # detectan por contenido, no por posición fija, por si Wikipedia
+    # añade/quita alguna fila de cabecera en el futuro.
+    data_rows = [tr for tr in all_rows if not tr.find("th")]
+
+    records = []
+    n_descartadas_por_columnas = 0
+    for tr in data_rows:
+        cells = tr.find_all("td", recursive=False)
+        texts = [c.get_text(strip=True) for c in cells]
+        if len(texts) != 6:
+            n_descartadas_por_columnas += 1
+            continue
+        records.append({
+            "Date": texts[0],
+            "Added_Ticker": texts[1],
+            "Added_Security": texts[2],
+            "Removed_Ticker": texts[3],
+            "Removed_Security": texts[4],
+            "Reason": texts[5],
+        })
+
+    if n_descartadas_por_columnas > 0:
+        print(
+            f"  ⚠ sp500_historical: {n_descartadas_por_columnas} filas de la tabla "
+            "de cambios descartadas por no tener el nº de columnas esperado (6). "
+            "Puede indicar un cambio de formato en la tabla de Wikipedia.",
+            file=sys.stderr,
+        )
+
+    return pd.DataFrame.from_records(records)
 
 
 def _parse_changes_table(raw: pd.DataFrame) -> pd.DataFrame:
     """
-    Convierte la tabla cruda de Wikipedia en un DataFrame limpio con
-    columnas [Date, Added_Ticker, Removed_Ticker] (cualquiera de los dos
-    últimos puede ser None en una fila dada).
+    Convierte la tabla cruda (ya con columnas [Date, Added_Ticker,
+    Added_Security, Removed_Ticker, Removed_Security, Reason], ver
+    ``_fetch_changes_table_raw``) en un DataFrame limpio con columnas
+    [Date, Added_Ticker, Removed_Ticker] (cualquiera de los dos últimos
+    puede ser None en una fila dada).
+
+    Se mantiene tolerante a variaciones de columnas (por si se pasa un
+    DataFrame construido a mano en tests, o con un esquema distinto)
+    normalizando por patrón de nombre en vez de asumir ciegamente el
+    esquema fijo de ``_fetch_changes_table_raw``.
 
     Filas sin fecha parseable se descartan y se cuentan; si superan un
     umbral relevante se avisa en stderr (posible cambio de formato de la
     tabla fuente, no un simple hueco puntual).
     """
-    df = _rename_changes_columns(raw)
+    df = raw.copy()
+    df.columns = [str(c).strip() for c in df.columns]
+
+    rename: dict[str, str] = {}
+    for col in df.columns:
+        low = col.lower()
+        if "date" in low:
+            rename[col] = "Date"
+        elif "added" in low and "ticker" in low:
+            rename[col] = "Added_Ticker"
+        elif "removed" in low and "ticker" in low:
+            rename[col] = "Removed_Ticker"
+    df = df.rename(columns=rename)
 
     if "Date" not in df.columns:
         raise ValueError(
@@ -183,21 +242,14 @@ def _parse_changes_table(raw: pd.DataFrame) -> pd.DataFrame:
             f"(columnas encontradas: {list(df.columns)})"
         )
 
-    # Si el esquema es antiguo (columnas "Ticker"/"Security" repetidas sin
-    # prefijo "Added"/"Removed", distinguibles solo por orden), se asume el
-    # orden estándar de Wikipedia: Date, Added Ticker, Added Security,
-    # Removed Ticker, Removed Security, Reason. Se resuelve por posición
-    # como último recurso, solo si el renombrado por patrón no encontró
-    # ambas columnas.
+    # Esquema antiguo/alternativo sin columnas Added_Ticker/Removed_Ticker
+    # explícitas: se resuelve por posición como último recurso (fallback
+    # conservador por si algún día se recupera un camino de parsing
+    # distinto a _fetch_changes_table_raw, p.ej. en tests).
     if "Added_Ticker" not in df.columns or "Removed_Ticker" not in df.columns:
         cols = list(df.columns)
         ticker_like = [c for c in cols if c != "Date"]
         if len(ticker_like) >= 3:
-            # Heurística conservadora: primera columna "ticker-like" tras
-            # Date es Added_Ticker, la tercera (tras Added_Security) es
-            # Removed_Ticker. Si no encaja, se deja como estaba y esa
-            # columna quedará ausente -> esas altas/bajas no se podrán
-            # usar, pero no se aborta el resto del parsing.
             df = df.rename(columns={
                 ticker_like[0]: "Added_Ticker",
                 ticker_like[2] if len(ticker_like) > 2 else ticker_like[0]: "Removed_Ticker",
@@ -290,9 +342,15 @@ def reconstruct_membership(
     for _, row in changes_after.iterrows():
         added = row["Added_Ticker"]
         removed = row["Removed_Ticker"]
-        if added is not None and added in membership:
+        # pd.notna() en vez de "is not None": tras un roundtrip por caché
+        # parquet, una celda vacía puede llegar como float('nan') en vez
+        # de None (columna 'object' con tipos mezclados). "is not None"
+        # no detecta ese caso y deja colar un NaN flotante como si fuera
+        # un ticker válido, rompiendo sorted()/comparaciones más adelante
+        # (ver _build_historical_universe_rows -> universe_union).
+        if pd.notna(added) and added in membership:
             membership.discard(added)
-        if removed is not None:
+        if pd.notna(removed):
             membership.add(removed)
 
     return membership
@@ -354,9 +412,12 @@ def build_membership_calendar(
         while change_idx < n_changes and changes_desc.loc[change_idx, "Date"] > fecha:
             added = changes_desc.loc[change_idx, "Added_Ticker"]
             removed = changes_desc.loc[change_idx, "Removed_Ticker"]
-            if added is not None and added in membership:
+            # Ver comentario equivalente en reconstruct_membership: pd.notna()
+            # cubre tanto None como float('nan') que puede colarse tras un
+            # roundtrip por caché parquet en columnas 'object' mixtas.
+            if pd.notna(added) and added in membership:
                 membership.discard(added)
-            if removed is not None:
+            if pd.notna(removed):
                 membership.add(removed)
             change_idx += 1
         result[fecha] = set(membership)
