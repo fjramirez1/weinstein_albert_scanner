@@ -79,7 +79,13 @@ def _tiingo_api_key() -> str | None:
 # como último recurso dentro del fallback Tiingo, cuando el símbolo
 # original no devuelve nada.
 _KNOWN_TICKER_RENAMES: dict[str, str] = {
-    "WLTW": "WTW",   # Willis Towers Watson, cambio de ticker 2022-01-10
+    "WLTW": "WTW",   # Willis Towers Watson, cambio de ticker
+    "ADS":  "BFH",   # Alliance Data Systems -> Bread Financial
+    "DISCA": "WBD",  # Discovery -> Warner Bros. Discovery
+    "FBHS": "FBIN",  # Fortune Brands Home & Security -> Fortune Brands Innovations
+    "HFC":  "DINO",  # HollyFrontier -> HF Sinclair
+    "RE":   "EG",    # Everest Re -> Everest Group
+    "GPS":  "GAP",   # si de verdad cambió de ticker (verificar)
 }
 
 
