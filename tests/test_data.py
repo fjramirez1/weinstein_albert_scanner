@@ -125,18 +125,20 @@ class TestDownloadWeeklyMocked:
         raw = pd.DataFrame({"Close": 1.0}, index=idx)
 
         with patch("weinstein.data.yf.download", return_value=raw):
-            resultado = download_weekly("TST", max_retries=1)
+            with patch("weinstein.data.download_weekly_tiingo", return_value=None):
+                resultado = download_weekly("TST", max_retries=1)
 
         assert resultado is None
 
     def test_dataframe_vacio_devuelve_none(self):
         with patch("weinstein.data.yf.download", return_value=pd.DataFrame()):
-            resultado = download_weekly("TST", max_retries=1)
+            with patch("weinstein.data.download_weekly_tiingo", return_value=None):
+                resultado = download_weekly("TST", max_retries=1)
         assert resultado is None
 
     def test_excepcion_en_descarga_devuelve_none(self):
         with patch("weinstein.data.yf.download", side_effect=Exception("network error")):
-            with patch("weinstein.data.time.sleep"):  # sin esperar backoff real en el test
+            with patch("weinstein.data.download_weekly_tiingo", return_value=None):
                 resultado = download_weekly("TST", max_retries=2)
         assert resultado is None
 

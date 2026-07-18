@@ -114,6 +114,7 @@ from weinstein.config import (  # noqa: E402
     VPM_BASE_PERIOD,
     VPM_SMOOTHING,
     WMA30_PERIOD,
+    resolve_sector_etf,
 )
 from weinstein.data import download_weekly, load_sp500_tickers  # noqa: E402
 from weinstein.indicators import (  # noqa: E402
@@ -561,7 +562,7 @@ def _worker_backtest_ticker(
 
         close = data["Close"].squeeze()
         volume = data["Volume"].squeeze()
-        etf_ticker = SECTOR_TO_ETF.get(sector)
+        etf_ticker = resolve_sector_etf(sector)
         sector_etf_close = sector_etf_map.get(etf_ticker) if etf_ticker else None
 
         trades = simulate_ticker(ticker, sector, close, volume, sp500_close, sector_etf_close)

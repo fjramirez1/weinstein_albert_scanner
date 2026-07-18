@@ -21,6 +21,7 @@ from unittest.mock import patch
 import numpy as np
 import pandas as pd
 import pytest
+from yfinance import ticker
 
 from tests.conftest import weekly_index
 from backtest.conditions import TickerContext, precompute_market_series
@@ -242,7 +243,7 @@ class TestPrepareUniverseHistorico:
         })
         fake_calendar = {}
 
-        def fake_download(ticker, period):
+        def fake_download(ticker, period, refresh=False, is_current_constituent=True):
             if ticker == "GHOST":
                 return None
             return self._fake_ohlcv()

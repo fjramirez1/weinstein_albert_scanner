@@ -47,6 +47,7 @@ from weinstein.config import (
     VPM_BASE_PERIOD,
     VPM_SMOOTHING,
     WMA30_PERIOD,
+    resolve_sector_etf
 )
 from weinstein.data import download_weekly, load_sp500_tickers
 from weinstein.indicators import (
@@ -151,7 +152,7 @@ def _evaluate_ticker(
         return None, "filtrado"
 
     # F1: RSC sector — conocido de antemano, sin coste
-    etf_ticker     = SECTOR_TO_ETF.get(sector_name)
+    etf_ticker     = resolve_sector_etf(sector_name)
     rsc_sector_val = sector_rsc_map.get(etf_ticker, np.nan) if etf_ticker else np.nan
     f1_ok = (not pd.isna(rsc_sector_val)) and rsc_sector_val >= SECTOR_RSC_MIN
     if not f1_ok:

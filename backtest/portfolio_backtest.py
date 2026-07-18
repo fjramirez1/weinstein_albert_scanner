@@ -121,7 +121,7 @@ from backtest.portfolio_engine import (
 )
 from backtest.sp500_historical import build_membership_calendar_cached, universe_union
 from backtest.strategy_config import StrategyConfig
-from weinstein.config import SECTOR_TO_ETF, SP500_INDEX
+from weinstein.config import SECTOR_TO_ETF, SP500_INDEX, resolve_sector_etf
 from weinstein.data import load_sp500_tickers
 
 DEFAULT_BACKTEST_PERIOD = "8y"   # ventana recomendada para limitar el sesgo de supervivencia
@@ -199,7 +199,7 @@ def _build_context_worker(
         data = get_cached_weekly(ticker, period, False, is_current)
         if data is None:
             return None, "sin_datos"
-        etf_ticker = SECTOR_TO_ETF.get(sector)
+        etf_ticker = resolve_sector_etf(sector)
         sector_etf_close = sector_etf_map.get(etf_ticker) if etf_ticker else None
         ctx = build_ticker_context(ticker, sector, data, sp500_close, sector_etf_close)
         if ctx is None:

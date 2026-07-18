@@ -99,19 +99,53 @@ EXIT_REASON_NONE     = "—"
 SCANNER_LOGIC_VERSION = "v3"
 
 # ── Mapeo sector GICS → ETF sectorial SPDR ───────────────────────────
+# Claves = nombres GICS REALES tal como los devuelve load_sp500_tickers()
+# (fuente primaria CSV y fallback de Wikipedia usan esta nomenclatura).
 SECTOR_TO_ETF: dict[str, str] = {
-    "Communication Services": "XLC",
-    "Consumer Cyclical":      "XLY",
-    "Consumer Defensive":     "XLP",
-    "Energy":                 "XLE",
-    "Financial Services":     "XLF",
-    "Healthcare":             "XLV",
-    "Industrials":            "XLI",
-    "Basic Materials":        "XLB",
-    "Real Estate":            "XLRE",
-    "Technology":             "XLK",
-    "Utilities":              "XLU",
+    "Communication Services":  "XLC",
+    "Consumer Discretionary":  "XLY",
+    "Consumer Staples":        "XLP",
+    "Energy":                  "XLE",
+    "Financials":               "XLF",
+    "Health Care":              "XLV",
+    "Industrials":              "XLI",
+    "Materials":                 "XLB",
+    "Real Estate":              "XLRE",
+    "Information Technology":  "XLK",
+    "Utilities":                "XLU",
 }
+
+# Alias por si alguna fuente usa nombres GICS antiguos o alternativos en
+# vez de los canónicos de arriba. Clave = variante alternativa,
+# valor = nombre canónico presente en SECTOR_TO_ETF. Se resuelve con
+# resolve_sector_etf() en vez de SECTOR_TO_ETF.get() directo, para no
+# depender de una coincidencia exacta.
+_SECTOR_ALIASES: dict[str, str] = {
+    "Consumer Cyclical":   "Consumer Discretionary",
+    "Consumer Defensive":  "Consumer Staples",
+    "Financial Services":  "Financials",
+    "Healthcare":           "Health Care",
+    "Basic Materials":      "Materials",
+    "Technology":            "Information Technology",
+    "Info Tech":             "Information Technology",
+}
+
+
+def resolve_sector_etf(sector_name: str | None) -> str | None:
+    """
+    Devuelve el ETF SPDR correspondiente a un nombre de sector, tolerando
+    variantes de nomenclatura entre fuentes (CSV primario, fallback de
+    Wikipedia, nombres GICS antiguos). Devuelve None si no se reconoce.
+    """
+    if not sector_name:
+        return None
+    if sector_name in SECTOR_TO_ETF:
+        return SECTOR_TO_ETF[sector_name]
+    canonical = _SECTOR_ALIASES.get(sector_name)
+    if canonical:
+        return SECTOR_TO_ETF.get(canonical)
+    return None
+
 
 # ── Rutas por defecto ─────────────────────────────────────────────────
 DEFAULT_POSITIONS_CSV = "posiciones.csv"
