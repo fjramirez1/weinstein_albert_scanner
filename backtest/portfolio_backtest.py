@@ -44,6 +44,40 @@ candidatos). Se recomienda además no alargar demasiado el periodo de
 backtest (`--period`, por defecto `8y`) en cualquiera de los dos modos,
 para limitar el tramo de historia afectado.
 
+Caché de FALLOS de descarga (tickers sin histórico suficiente o sin datos)
+------------------------------------------------------------------------------
+`launcher.py` está pensado para ejecutar este backtest en bucle (cada
+hora). En modo `universe="historical"` el universo incluye tickers que
+ya NO pertenecen al S&P 500 actual (p.ej. empresas quebradas, absorbidas
+o privatizadas) junto con otros que sí pertenecen pero tienen histórico
+insuficiente por ser altas muy recientes (p.ej. un spin-off que entró al
+índice hace pocas semanas). Sin caché de fallos, cada ejecución repetía
+la descarga fallida de esos mismos tickers una y otra vez.
+
+La solución (ver `backtest/data_cache.py::get_cached_weekly`) distingue
+entre ambos casos usando el set de constituyentes ACTUALES del S&P 500,
+calculado una única vez en `prepare_universe` y pasado a cada worker de
+descarga (`_build_context_worker`):
+
+  - Ticker que HOY ya NO pertenece al S&P 500 (p.ej. `FRC`, `APC`,
+    `CDAY`): su histórico es finito y quedó fijado en el pasado. Si la
+    descarga falla, el fallo se cachea de forma persistente en disco
+    (marcador `.nodata`) y no se reintenta en ejecuciones futuras.
+  - Ticker que SÍ pertenece HOY al S&P 500 (aunque tenga histórico
+    insuficiente ahora mismo, p.ej. un spin-off reciente): el fallo
+    nunca se cachea, se reintenta en cada ejecución, porque puede
+    resolverse solo con el paso del tiempo (cada semana suma una vela
+    más) o por cualquier otra causa transitoria.
+
+Caso límite cubierto explícitamente: un ticker fuera del índice hoy (con
+fallo ya cacheado) que en el futuro VUELVE a formar parte del S&P 500 —
+ya sea la misma empresa o, como ha pasado literalmente con el símbolo
+`Q`, una empresa distinta reutilizando el mismo símbolo. En cuanto
+`load_sp500_tickers()` lo detecte de nuevo como constituyente actual,
+`get_cached_weekly` ignora y borra automáticamente el marcador de fallo
+antiguo, sin necesidad de intervención manual (ver docstring de
+`data_cache.py` para el detalle del mecanismo).
+
 Rendimiento
 ------------
 Cada ticker se descarga UNA vez (con caché en disco, ver
@@ -113,11 +147,22 @@ class UniverseInfo:
 # ── Descarga + precálculo de contexto (una vez, se reutiliza entre configs) ──
 
 def _download_sector_etfs(period: str) -> dict[str, pd.Series]:
+    """
+    Descarga (con caché) los ETFs sectoriales usados en F1/S1 (RSC
+    sector). Los ETFs no forman parte del universo de tickers del S&P
+    500 y siempre se consideran "vigentes": un fallo de descarga aquí
+    nunca se cachea de forma persistente (`is_current_constituent=True`
+    en la llamada a `get_cached_weekly`), para no arriesgarse a dejar un
+    ETF "congelado" como sin datos por un fallo puntual de red.
+    """
     unique_etfs = sorted(set(SECTOR_TO_ETF.values()))
     result: dict[str, pd.Series] = {}
     print(f"  → Descargando/cacheando {len(unique_etfs)} ETFs sectoriales...")
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
-        futures = {pool.submit(get_cached_weekly, etf, period): etf for etf in unique_etfs}
+        futures = {
+            pool.submit(get_cached_weekly, etf, period, False, True): etf
+            for etf in unique_etfs
+        }
         for fut in as_completed(futures):
             etf = futures[fut]
             data = fut.result()
@@ -134,11 +179,24 @@ def _build_context_worker(
     sp500_close: pd.Series,
     sector_etf_map: dict[str, pd.Series],
     period: str,
+    current_constituents: set[str],
 ) -> tuple[TickerContext | None, str]:
+    """
+    Descarga (con caché) y precalcula el contexto de un ticker.
+
+    `current_constituents` es el set de símbolos que pertenecen HOY al
+    S&P 500 (ver `weinstein.data.load_sp500_tickers()`), calculado una
+    única vez en `prepare_universe` y compartido por todos los workers.
+    Determina si un fallo de descarga se cachea de forma persistente
+    (ticker ya fuera del índice actual, ver `data_cache.py`) o se
+    reintenta en cada ejecución (ticker vigente hoy, el fallo puede ser
+    transitorio -- p.ej. alta reciente con histórico aún insuficiente).
+    """
     ticker = row["Symbol"]
     sector = row.get("Sector", "Unknown")
     try:
-        data = get_cached_weekly(ticker, period)
+        is_current = ticker in current_constituents
+        data = get_cached_weekly(ticker, period, False, is_current)
         if data is None:
             return None, "sin_datos"
         etf_ticker = SECTOR_TO_ETF.get(sector)
@@ -224,7 +282,10 @@ def prepare_universe(
         raise ValueError(f"universe debe ser 'current' o 'historical', recibido: '{universe}'")
 
     print("\n[1/4] Descargando/cacheando S&P 500 (benchmark)...")
-    sp500_data = get_cached_weekly(SP500_INDEX, period)
+    # El propio índice se trata como "constituyente actual" (nunca cachea
+    # el fallo de forma persistente): es la serie de referencia de todo
+    # el backtest, un fallo puntual de red no debe congelarse jamás.
+    sp500_data = get_cached_weekly(SP500_INDEX, period, False, True)
     if sp500_data is None:
         print("  ✗ ERROR CRÍTICO: no se pudo obtener el S&P 500. Abortando.")
         sys.exit(1)
@@ -251,6 +312,29 @@ def prepare_universe(
             }
     print(f"  ✓ {len(sp500_df)} tickers a procesar")
 
+    # Set de constituyentes ACTUALES del S&P 500, calculado una única vez
+    # y compartido por todos los workers de descarga: determina qué
+    # tickers pueden tener un fallo de descarga cacheado de forma
+    # persistente (los que ya no pertenecen al índice de hoy) frente a
+    # los que se reintentan siempre (los vigentes hoy, ver docstring de
+    # `backtest/data_cache.py::get_cached_weekly`).
+    #
+    # - Si se pasó una lista explícita de --tickers, esa lista ES el
+    #   universo "actual" a todos los efectos (no tiene sentido cachear
+    #   fallos de forma permanente para algo que el usuario pidió
+    #   explícitamente).
+    # - En modo "current", `sp500_df` YA ES el resultado de
+    #   `load_sp500_tickers()`, así que se reutiliza sin llamada extra.
+    # - En modo "historical", `sp500_df` es la UNIÓN histórica (superset
+    #   más amplio que los constituyentes de hoy), así que hace falta
+    #   pedir los constituyentes actuales por separado.
+    if tickers:
+        current_constituents = set(sp500_df["Symbol"])
+    elif universe == "historical":
+        current_constituents = set(load_sp500_tickers()["Symbol"])
+    else:
+        current_constituents = set(sp500_df["Symbol"])
+
     print("\n[3/4] Precalculando condición de mercado (F5/S2) semana a semana...")
     coppock_bullish, coppock_bearish = precompute_market_series(sp500_close)
     print(f"  ✓ {len(coppock_bullish)} semanas evaluadas")
@@ -265,7 +349,10 @@ def prepare_universe(
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
         futures = {
-            pool.submit(_build_context_worker, row, sp500_close, sector_etf_map, period): row["Symbol"]
+            pool.submit(
+                _build_context_worker, row, sp500_close, sector_etf_map, period,
+                current_constituents,
+            ): row["Symbol"]
             for row in rows
         }
         done = 0
