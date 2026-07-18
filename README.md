@@ -6,41 +6,60 @@ detección de candidatos de entrada y evaluación de salidas para posiciones abi
 ## Estructura del proyecto
 
 ```
-weinstein/                    ← paquete principal
+weinstein/                       ← paquete principal
 │   __init__.py
-│   __main__.py               ← CLI unificado (python -m weinstein)
-│   config.py                 ← todos los parámetros en un único lugar
-│   indicators.py             ← cálculos técnicos (WMA, RSC, VPM5, Coppock, MOM)
-│   data.py                   ← descarga de precios y carga de tickers S&P 500
-│   scanner_entry.py          ← lógica del escáner de entrada
-│   scanner_exit.py           ← lógica del escáner de salida
-│   exporter.py               ← exportación CSV con historial
+│   __main__.py                  ← CLI unificado (python -m weinstein)
+│   config.py                    ← todos los parámetros en un único lugar
+│   indicators.py                ← cálculos técnicos (WMA, RSC, VPM5, Coppock, MOM)
+│   data.py                      ← descarga de precios (yfinance + fallback Tiingo), carga de tickers S&P 500
+│   scanner_entry.py             ← lógica del escáner de entrada
+│   scanner_exit.py              ← lógica del escáner de salida
+│   exporter.py                  ← exportación CSV con historial
 │
-posiciones.csv                ← tus posiciones abiertas
+posiciones.csv                   ← tus posiciones abiertas
+launcher.py                      ← ejecución periódica del backtest de cartera (ver backtest/BACKTEST.md)
 requirements.txt
-pytest.ini                    ← configuración de tests
+pytest.ini                       ← configuración de tests
 │
 scripts/
 │   run_entry.sh / run_entry.bat
 │   run_exit.sh  / run_exit.bat
 │
 historial/
-│   entradas/                 ← CSVs generados por el escáner de entrada
-│   salidas/                  ← CSVs generados por el escáner de salida
+│   entradas/                    ← CSVs generados por el escáner de entrada
+│   salidas/                     ← CSVs generados por el escáner de salida
+│   backtests/                   ← CSVs de operaciones exportadas por el backtest de cartera
 │
-tests/                        ← suite de tests (pytest)
-│   conftest.py               ← fixtures compartidas
-│   test_indicators.py        ← WMA, RSC Mansfield, VPM5, Coppock, MOM, filtro F5
-│   test_sp500_bajista.py     ← condición de mercado bajista (S2) y su relación con F5
-│   test_scanner_entry.py     ← filtros de entrada F1-F5 (mockeando descargas)
-│   test_scanner_exit.py      ← condiciones de salida S1-S2 (mockeando descargas)
-│   test_data.py              ← carga de posiciones y descargas (mockeadas + red real opcional)
+tests/                           ← suite de tests (pytest)
+│   conftest.py                  ← fixtures compartidas
+│   test_indicators.py           ← WMA, RSC Mansfield, VPM5, Coppock, MOM, filtro F5
+│   test_sp500_bajista.py        ← condición de mercado bajista (S2) y su relación con F5
+│   test_scanner_entry.py        ← filtros de entrada F1-F5 (mockeando descargas)
+│   test_scanner_exit.py         ← condiciones de salida S1-S2 (mockeando descargas)
+│   test_data.py                 ← carga de posiciones y descargas (mockeadas + red real opcional)
+│   test_data_tiingo.py          ← fallback Tiingo para tickers delistados
+│   test_strategy_config.py, test_conditions.py,
+│   test_portfolio_engine.py, test_portfolio_metrics.py,
+│   test_data_cache.py, test_sp500_historical.py,
+│   test_portfolio_backtest_historical.py,
+│   test_strategy_backtest.py    ← suite del backtest (ver backtest/BACKTEST.md)
 │
 docs/
-    ESTRATEGIA.md             ← descripción técnica completa
+    ESTRATEGIA.md                ← descripción técnica completa de la estrategia en producción
 │
 backtest/
-    backtest_lookback.py      ← backtest de sensibilidad de COPPOCK_RECENT_LOOKBACK (F5)
+    README.md                    ← quickstart del backtest de cartera
+    BACKTEST.md                  ← descripción técnica completa del backtest de cartera
+    backtest_lookback.py         ← backtest de sensibilidad de COPPOCK_RECENT_LOOKBACK (F5)
+    strategy_backtest.py         ← backtest por-ticker aislado (F1-F5/S1-S2)
+    portfolio_backtest.py        ← backtest de cartera completa (orquestación)
+    portfolio_engine.py          ← motor de simulación de cartera
+    conditions.py                ← condiciones F1-F5/S1-S2 configurables
+    strategy_config.py           ← StrategyConfig / ConditionToggle
+    sp500_historical.py          ← reconstrucción de membresía histórica del S&P 500
+    data_cache.py                ← caché en disco de OHLCV + caché de fallos
+    sweep.py                     ← comparación de varias configuraciones
+    run_portfolio_backtest.py    ← CLI del backtest de cartera
 ```
 
 ## Quickstart (3 pasos)
@@ -192,16 +211,40 @@ pytest -m network     # opcional: tests que sí golpean APIs externas reales
 
 ## Backtest
 
-`backtest/backtest_lookback.py` evalúa distintos valores de `COPPOCK_RECENT_LOOKBACK` (filtro F5,
-mercado alcista) sobre el histórico real del S&P 500: retorno futuro a varios horizontes, % de
-señales negativas y retraso frente al mínimo real del Coppock. Es un backtest del filtro de
-mercado en aislamiento, no de la estrategia completa.
+El proyecto incluye dos backtests con propósitos distintos:
+
+- **Por-ticker, aislado** (`backtest/backtest_lookback.py`,
+  `backtest/strategy_backtest.py` / `python -m weinstein backtest`): evalúa
+  el filtro de mercado F5 o las condiciones F1-F5/S1-S2 en aislamiento,
+  ticker a ticker, sin modelar capital ni nº de posiciones.
+- **De cartera completa** (`backtest/portfolio_backtest.py` /
+  `python -m weinstein portfolio-backtest`): simula una única cartera con
+  capital inicial, nº máximo de posiciones simultáneas y condiciones de
+  entrada/salida activables/parametrizables — pensado para responder "si
+  hubiera operado esta estrategia de verdad, con este capital y estas
+  reglas, ¿qué resultado habría tenido?", y para ir probando variaciones.
 
 ```bash
-pip install yfinance pandas numpy scipy --break-system-packages
+# Backtest por-ticker de F1-F5/S1-S2 sobre histórico real
 python backtest/backtest_lookback.py
-python backtest/backtest_lookback.py --period 15y --lookbacks 2,3,4,6,8,12
+python -m weinstein backtest --period 8y
+
+# Backtest de cartera completa
+python -m weinstein portfolio-backtest --period 8y --max-positions 10
 ```
+
+El backtest de cartera es el más extenso y activo del proyecto (universo
+histórico reconstruido, caché de datos, sweep de configuraciones,
+ejecución periódica vía `launcher.py`). Su documentación técnica completa
+vive en un documento aparte, igual que la estrategia en producción tiene la
+suya:
+
+📄 **[backtest/BACKTEST.md](backtest/BACKTEST.md)** — modelo de cartera,
+condiciones configurables, universo actual vs. histórico, caché de datos,
+CLI completo, sweep, `launcher.py` y métricas reportadas.
+
+📄 **[backtest/README.md](backtest/README.md)** — quickstart de instalación
+y comandos mínimos.
 
 ## Referencias
 
