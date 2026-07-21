@@ -176,6 +176,92 @@ modos — cuanto más corto el periodo, menos empresas relevantes han sido
 excluidas o han quebrado en ese tramo, y menos pesa el sesgo. El aviso se
 imprime también al final de cada ejecución (`print_report`).
 
+### El problema (detectado y cuantificado)
+
+Hasta esta corrección, el sector de cada ticker del universo histórico se
+resolvía siempre contra los constituyentes **actuales** del S&P 500
+(`load_sp500_tickers()`). Para tickers ya delistados (fusionados,
+quebrados, rebrandeados, excluidos por rebalanceo — p.ej. `CELG`, `XLNX`,
+`ETFC`, `WLTW`, `TWTR`) no hay forma de encontrar su sector en esa fuente,
+así que caían a `Sector="Unknown"`. `resolve_sector_etf("Unknown")`
+devuelve `None`, por lo que a esos tickers nunca se les podía calcular
+`rsc_sector`: quedaba `NaN` y la condición de entrada `F1_sector_fuerte`
+se evaluaba **siempre `False`** para ellos, excluyéndolos de poder abrir
+posición de forma permanente y sin relación con su fuerza sectorial real.
+Esto reintroducía parcialmente el sesgo de supervivencia que el propio
+modo `historical` se creó para mitigar.
+
+**Cifras verificadas empíricamente** (universo histórico 8 años, 653
+tickers totales, antes de la mitigación):
+
+| | Valor |
+|---|---|
+| Tickers con `Sector="Unknown"` | 150 / 653 (23.0%) |
+| De esos, con precio evaluable (≥70 velas) | 76 / 150 |
+| Rentabilidad con F1 activo (umbral 0.10, default) | +25.92% (Sharpe 0.27, DD −23.96%, 165 ops.) |
+| Rentabilidad con F1 desactivado | +89.14% (Sharpe 0.69, DD −20.51%, 154 ops.) |
+| Rentabilidad con F1 umbral relajado a 0.0 (no eliminado) | +20.39% (Sharpe 0.24, DD −26.16%) |
+
+El tercer dato es clave: relajar el umbral (en vez de eliminar F1) da un
+resultado **peor** que el baseline, no mejor. Confirma que el salto de
++25.92% a +89.14% no viene de "cuán estricto es el umbral", sino
+específicamente de dejar de excluir en bloque el ~13-23% del universo
+marcado como Unknown. El problema era binario (sector resuelto o no), no
+gradual.
+
+### Alternativas evaluadas
+
+1. **Mapeo manual estático** de sector GICS para los tickers delistados
+   más comunes, acotado a los que tienen precio evaluable (~76 tickers).
+   ✅ Elegida: coste de mantenimiento bajo y acotado, sin dependencias
+   nuevas, auditable en el propio repo.
+2. **Fuente de datos histórica GICS por ticker+fecha.** Descartada: no
+   existe una fuente gratuita/sin API-key fiable; scrapear el historial
+   de revisiones de Wikipedia sería mucho más frágil para una ganancia de
+   precisión marginal (las reclasificaciones GICS intra-índice son poco
+   frecuentes).
+3. **Separar el conteo de "Unknown" en el reporte**, sin resolverlo.
+   ✅ Implementada además de (1), como red de seguridad para lo que (1)
+   no cubra.
+4. **Documentar la limitación con las cifras exactas.** ✅ Este mismo
+   addendum.
+
+### Mitigación implementada
+
+- `weinstein/config.py::HISTORICAL_DELISTED_SECTORS` — mapeo manual
+  `Symbol -> Sector GICS` para los tickers delistados más comunes, con
+  la empresa y el motivo de salida del índice documentados en el propio
+  diccionario.
+- `weinstein/config.py::resolve_historical_sector(symbol, current_sector_map)`
+  — función pura que resuelve el sector en orden: (1) constituyentes
+  actuales, (2) mapeo manual, (3) `"Unknown"`. Testeada en aislamiento en
+  `tests/test_config_historical_sector.py`.
+- `backtest/portfolio_backtest.py::_build_historical_universe_rows` ahora
+  usa `resolve_historical_sector` en vez de un `.map(...).fillna("Unknown")`
+  directo contra solo los constituyentes actuales.
+- `UniverseInfo.tickers_sector_desconocido` — nuevo campo, poblado solo en
+  modo `historical`, con los tickers que **sí tienen contexto/precio
+  evaluable** pero cuyo sector sigue sin resolverse (ni por constituyentes
+  actuales ni por el mapeo manual). Deliberadamente separado de
+  `tickers_historicos_sin_precio` (ausencia de PRECIO, no de SECTOR: son
+  problemas distintos con causas distintas). `print_report` avisa de esta
+  cifra explícitamente.
+
+### Limitación residual
+
+El mapeo manual **no es** un histórico GICS punto-en-el-tiempo completo:
+usa el último sector GICS conocido de la empresa antes de salir del
+índice, sin modelar reclasificaciones GICS intermedias durante su
+permanencia en el índice (limitación aceptada, ver alternativa 2). Además
+solo cubre los tickers delistados más comunes — cualquier ticker
+delistado nuevo que no esté en `HISTORICAL_DELISTED_SECTORS` seguirá
+apareciendo en `tickers_sector_desconocido` hasta que se añada
+manualmente al diccionario.
+
+**Ninguna comparativa de F1 en modo `historical` debe tratarse como
+concluyente mientras `tickers_sector_desconocido` no sea 0 o muy
+pequeño** frente al universo total evaluado esa ejecución.
+
 ## 5. Caché de datos y caché de fallos
 
 Implementada en `backtest/data_cache.py`. Motivación: la parte lenta de cada

@@ -147,6 +147,108 @@ def resolve_sector_etf(sector_name: str | None) -> str | None:
     return None
 
 
+# ── Sector histórico de tickers delistados (universo "historical") ────
+# Mapeo manual y estático de Symbol -> Sector GICS para tickers que ya
+# NO pertenecen al S&P 500 actual y por tanto no aparecen en
+# `load_sp500_tickers()` (fusionados, quebrados, adquiridos, excluidos
+# por rebalanceo, etc.). Sin esta tabla, `_build_historical_universe_rows`
+# en `backtest/portfolio_backtest.py` no tiene forma de asignarles un
+# sector, caen a "Unknown", `resolve_sector_etf()` devuelve None, y F1
+# (RSC sector) los excluye SIEMPRE — sesgo documentado con cifras
+# exactas en `backtest/portfolio_backtest.py::_build_historical_universe_rows`
+# y en `backtest/BACKTEST.md` sección 4.
+#
+# Alcance deliberadamente acotado: cubre solo los tickers delistados que
+# además tienen histórico de precio suficiente en la caché (evaluables
+# por F2-F5 si F1 pudiera resolverse) — no tiene sentido mantener sector
+# de tickers que jamás van a poder simularse por falta de datos de
+# precio (esos se reportan aparte, ver `tickers_historicos_sin_precio`).
+#
+# El sector asignado es el sector GICS que la empresa tenía en su
+# ÚLTIMA clasificación conocida antes de salir del índice (fuente:
+# Wikipedia "List of S&P 500 companies" / "Selected changes..." y perfil
+# de empresa correspondiente). Reclasificaciones GICS intermedias durante
+# la vida de la empresa en el índice no se modelan (limitación conocida,
+# igual que la propia tabla de altas/bajas no captura reclasificaciones
+# sectoriales sin entrada/salida de índice) — es una aproximación
+# deliberada, más precisa que "Unknown" pero no un histórico GICS
+# punto-en-el-tiempo completo (alternativa 2 evaluada y descartada por
+# falta de fuente fiable sin coste/API key, ver BACKTEST.md sección 4).
+#
+# Mantenimiento: si un ticker nuevo sale del índice y aparece con
+# Sector="Unknown" en una ejecución con `universe="historical"`, añadir
+# aquí su símbolo y sector GICS (con la empresa/fuente en el comentario)
+# en vez de dejarlo caer a Unknown en silencio.
+HISTORICAL_DELISTED_SECTORS: dict[str, str] = {
+    # Consumer Discretionary
+    "TWTR": "Communication Services",   # Twitter -> adquirida por X Corp (privada) 2022
+    "ATVI": "Communication Services",   # Activision Blizzard -> adquirida por Microsoft 2023
+    "SGEN": "Health Care",              # Seagen -> adquirida por Pfizer 2023
+    "CELG": "Health Care",              # Celgene -> adquirida por Bristol-Myers Squibb 2019
+    "XLNX": "Information Technology",   # Xilinx -> adquirida por AMD 2022
+    "ETFC": "Financials",               # E*TRADE -> adquirida por Morgan Stanley 2020
+    "WLTW": "Financials",               # Willis Towers Watson -> renombrada a WTW (alias ya cubierto en data.py)
+    "FISV": "Information Technology",   # Fiserv -> renombrada a FI
+    "ANTM": "Health Care",              # Anthem -> renombrada a Elevance Health (ELV)
+    "FB":   "Communication Services",   # Facebook -> renombrada a Meta Platforms (META)
+    "DISCA": "Communication Services",  # Discovery -> fusión con WarnerMedia -> WBD
+    "VIAC": "Communication Services",   # ViacomCBS -> renombrada a Paramount Global (PARA)
+    "CTXS": "Information Technology",   # Citrix Systems -> privatizada 2022
+    "PBCT": "Financials",               # People's United Financial -> adquirida por M&T Bank 2022
+    "CERN": "Health Care",              # Cerner -> adquirida por Oracle 2022
+    "XRX":  "Information Technology",   # Xerox Holdings -> excluida del índice
+    "NLSN": "Industrials",              # Nielsen Holdings -> privatizada 2022
+    "PXD":  "Energy",                   # Pioneer Natural Resources -> adquirida por ExxonMobil 2024
+    "FRC":  "Financials",               # First Republic Bank -> quiebra/adquisición por JPMorgan 2023
+    "SIVB": "Financials",               # SVB Financial Group -> quiebra 2023
+    "SBNY": "Financials",               # Signature Bank -> quiebra 2023
+    "APC":  "Energy",                   # Anadarko Petroleum -> adquirida por Occidental 2019
+    "CXO":  "Energy",                   # Concho Resources -> adquirida por ConocoPhillips 2021
+    "WCG":  "Health Care",              # WellCare Health Plans -> adquirida por Centene 2020
+    "RTN":  "Industrials",              # Raytheon -> fusión con United Technologies -> RTX
+    "UTX":  "Industrials",              # United Technologies -> fusión -> Raytheon Technologies (RTX)
+    "TIF":  "Consumer Discretionary",   # Tiffany & Co. -> adquirida por LVMH 2021
+    "ALXN": "Health Care",              # Alexion Pharmaceuticals -> adquirida por AstraZeneca 2021
+    "MXIM": "Information Technology",   # Maxim Integrated -> adquirida por Analog Devices 2021
+    "XEC":  "Energy",                   # Cimarex Energy -> fusión con Cabot Oil & Gas -> Coterra (CTRA)
+    "COG":  "Energy",                   # Cabot Oil & Gas -> fusión -> Coterra (CTRA)
+    "VAR":  "Health Care",              # Varian Medical Systems -> adquirida por Siemens Healthineers 2021
+    "KSU":  "Industrials",              # Kansas City Southern -> adquirida por Canadian Pacific 2021
+    "KEYS": "Information Technology",   # Keysight Technologies (por si aparece con símbolo alternativo)
+    "DISCK": "Communication Services",  # Discovery clase C -> fusión -> WBD
+    "PEAK": "Real Estate",              # Healthpeak Properties (símbolo antiguo)
+    "FLIR": "Information Technology",   # FLIR Systems -> adquirida por Teledyne 2021
+    "GPS":  "Consumer Discretionary",   # Gap Inc. -> excluida del índice
+    "HFC":  "Energy",                   # HollyFrontier -> renombrada a HF Sinclair (DINO)
+    "ADS":  "Financials",               # Alliance Data Systems -> renombrada/escindida -> Bread Financial (BFH)
+    "RE":   "Financials",               # Everest Re -> renombrada a Everest Group (EG)
+    "FBHS": "Industrials",              # Fortune Brands Home & Security -> renombrada a Fortune Brands Innovations (FBIN)
+}
+
+
+def resolve_historical_sector(symbol: str, current_sector_map: dict[str, str]) -> str:
+    """
+    Resuelve el sector GICS de un ticker para el universo histórico.
+
+    Orden de resolución:
+      1. Si el ticker está en los constituyentes ACTUALES del S&P 500
+         (`current_sector_map`, típicamente `load_sp500_tickers()`), se
+         usa ese sector — es la fuente más fiable disponible.
+      2. Si no (ticker delistado), se busca en `HISTORICAL_DELISTED_SECTORS`
+         (mapeo manual documentado arriba).
+      3. Si tampoco aparece ahí, se devuelve "Unknown" — igual que el
+         comportamiento anterior, pero ahora solo para tickers realmente
+         no cubiertos por ninguna de las dos fuentes, en vez de para
+         cualquier ticker delistado.
+
+    Pure/testeable: no hace I/O, solo combina dos diccionarios ya
+    cargados por el llamador.
+    """
+    if symbol in current_sector_map:
+        return current_sector_map[symbol]
+    return HISTORICAL_DELISTED_SECTORS.get(symbol, "Unknown")
+
+
 # ── Rutas por defecto ─────────────────────────────────────────────────
 DEFAULT_POSITIONS_CSV = "posiciones.csv"
 HISTORY_ENTRIES_DIR   = "historial/entradas"

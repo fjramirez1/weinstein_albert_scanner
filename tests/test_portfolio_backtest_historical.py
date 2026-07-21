@@ -12,6 +12,12 @@ Cubren:
     abiertas (ver docstring de `portfolio_backtest.py`).
   - `universe="current"` (comportamiento por defecto) no aplica ningún
     filtro de membresía (compatibilidad hacia atrás).
+  - Resolución de sector histórico (`resolve_historical_sector`) para
+    tickers delistados: un ticker cubierto por `HISTORICAL_DELISTED_SECTORS`
+    debe resolver a su sector real (no "Unknown"), y solo los tickers NO
+    cubiertos por ninguna fuente deben aparecer en
+    `UniverseInfo.tickers_sector_desconocido` — y solo si además tienen
+    contexto/precio evaluable (ver docstring de `prepare_universe`).
 """
 
 from __future__ import annotations
@@ -258,3 +264,108 @@ class TestPrepareUniverseHistorico:
 
         assert "GHOST" in info.tickers_historicos_sin_precio
         assert "AAA" not in info.tickers_historicos_sin_precio
+
+
+class TestResolucionDeSectorHistorico:
+    """
+    Cubre la mitigación del sesgo de sector "Unknown" (ver docstring de
+    `backtest/portfolio_backtest.py`, sección "Sesgo de sector Unknown en
+    universo histórico"): un ticker delistado cubierto por
+    `HISTORICAL_DELISTED_SECTORS` debe resolver a su sector real en vez
+    de "Unknown", y solo debe reportarse en
+    `UniverseInfo.tickers_sector_desconocido` si, además de no tener
+    sector resuelto, sí tiene contexto/precio evaluable.
+    """
+
+    def _fake_ohlcv(self, base=100.0):
+        idx = weekly_index(120)
+        close = pd.Series(np.linspace(base, base * 1.5, 120), index=idx)
+        return pd.DataFrame({
+            "Open": close, "High": close, "Low": close, "Close": close,
+            "Volume": 1000.0,
+        }, index=idx)
+
+    def test_build_historical_universe_rows_resuelve_sector_manual(self):
+        """
+        `_build_historical_universe_rows` debe asignar el sector del
+        mapeo manual a un ticker delistado conocido (p.ej. XLNX ->
+        Information Technology), en vez de dejarlo en "Unknown".
+        """
+        idx = weekly_index(20)
+        sp500_close = pd.Series(np.linspace(4000, 4500, 20), index=idx)
+
+        current_constituents = pd.DataFrame({
+            "Symbol": ["AAPL"], "Name": ["Apple"], "Sector": ["Information Technology"],
+        })
+        # XLNX pertenece al índice histórico pero ya no aparece en los
+        # constituyentes actuales; GHOSTCO tampoco, y no está en el
+        # mapeo manual -> debe quedar Unknown.
+        fake_calendar = {fecha: {"AAPL", "XLNX", "GHOSTCO"} for fecha in idx}
+
+        with patch("backtest.portfolio_backtest.build_membership_calendar_cached", return_value=fake_calendar), \
+             patch("backtest.portfolio_backtest.load_sp500_tickers", return_value=current_constituents), \
+             patch("backtest.portfolio_backtest.universe_union", return_value={"AAPL", "XLNX", "GHOSTCO"}):
+            rows, calendar, unknown = pbt._build_historical_universe_rows("5y", sp500_close)
+
+        sector_por_symbol = dict(zip(rows["Symbol"], rows["Sector"]))
+        assert sector_por_symbol["AAPL"] == "Information Technology"
+        assert sector_por_symbol["XLNX"] == "Information Technology"  # mapeo manual
+        assert sector_por_symbol["GHOSTCO"] == "Unknown"
+
+        assert "GHOSTCO" in unknown
+        assert "XLNX" not in unknown
+        assert "AAPL" not in unknown
+
+    def test_prepare_universe_reporta_solo_unknown_con_precio_evaluable(self):
+        """
+        Integración completa vía `prepare_universe`: GHOSTCO (sector no
+        resuelto) SÍ tiene precio evaluable -> debe aparecer en
+        `tickers_sector_desconocido`. NOPRICECO (sector tampoco resuelto)
+        NO tiene precio evaluable -> debe aparecer en
+        `tickers_historicos_sin_precio`, pero NO en
+        `tickers_sector_desconocido` (evita doble conteo del mismo
+        problema bajo dos categorías distintas).
+        """
+        current_constituents = pd.DataFrame({
+            "Symbol": ["AAPL"], "Name": ["Apple"], "Sector": ["Information Technology"],
+        })
+        fake_calendar = {}
+
+        def fake_download(ticker, period, refresh=False, is_current_constituent=True):
+            if ticker == "NOPRICECO":
+                return None
+            return self._fake_ohlcv()
+
+        with patch("backtest.portfolio_backtest.get_cached_weekly", side_effect=fake_download), \
+             patch("backtest.portfolio_backtest.load_sp500_tickers", return_value=current_constituents), \
+             patch("backtest.portfolio_backtest.build_membership_calendar_cached", return_value=fake_calendar), \
+             patch("backtest.portfolio_backtest.universe_union", return_value={"AAPL", "XLNX", "GHOSTCO", "NOPRICECO"}):
+            sp500_close, bullish, bearish, contexts, info = pbt.prepare_universe(
+                period="5y", universe="historical",
+            )
+
+        assert "GHOSTCO" in info.tickers_sector_desconocido
+        assert "XLNX" not in info.tickers_sector_desconocido  # resuelto por el mapeo manual
+        assert "AAPL" not in info.tickers_sector_desconocido  # resuelto por constituyentes actuales
+        assert "NOPRICECO" not in info.tickers_sector_desconocido  # sin precio: se cuenta aparte
+        assert "NOPRICECO" in info.tickers_historicos_sin_precio
+
+    def test_tickers_sector_desconocido_vacio_en_modo_current(self):
+        """En modo 'current' no aplica esta métrica (no hay universo histórico)."""
+        current_constituents = pd.DataFrame({"Symbol": ["AAA"], "Name": ["A"], "Sector": ["Energy"]})
+        with patch("backtest.portfolio_backtest.get_cached_weekly", return_value=self._fake_ohlcv()), \
+             patch("backtest.portfolio_backtest.load_sp500_tickers", return_value=current_constituents):
+            sp500_close, bullish, bearish, contexts, info = pbt.prepare_universe(
+                period="5y", universe="current",
+            )
+        assert info.tickers_sector_desconocido == []
+
+    def test_tickers_sector_desconocido_vacio_con_tickers_explicitos(self):
+        """Con --tickers explícito el modo pasa a 'current' -> tampoco aplica."""
+        current_constituents = pd.DataFrame({"Symbol": ["AAA"], "Name": ["A"], "Sector": ["Energy"]})
+        with patch("backtest.portfolio_backtest.get_cached_weekly", return_value=self._fake_ohlcv()), \
+             patch("backtest.portfolio_backtest.load_sp500_tickers", return_value=current_constituents):
+            sp500_close, bullish, bearish, contexts, info = pbt.prepare_universe(
+                period="5y", universe="historical", tickers=["AAA"],
+            )
+        assert info.tickers_sector_desconocido == []

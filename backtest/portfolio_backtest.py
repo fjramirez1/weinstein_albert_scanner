@@ -44,6 +44,62 @@ candidatos). Se recomienda además no alargar demasiado el periodo de
 backtest (`--period`, por defecto `8y`) en cualquiera de los dos modos,
 para limitar el tramo de historia afectado.
 
+Sesgo de sector "Unknown" en universo histórico — mitigado, NO eliminado
+------------------------------------------------------------------------------
+Problema (detectado y cuantificado empíricamente, ver detalle abajo): el
+sector de cada ticker histórico se obtenía SIEMPRE mapeándolo contra los
+constituyentes ACTUALES del S&P 500 (`load_sp500_tickers()`). Para
+tickers que ya NO pertenecen al índice hoy (fusionados, quebrados,
+rebrandeados, excluidos por rebalanceo — p.ej. CELG, XLNX, ETFC, WLTW,
+TWTR), no había forma de encontrar su sector en la fuente actual, así
+que caían a `Sector="Unknown"`. `resolve_sector_etf("Unknown")` devuelve
+`None`, así que a esos tickers nunca se les puede calcular `rsc_sector`
+(queda `NaN`) y la condición de entrada `F1_sector_fuerte`
+(`backtest/conditions.py::_f1_sector_fuerte`) se evalúa siempre `False`
+para ellos — quedan excluidos de abrir posición SIEMPRE, sin relación
+con su fuerza sectorial real. Esto reintroducía parcialmente el sesgo de
+supervivencia que el propio modo "historical" se creó para mitigar.
+
+Cifras verificadas empíricamente (universo histórico 8 años, 653 tickers
+totales, antes de la mitigación):
+  - 150 tickers (23.0%) quedaban con Sector="Unknown".
+  - De esos 150, 76 SÍ tenían histórico de precio suficiente en caché
+    (>=70 velas semanales) — candidatos reales y evaluables por F2-F5,
+    no ruido ni tickers sin datos.
+  - Backtest completo (8y, config por defecto, max_positions=10,
+    capital=$10.000): con F1 activo (umbral 0.10, default) la
+    rentabilidad total medida fue +25.92% (Sharpe 0.27, max drawdown
+    -23.96%, 165 operaciones). Con F1 desactivado por completo:
+    +89.14% (Sharpe 0.69, max drawdown -20.51%, 154 operaciones). Con
+    F1 con umbral relajado a 0.0 (no eliminado, solo más laxo): +20.39%
+    (Sharpe 0.24, max drawdown -26.16%) — PEOR que el baseline, lo que
+    confirma que el salto no viene de "cuán estricto es el umbral" sino
+    específicamente de dejar de excluir en bloque a los tickers
+    Unknown: el problema es binario (mapeo resuelto o no), no gradual.
+
+Mitigación implementada: `resolve_historical_sector()`
+(`weinstein/config.py`) añade un mapeo manual estático
+(`HISTORICAL_DELISTED_SECTORS`) de sector GICS para los tickers
+delistados más comunes, documentado con su fuente (último sector GICS
+conocido antes de salir del índice) directamente en `weinstein/config.py`.
+Se prioriza sobre "Unknown" pero solo cubre un conjunto acotado de
+tickers (los que además tienen histórico de precio evaluable, ver arriba)
+— no es un histórico GICS punto-en-el-tiempo completo (esa alternativa,
+scrapear el historial de revisiones de Wikipedia, se evaluó y se
+descartó por fragilidad/esfuerzo desproporcionado frente a la ganancia
+de precisión, dado que las reclasificaciones GICS intra-índice son
+infrecuentes). Los tickers que ni siquiera aparecen en el mapeo manual
+siguen cayendo a "Unknown" — se cuentan por separado en
+`UniverseInfo.tickers_sector_desconocido` (NO mezclados con
+`tickers_historicos_sin_precio`, que es un problema distinto: ausencia
+de PRECIO, no de sector) para que el reporte (`print_report`) siga
+siendo transparente sobre cuánto sesgo queda sin resolver.
+
+**Ninguna comparativa de F1 en modo "historical" debe tratarse como
+concluyente hasta que `tickers_sector_desconocido` sea 0 o
+suficientemente pequeño** — ver `backtest/BACKTEST.md` sección 4 para el
+detalle completo y las cifras exactas.
+
 Caché de FALLOS de descarga (tickers sin histórico suficiente o sin datos)
 ------------------------------------------------------------------------------
 `launcher.py` está pensado para ejecutar este backtest en bucle (cada
@@ -121,7 +177,7 @@ from backtest.portfolio_engine import (
 )
 from backtest.sp500_historical import build_membership_calendar_cached, universe_union
 from backtest.strategy_config import StrategyConfig
-from weinstein.config import SECTOR_TO_ETF, SP500_INDEX, resolve_sector_etf
+from weinstein.config import SECTOR_TO_ETF, SP500_INDEX, resolve_historical_sector, resolve_sector_etf
 from weinstein.data import load_sp500_tickers
 
 DEFAULT_BACKTEST_PERIOD = "8y"   # ventana recomendada para limitar el sesgo de supervivencia
@@ -138,10 +194,22 @@ class UniverseInfo:
     solo se rellena en modo "historical": tickers que en algún momento
     pertenecieron al índice pero no se pudo obtener su precio (sesgo de
     supervivencia residual, ver docstring del módulo).
+
+    `tickers_sector_desconocido` también solo se rellena en modo
+    "historical": tickers que SÍ tienen precio evaluable pero cuyo sector
+    no se pudo resolver ni contra los constituyentes actuales ni contra
+    el mapeo manual `HISTORICAL_DELISTED_SECTORS`
+    (`weinstein/config.py::resolve_historical_sector`), y por tanto quedan
+    con `Sector="Unknown"` y excluidos de F1 (RSC sector) de forma
+    permanente. Deliberadamente separado de `tickers_historicos_sin_precio`
+    porque es un problema distinto (ausencia de SECTOR, no de PRECIO) con
+    una causa e implicación distintas — ver docstring del módulo, sección
+    "Sesgo de sector Unknown en universo histórico".
     """
     mode: str
     membership_calendar: dict[pd.Timestamp, set[str]] | None = None
     tickers_historicos_sin_precio: list[str] = field(default_factory=list)
+    tickers_sector_desconocido: list[str] = field(default_factory=list)
 
 
 # ── Descarga + precálculo de contexto (una vez, se reutiliza entre configs) ──
@@ -220,12 +288,32 @@ def _build_historical_universe_rows(
     tickers que pertenecieron al índice en algún momento del periodo
     simulado (superset de lo que hará falta semana a semana).
 
-    El sector de cada ticker se toma de los constituyentes ACTUALES
-    cuando están disponibles ahí; para tickers que ya no cotizan (y por
-    tanto no aparecen en la lista de hoy), el sector se marca "Unknown"
-    — esto solo afecta a F1 (RSC sector), que no podrá evaluarse para
-    esos tickers concretos si no se puede mapear un ETF sectorial, pero
-    no impide intentar descargar su precio ni evaluar el resto.
+    Resolución de sector (ver docstring del módulo, sección "Sesgo de
+    sector Unknown en universo histórico" para el problema, el impacto
+    medido y la mitigación completa): para cada símbolo se intenta,
+    en orden:
+      1. El sector de los constituyentes ACTUALES del S&P 500
+         (`load_sp500_tickers()`) — fuente más fiable cuando el ticker
+         sigue vigente hoy.
+      2. El mapeo manual `HISTORICAL_DELISTED_SECTORS`
+         (`weinstein/config.py`) para tickers ya delistados que no
+         aparecen en (1).
+      3. "Unknown" si ninguna de las dos anteriores lo cubre — esto solo
+         afecta a F1 (RSC sector), que no podrá evaluarse para esos
+         tickers concretos, pero no impide intentar descargar su precio
+         ni evaluar el resto de condiciones.
+
+    Toda la resolución se hace con `weinstein.config.resolve_historical_sector`
+    (función pura, ver su docstring), para que la lógica de "en qué orden
+    se prioriza cada fuente" viva en un único sitio testeable en
+    aislamiento (`tests/test_config_historical_sector.py`), no repetida
+    aquí y en los tests de este módulo.
+
+    Devuelve además, como tercer elemento, la lista de símbolos que
+    quedaron en "Unknown" tras los tres pasos — usada por
+    `prepare_universe` para poblar `UniverseInfo.tickers_sector_desconocido`
+    (solo entre los que además tengan precio evaluable, filtrado más
+    abajo en `prepare_universe`).
     """
     dates = list(sp500_close.index)
     print("  → Reconstruyendo membresía histórica del S&P 500 (Wikipedia, con caché)...")
@@ -241,9 +329,11 @@ def _build_historical_universe_rows(
         "Symbol": sorted(union),
     })
     rows["Name"] = rows["Symbol"].map(name_map).fillna(rows["Symbol"])
-    rows["Sector"] = rows["Symbol"].map(sector_map).fillna("Unknown")
+    rows["Sector"] = rows["Symbol"].apply(lambda sym: resolve_historical_sector(sym, sector_map))
 
-    return rows, calendar, []
+    unknown_symbols = sorted(rows.loc[rows["Sector"] == "Unknown", "Symbol"])
+
+    return rows, calendar, unknown_symbols
 
 
 def prepare_universe(
@@ -293,13 +383,14 @@ def prepare_universe(
 
     print("\n[2/4] Cargando universo de tickers...")
     membership_calendar: dict[pd.Timestamp, set[str]] | None = None
+    unknown_sector_candidates: list[str] = []
 
     if tickers:
         sp500_df = pd.DataFrame({"Symbol": tickers, "Name": tickers, "Sector": "Unknown"})
         if universe == "historical":
             print("  ⚠ universe='historical' se ignora cuando se pasa una lista explícita de --tickers.")
     elif universe == "historical":
-        sp500_df, membership_calendar, _ = _build_historical_universe_rows(period, sp500_close)
+        sp500_df, membership_calendar, unknown_sector_candidates = _build_historical_universe_rows(period, sp500_close)
     else:
         sp500_df = load_sp500_tickers()
 
@@ -310,6 +401,8 @@ def prepare_universe(
             membership_calendar = {
                 fecha: (tks & kept) for fecha, tks in membership_calendar.items()
             }
+        kept_symbols = set(sp500_df["Symbol"])
+        unknown_sector_candidates = [s for s in unknown_sector_candidates if s in kept_symbols]
     print(f"  ✓ {len(sp500_df)} tickers a procesar")
 
     # Set de constituyentes ACTUALES del S&P 500, calculado una única vez
@@ -370,12 +463,24 @@ def prepare_universe(
 
     print(f"  ✓ {len(contexts)} tickers con contexto listo | {n_sin_datos} sin datos suficientes")
 
+    # tickers_sector_desconocido: intersección de "sector no resuelto"
+    # (unknown_sector_candidates, calculado en _build_historical_universe_rows)
+    # con "sí tiene contexto/precio evaluable" (contexts.keys()) — son los
+    # que de verdad importan para el sesgo (ver docstring del módulo):
+    # un ticker sin precio ya se cuenta en tickers_historicos_sin_precio,
+    # así que no aporta nada nuevo señalar también que su sector era
+    # desconocido.
+    tickers_sector_desconocido = sorted(
+        s for s in unknown_sector_candidates if s in contexts
+    ) if universe == "historical" and not tickers else []
+
     info = UniverseInfo(
         mode=universe if not tickers else "current",
         membership_calendar=membership_calendar,
         tickers_historicos_sin_precio=(
             sorted(tickers_sin_precio) if universe == "historical" and not tickers else []
         ),
+        tickers_sector_desconocido=tickers_sector_desconocido,
     )
 
     if info.tickers_historicos_sin_precio:
@@ -383,6 +488,14 @@ def prepare_universe(
             f"  ⚠ {len(info.tickers_historicos_sin_precio)} tickers pertenecieron al índice "
             "históricamente pero no tienen datos de precio disponibles en yfinance "
             "(sesgo de supervivencia PARCIAL, no eliminado — ver docstring de portfolio_backtest.py)."
+        )
+
+    if info.tickers_sector_desconocido:
+        print(
+            f"  ⚠ {len(info.tickers_sector_desconocido)} tickers con precio evaluable pero sector "
+            "no resuelto (ni constituyentes actuales ni HISTORICAL_DELISTED_SECTORS): quedan "
+            "excluidos de F1 (RSC sector) de forma permanente. Ver docstring de portfolio_backtest.py, "
+            "sección 'Sesgo de sector Unknown en universo histórico'."
         )
 
     return sp500_close, coppock_bullish, coppock_bearish, contexts, info
@@ -612,6 +725,13 @@ def print_report(result: PortfolioBacktestResult, universe_info: UniverseInfo | 
             print("    no tienen datos de precio en yfinance y no pudieron evaluarse (ver docstring")
             print("    de portfolio_backtest.py). El sesgo se reduce respecto a universe='current',")
             print("    NO se elimina.")
+        if universe_info.tickers_sector_desconocido:
+            n = len(universe_info.tickers_sector_desconocido)
+            print(f"  ⚠ Sesgo de sector Unknown PARCIAL: {n} tickers con precio evaluable pero sin")
+            print("    sector resuelto (ni constituyentes actuales ni HISTORICAL_DELISTED_SECTORS,")
+            print("    ver weinstein/config.py) — excluidos de F1 (RSC sector) siempre. NINGUNA")
+            print("    comparativa de F1 en este modo es concluyente mientras esta cifra no sea 0")
+            print("    o muy pequeña (ver backtest/BACKTEST.md sección 4).")
     else:
         print("  ⚠ Universo = S&P 500 ACTUAL (sesgo de supervivencia). Usa --universe historical")
         print("    para mitigarlo (ver docstring de portfolio_backtest.py para el detalle).")
