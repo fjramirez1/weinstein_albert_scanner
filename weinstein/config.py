@@ -223,6 +223,102 @@ HISTORICAL_DELISTED_SECTORS: dict[str, str] = {
     "ADS":  "Financials",               # Alliance Data Systems -> renombrada/escindida -> Bread Financial (BFH)
     "RE":   "Financials",               # Everest Re -> renombrada a Everest Group (EG)
     "FBHS": "Industrials",              # Fortune Brands Home & Security -> renombrada a Fortune Brands Innovations (FBIN)
+
+    # Consumer Discretionary (ampliación)
+    "AAP":  "Consumer Discretionary",   # Advance Auto Parts -> excluida del índice 2023
+    "BBWI": "Consumer Discretionary",   # Bath & Body Works -> excluida del índice
+    "CZR":  "Consumer Discretionary",   # Caesars Entertainment -> excluida del índice
+    "DAY":  "Consumer Discretionary",   # Dayforce (antes Ceridian) -> excluida del índice
+    "ETSY": "Consumer Discretionary",   # Etsy -> excluida del índice 2023
+    "HBI":  "Consumer Discretionary",   # Hanesbrands -> excluida del índice
+    "KMX":  "Consumer Discretionary",   # CarMax -> excluida del índice 2024
+    "KSS":  "Consumer Discretionary",   # Kohl's -> excluida del índice
+    "LKQ":  "Consumer Discretionary",   # LKQ Corporation -> excluida del índice 2025
+    "MHK":  "Consumer Discretionary",   # Mohawk Industries -> excluida del índice
+    "PENN": "Consumer Discretionary",   # PENN Entertainment -> excluida del índice
+    "PVH":  "Consumer Discretionary",   # PVH Corp -> excluida del índice
+    "UA":   "Consumer Discretionary",   # Under Armour clase C -> excluida del índice
+    "UAA":  "Consumer Discretionary",   # Under Armour clase A -> excluida del índice
+    "VFC":  "Consumer Discretionary",   # VF Corporation -> excluida del índice
+    "WHR":  "Consumer Discretionary",   # Whirlpool -> excluida del índice 2024
+
+    # Consumer Staples
+    "CAG":  "Consumer Staples",         # Conagra Brands -> excluida del índice 2025
+    "CPB":  "Consumer Staples",         # Campbell's -> excluida del índice
+    "COTY": "Consumer Staples",         # Coty Inc. -> excluida del índice
+    "LW":   "Consumer Staples",         # Lamb Weston -> excluida del índice 2025
+    "K":    "Consumer Staples",         # Kellanova (antes Kellogg) -> pendiente adquisición Mars, excluida del índice
+
+    # Energy (ampliación)
+    "CTRA": "Energy",                   # Coterra Energy -> excluida del índice
+    "FTI":  "Energy",                   # TechnipFMC -> excluida del índice
+    "HES":  "Energy",                   # Hess Corporation -> adquirida por Chevron 2025
+    "MRO":  "Energy",                   # Marathon Oil -> adquirida por ConocoPhillips 2024
+    "NBL":  "Energy",                   # Noble Energy -> adquirida por Chevron 2020
+    "NOV":  "Energy",                   # NOV Inc. -> excluida del índice
+
+    # Financials (ampliación)
+    "CMA":  "Financials",               # Comerica -> excluida del índice
+    "DFS":  "Financials",               # Discover Financial Services -> adquirida por Capital One 2025
+    "LNC":  "Financials",               # Lincoln National -> excluida del índice
+    "UNM":  "Financials",               # Unum Group -> excluida del índice
+    "ZION": "Financials",               # Zions Bancorporation -> excluida del índice
+    "MKTX": "Financials",               # MarketAxess Holdings -> excluida del índice
+
+    # Health Care (ampliación)
+    "ABMD": "Health Care",              # Abiomed -> adquirida por Johnson & Johnson 2022
+    "BIO":  "Health Care",              # Bio-Rad Laboratories -> excluida del índice
+    "CTLT": "Health Care",              # Catalent -> adquirida por Novo Holdings 2024
+    "HOLX": "Health Care",              # Hologic -> excluida del índice
+    "ILMN": "Health Care",              # Illumina -> excluida del índice
+    "MOH":  "Health Care",              # Molina Healthcare -> excluida del índice
+    "OGN":  "Health Care",              # Organon & Co. -> spin-off de Merck, excluida del índice
+    "PRGO": "Health Care",              # Perrigo -> excluida del índice
+    "TFX":  "Health Care",              # Teleflex -> excluida del índice
+    "XRAY": "Health Care",              # Dentsply Sirona -> excluida del índice
+
+    # Industrials (ampliación)
+    "AAL":  "Industrials",              # American Airlines Group -> excluida del índice
+    "ALK":  "Industrials",              # Alaska Air Group -> excluida del índice
+    "AMTM": "Industrials",              # Amentum Holdings -> spin-off de Jacobs Engineering
+    "DXC":  "Industrials",              # DXC Technology -> excluida del índice
+    "FLS":  "Industrials",              # Flowserve -> excluida del índice
+    "HRB":  "Industrials",              # H&R Block -> excluida del índice
+    "RHI":  "Industrials",              # Robert Half -> excluida del índice
+    "VNT":  "Industrials",              # Vontier -> spin-off de Fortive, excluida del índice
+
+    # Information Technology (ampliación)
+    "ANSS": "Information Technology",   # ANSYS -> adquirida por Synopsys 2024
+    "BWA":  "Information Technology",   # BorgWarner
+    "EPAM": "Information Technology",   # EPAM Systems -> excluida del índice
+    "ENPH": "Information Technology",   # Enphase Energy -> excluida del índice
+    "FLT":  "Information Technology",   # Corpay (antes FLEETCOR) -> excluida del índice
+    "INFO": "Information Technology",   # IHS Markit -> fusión con S&P Global 2022
+    "IPGP": "Information Technology",   # IPG Photonics -> excluida del índice
+    "JNPR": "Information Technology",   # Juniper Networks -> adquirida por HPE 2025
+    "MTCH": "Information Technology",   # Match Group -> excluida del índice
+    "PAYC": "Information Technology",   # Paycom Software -> excluida del índice
+    "QRVO": "Information Technology",   # Qorvo -> excluida del índice
+    "SEDG": "Information Technology",   # SolarEdge Technologies -> excluida del índice
+
+    # Materials
+    "CE":   "Materials",                # Celanese -> excluida del índice
+    "EMN":  "Materials",                # Eastman Chemical -> excluida del índice
+    "FMC":  "Materials",                # FMC Corporation -> excluida del índice
+    "NWL":  "Materials",                # Newell Brands
+    "SEE":  "Materials",                # Sealed Air -> excluida del índice
+
+    # Communication Services (ampliación)
+    "DISH": "Communication Services",   # DISH Network -> fusión con EchoStar 2023
+    "IPG":  "Communication Services",   # Interpublic Group -> adquirida por Omnicom 2025
+    "LUMN": "Communication Services",   # Lumen Technologies -> excluida del índice
+    "WU":   "Communication Services",   # Western Union -> excluida del índice
+
+    # Real Estate (ampliación)
+    "AIV":  "Real Estate",              # Apartment Investment and Management (Aimco) -> excluida del índice
+    "DRE":  "Real Estate",              # Duke Realty -> adquirida por Prologis 2022
+    "SLG":  "Real Estate",              # SL Green Realty -> excluida del índice
+    "VNO":  "Real Estate",              # Vornado Realty Trust -> excluida del índice
 }
 
 
