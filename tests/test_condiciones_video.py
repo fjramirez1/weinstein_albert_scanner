@@ -1,7 +1,8 @@
 """
-Reglas del vídeo registradas fuera de producción (Fase 6, F1 de
-docs/HOJA_DE_RUTA.md): F6 (cierre > WMA30) y S3 (trailing stop de 15
-semanas, solo con más de 15 semanas en posición).
+Condiciones registradas fuera de producción: las reglas del vídeo (Fase 6,
+F1 de docs/HOJA_DE_RUTA.md) F6 (cierre > WMA30) y S3 (trailing stop de 15
+semanas, solo con más de 15 semanas en posición), y F5b (mercado no
+bajista, alternativa a F5 estudiada en O2).
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ class TestRegistro:
     def test_desactivadas_por_defecto(self):
         cfg = StrategyConfig()
         assert "F6_cierre_sobre_wma30" not in cfg.active_entry_conditions()
+        assert "F5b_mercado_no_bajista" not in cfg.active_entry_conditions()
         assert "S3_trailing_stop" not in cfg.active_exit_conditions()
         assert set(cfg.active_entry_conditions()) == {
             "F1_sector_fuerte", "F2_volumen_positivo", "F3_rsc_activo_positivo",
@@ -58,6 +60,19 @@ class TestMascaras:
         mask = EXIT_CONDITIONS["S3_trailing_stop"].func(_ctx("AAA", close), ventana=15)
         assert not mask.iloc[:15].any()
         assert mask.iloc[15:].all()
+
+    def test_f5b_alcista_o_neutro_cumple_bajista_no(self):
+        ctx = _ctx("AAA", np.linspace(50, 100, N))
+        bajista = pd.Series(False, index=ctx.close.index)
+        bajista.iloc[10:20] = True
+        mask = ENTRY_CONDITIONS["F5b_mercado_no_bajista"].func(ctx, coppock_bearish_aligned=bajista)
+        assert not mask.iloc[10:20].any()
+        assert mask.iloc[:10].all() and mask.iloc[20:].all()
+
+    def test_f5b_sin_datos_de_mercado_no_cumple(self):
+        ctx = _ctx("AAA", np.linspace(50, 100, N))
+        mask = ENTRY_CONDITIONS["F5b_mercado_no_bajista"].func(ctx, coppock_bearish_aligned=None)
+        assert not mask.any()
 
     def test_min_semanas_no_llega_a_la_funcion(self):
         cfg = StrategyConfig(exit_conditions={"S3_trailing_stop": ConditionToggle()})

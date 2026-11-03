@@ -1,0 +1,5 @@
+﻿reglas,azar_CAGR_p10,azar_CAGR_mediana,azar_CAGR_p90,azar_Sharpe_mediana,azar_DD_mediana,momentum_CAGR,momentum_pct,rsc_activo_CAGR,rsc_activo_pct,vpm5_CAGR,vpm5_pct
+produccion,-2.3,1.23,3.0,0.16,-28.32,-1.92,15,2.97,90,3.16,90
+f5_off,4.26,7.6,10.4,0.45,-30.32,6.79,35,6.68,35,13.65,100
+f5_off_s2_off,5.36,7.9,10.36,0.46,-31.64,12.21,100,9.62,70,5.76,20
+s3_f4_12,0.51,3.22,5.16,0.28,-24.6,3.16,50,5.73,95,3.66,60

@@ -285,6 +285,8 @@ def evaluate_entry_mask(ctx: TickerContext, config: StrategyConfig, extra: dict)
         call_params = dict(params)
         if cname == "F5_mercado_alcista":
             call_params["coppock_bullish_aligned"] = extra.get("coppock_bullish")
+        elif cname == "F5b_mercado_no_bajista":
+            call_params["coppock_bearish_aligned"] = extra.get("coppock_bearish")
         cond_mask = spec.func(ctx, **call_params)
         mask &= cond_mask.reindex(ctx.close.index).fillna(False)
     return mask

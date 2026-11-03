@@ -1,0 +1,24 @@
+﻿variante,CAGR%,exceso_pp,DD%,Sharpe,ops,win%,PF$,top5%,inv%,costes$,anios>SPY,2018,2019,2020,2021,2022,motivos
+baseline,-1.92,-11.39,-30.96,-0.06,132.0,41.7,0.93,,83.5,270.73,1.0,0.9,17.4,-13.8,15.9,-21.9,"{'S2_mercado_bajista': 78, 'S1_rsc_debil': 52, 'S1_rsc_debil+S2_mercado_bajista': 2}"
+rank_rsc_activo,2.97,-6.49,-24.94,0.26,133.0,47.4,1.31,145.9,83.5,305.04,2.0,4.3,25.5,-0.9,7.2,-14.2,"{'S2_mercado_bajista': 83, 'S1_rsc_debil': 49, 'S1_rsc_debil+S2_mercado_bajista': 1}"
+rank_vpm5,3.16,-6.31,-23.8,0.27,136.0,44.9,1.33,142.8,83.5,303.97,1.0,-5.5,26.5,9.9,4.8,-13.0,"{'S2_mercado_bajista': 79, 'S1_rsc_debil': 53, 'S1_rsc_debil+S2_mercado_bajista': 3, 'SIN_DATOS': 1}"
+s1_-0.25,-2.81,-12.27,-27.52,-0.12,153.0,40.5,0.87,,83.5,305.11,1.0,-0.8,18.3,-8.7,7.1,-23.0,"{'S2_mercado_bajista': 77, 'S1_rsc_debil': 73, 'S1_rsc_debil+S2_mercado_bajista': 3}"
+s1_-1.0,-2.77,-12.23,-30.67,-0.1,114.0,40.4,0.85,,83.5,230.29,1.0,1.6,19.2,-15.1,13.7,-24.3,"{'S2_mercado_bajista': 84, 'S1_rsc_debil': 29, 'S1_rsc_debil+S2_mercado_bajista': 1}"
+s1_off,-0.42,-9.89,-27.86,0.05,89.0,40.4,1.08,727.2,83.5,198.22,1.0,0.7,24.6,-13.1,16.7,-21.5,{'S2_mercado_bajista': 89}
+s2_off,3.22,-6.24,-33.09,0.26,62.0,38.7,1.05,1309.2,99.6,127.84,2.0,-5.3,23.6,-1.1,17.9,-12.2,{'S1_rsc_debil': 62}
+f1_0.0,-2.62,-12.09,-32.74,-0.1,131.0,42.0,0.88,,83.5,260.55,1.0,-1.8,19.6,-17.0,18.4,-23.0,"{'S2_mercado_bajista': 80, 'S1_rsc_debil': 50, 'S1_rsc_debil+S2_mercado_bajista': 1}"
+f1_off,-0.77,-10.24,-28.29,0.03,134.0,42.5,0.99,,83.5,273.17,2.0,-1.3,21.8,-11.8,11.6,-17.4,"{'S2_mercado_bajista': 78, 'S1_rsc_debil': 55, 'S1_rsc_debil+S2_mercado_bajista': 1}"
+f4_5,-4.05,-13.51,-30.23,-0.16,147.0,36.1,0.77,,83.5,279.34,0.0,-5.5,14.8,-2.5,1.7,-23.7,"{'S2_mercado_bajista': 79, 'S1_rsc_debil': 66, 'S1_rsc_debil+S2_mercado_bajista': 2}"
+f4_12,2.61,-6.85,-23.67,0.24,125.0,51.2,1.29,158.3,83.5,281.15,1.0,-1.7,21.4,-6.3,27.2,-18.4,"{'S2_mercado_bajista': 84, 'S1_rsc_debil': 37, 'S1_rsc_debil+S2_mercado_bajista': 3, 'SIN_DATOS': 1}"
+f4_off,3.27,-6.2,-32.85,0.26,121.0,43.8,1.25,252.3,83.5,263.74,3.0,-0.8,25.4,-18.9,32.5,-11.0,"{'S2_mercado_bajista': 84, 'S1_rsc_debil': 34, 'SIN_DATOS': 3}"
+f6_on,-2.59,-12.05,-30.96,-0.11,133.0,41.4,0.89,,83.5,268.98,1.0,0.9,17.4,-13.8,11.9,-21.9,"{'S2_mercado_bajista': 78, 'S1_rsc_debil': 53, 'S1_rsc_debil+S2_mercado_bajista': 2}"
+s3_on,2.36,-7.11,-21.72,0.24,132.0,46.2,1.3,131.5,83.5,309.57,1.0,2.0,25.9,-3.5,17.5,-21.1,"{'S2_mercado_bajista': 70, 'S1_rsc_debil': 33, 'S3_trailing_stop': 21, 'S1_rsc_debil+S3_trailing_stop': 6, 'S2_mercado_bajista+S3_trailing_stop': 1, 'S1_rsc_debil+S2_mercado_bajista': 1}"
+s3_sin_min_semanas,2.72,-6.75,-21.22,0.27,139.0,44.6,1.3,125.7,83.1,330.34,1.0,2.0,25.9,0.7,13.7,-20.5,"{'S2_mercado_bajista': 61, 'S3_trailing_stop': 38, 'S1_rsc_debil': 25, 'S1_rsc_debil+S3_trailing_stop': 13, 'S2_mercado_bajista+S3_trailing_stop': 2}"
+video_f6_s3,1.52,-7.95,-23.89,0.18,133.0,45.9,1.22,170.0,83.5,307.3,1.0,2.0,25.9,-3.5,13.8,-21.9,"{'S2_mercado_bajista': 70, 'S1_rsc_debil': 33, 'S3_trailing_stop': 22, 'S1_rsc_debil+S3_trailing_stop': 6, 'S2_mercado_bajista+S3_trailing_stop': 1, 'S1_rsc_debil+S2_mercado_bajista': 1}"
+coppock_14_11,0.4,-9.07,-27.24,0.1,114.0,39.5,1.03,1289.2,82.3,229.14,2.0,-1.1,11.7,-8.4,24.2,-17.1,"{'S2_mercado_bajista': 60, 'S1_rsc_debil': 52, 'S1_rsc_debil+S2_mercado_bajista': 2}"
+coppock_14_11_s3,2.32,-7.15,-20.52,0.23,113.0,39.8,1.21,234.3,82.3,243.5,2.0,-0.7,12.6,0.8,24.1,-18.0,"{'S2_mercado_bajista': 48, 'S1_rsc_debil': 32, 'S3_trailing_stop': 22, 'S1_rsc_debil+S3_trailing_stop': 6, 'S2_mercado_bajista+S3_trailing_stop': 3, 'S1_rsc_debil+S2_mercado_bajista': 2}"
+pos_5,-2.07,-11.53,-34.93,-0.05,67.0,44.8,0.9,,83.5,253.07,1.0,-6.2,28.9,-26.4,21.5,-14.7,"{'S2_mercado_bajista': 40, 'S1_rsc_debil': 27}"
+pos_20,-0.09,-9.56,-25.36,0.07,267.0,44.9,1.07,349.5,83.5,287.1,1.0,1.6,20.3,-5.7,11.5,-21.5,"{'S2_mercado_bajista': 163, 'S1_rsc_debil': 102, 'S1_rsc_debil+S2_mercado_bajista': 2}"
+f5_off,6.79,-2.68,-28.1,0.45,444.0,51.8,1.3,94.0,99.6,1066.49,2.0,5.6,20.7,2.5,18.5,-8.0,"{'S2_mercado_bajista': 399, 'S1_rsc_debil': 41, 'SIN_DATOS': 4}"
+combo_f6_s3_rsc,0.21,-9.25,-23.28,0.09,137.0,43.8,1.08,511.5,83.5,299.14,1.0,2.5,23.3,-0.3,6.1,-22.4,"{'S2_mercado_bajista': 77, 'S1_rsc_debil': 38, 'S3_trailing_stop': 12, 'S1_rsc_debil+S3_trailing_stop': 6, 'S2_mercado_bajista+S3_trailing_stop': 3, 'S1_rsc_debil+S2_mercado_bajista': 1}"
+SPY,9.47,,-31.83,0.55,,,,,,,,-5.4,32.8,16.4,30.4,-18.2,

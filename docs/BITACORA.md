@@ -382,3 +382,170 @@ cifras de O1 pueden moverse algo; el baseline se recalcula dentro de O2.
   con el código anterior y con el nuevo, idénticos. Con S3 activo salió
   213 ops / +40,64 % (CAGR 3,9 %), pero esa cifra mezcla validación y **no
   se usa para decidir**; la medición válida es la de calibración en O2.
+
+## 2026-11-03 (11) — O2 ronda 1: un cambio cada vez, solo calibración
+
+Comando: `python -m backtest.estudios.o2_barrido --ronda 1` (tabla completa,
+con rentabilidad por año, en `historial/backtests/o2_barrido_calibracion_r1.csv`).
+Tramo 2017-12-01 → 2022-12-30, `next_open`, 0,10 %/lado, 10 posiciones.
+Las cifras del baseline coinciden con O1 (los sectores corregidos en (9)
+solo afectan a validación).
+
+| Variante | CAGR | Exceso vs SPY | Máx. DD | Sharpe | Ops | PF ($) | % top-5 | Años > SPY |
+|---|---|---|---|---|---|---|---|---|
+| baseline | −1,92 % | −11,4 pp | −31,0 % | −0,06 | 132 | 0,93 | — | 1 |
+| rank_rsc_activo | 2,97 % | −6,5 | −24,9 % | 0,26 | 133 | 1,31 | 146 % | 2 |
+| rank_vpm5 | 3,16 % | −6,3 | −23,8 % | 0,27 | 136 | 1,33 | 143 % | 1 |
+| s1_-0.25 | −2,81 % | −12,3 | −27,5 % | −0,12 | 153 | 0,87 | — | 1 |
+| s1_-1.0 | −2,77 % | −12,2 | −30,7 % | −0,10 | 114 | 0,85 | — | 1 |
+| s1_off | −0,42 % | −9,9 | −27,9 % | 0,05 | 89 | 1,08 | 727 % | 1 |
+| s2_off | 3,22 % | −6,2 | −33,1 % | 0,26 | 62 | 1,05 | 1309 % | 2 |
+| f1_0.0 | −2,62 % | −12,1 | −32,7 % | −0,10 | 131 | 0,88 | — | 1 |
+| f1_off | −0,77 % | −10,2 | −28,3 % | 0,03 | 134 | 0,99 | — | 2 |
+| f4_5 | −4,05 % | −13,5 | −30,2 % | −0,16 | 147 | 0,77 | — | 0 |
+| f4_12 | 2,61 % | −6,9 | −23,7 % | 0,24 | 125 | 1,29 | 158 % | 1 |
+| f4_off | 3,27 % | −6,2 | −32,9 % | 0,26 | 121 | 1,25 | 252 % | 3 |
+| f6_on (cierre > WMA30) | −2,59 % | −12,1 | −31,0 % | −0,11 | 133 | 0,89 | — | 1 |
+| s3_on (trailing 15, >15 sem.) | 2,36 % | −7,1 | −21,7 % | 0,24 | 132 | 1,30 | 132 % | 1 |
+| s3_sin_min_semanas | 2,72 % | −6,8 | −21,2 % | 0,27 | 139 | 1,30 | 126 % | 1 |
+| video_f6_s3 | 1,52 % | −8,0 | −23,9 % | 0,18 | 133 | 1,22 | 170 % | 1 |
+| coppock_14_11 | 0,40 % | −9,1 | −27,2 % | 0,10 | 114 | 1,03 | 1289 % | 2 |
+| coppock_14_11_s3 | 2,32 % | −7,2 | −20,5 % | 0,23 | 113 | 1,21 | 234 % | 2 |
+| pos_5 | −2,07 % | −11,5 | −34,9 % | −0,05 | 67 | 0,90 | — | 1 |
+| pos_20 | −0,09 % | −9,6 | −25,4 % | 0,07 | 267 | 1,07 | 350 % | 1 |
+| **f5_off** | **6,79 %** | **−2,7** | −28,1 % | **0,45** | 444 | 1,30 | **94 %** | 2 |
+| combo_f6_s3_rsc | 0,21 % | −9,3 | −23,3 % | 0,09 | 137 | 1,08 | 512 % | 1 |
+| *SPY* | *9,47 %* | | *−31,8 %* | *0,55* | | | | |
+
+Años del baseline frente a SPY: 2018 +0,9 / −5,4; 2019 +17,4 / +32,8;
+**2020 −13,8 / +16,4**; 2021 +15,9 / +30,4; 2022 −21,9 / −18,2.
+
+**Lectura.**
+1. **Ninguna variante bate a SPY en calibración.** La mejor (quitar F5)
+   se queda a −2,7 pp/año y con Sharpe 0,45 frente a 0,55.
+2. **El filtro de mercado es lo que más resta.** Sin F5 el CAGR pasa de
+   −1,9 % a 6,8 % y la concentración baja (top-5 = 94 % del P&L, la única
+   por debajo del 100 %). El Coppock clásico 14+11 mejora algo al 12+6
+   (0,4 % frente a −1,9 %), pero no compensa. En 2020 la estrategia sale
+   con S2 cerca del mínimo y F5 tarda en dejar volver a entrar.
+3. **Sin F5 hay mucha rotación**: 444 ops y 1.066 $ de costes, porque S2
+   cierra la cartera y a la semana siguiente vuelve a comprar.
+4. Mejoras moderadas (≈ +4-5 pp): ranking por RSC o VPM5 en vez de MOM
+   (MOM elige las acciones más extendidas), F4 más laxo o sin F4, quitar
+   S2, y el trailing stop S3, que además reduce el drawdown (−21,7 % frente
+   a −31,0 %).
+5. Empeoran: endurecer F4 (5 %), cambiar el umbral de S1 en cualquier
+   sentido, F1 más laxo y **F6 (cierre > WMA30)**: el vídeo tenía razón al
+   retirarla. El trailing stop, en cambio, **sí aporta** con el motor
+   corregido, al contrario de lo que se concluyó al retirarlo.
+6. `s2_off`, `s1_off` y `coppock_14_11` tienen un % top-5 > 700 %: su
+   resultado depende de unas pocas operaciones y no es fiable.
+
+Siguiente: ronda 2 con combinaciones de lo que mejora (sin F5, sin S2,
+ranking RSC/VPM5, S3, F4 laxo).
+
+## 2026-11-03 (12) — O2 ronda 2: combinaciones, solo calibración
+
+Comando: `python -m backtest.estudios.o2_barrido --ronda 2`
+(`historial/backtests/o2_barrido_calibracion_r2.csv`). Mismo tramo y modelo.
+
+| Variante | CAGR | Exceso | Máx. DD | Sharpe | Ops | PF ($) | % top-5 | Años > SPY | Costes |
+|---|---|---|---|---|---|---|---|---|---|
+| baseline | −1,92 % | −11,4 pp | −31,0 % | −0,06 | 132 | 0,93 | — | 1 | 271 $ |
+| f5_off | 6,79 % | −2,7 | −28,1 % | 0,45 | 444 | 1,30 | 94 % | 2 | 1.066 $ |
+| f5_off_s2_off | 12,21 % | +2,7 | −29,2 % | 0,63 | 50 | 2,97 | 93 % | 3 | 120 $ |
+| f5_off_s3 | 3,84 % | −5,6 | −30,9 % | 0,29 | 461 | 1,14 | 147 % | 2 | 1.010 $ |
+| f5_off_s2_off_s3 | 6,01 % | −3,5 | −26,8 % | 0,39 | 91 | 1,33 | 145 % | 1 | 205 $ |
+| f5_off_rsc | 6,68 % | −2,8 | −28,4 % | 0,42 | 448 | 1,31 | 92 % | 3 | 1.063 $ |
+| f5_off_vpm5 | 13,65 % | +4,2 | −25,2 % | 0,71 | 452 | 1,62 | 63 % | 3 | 1.247 $ |
+| f5_off_rsc_s3 | 4,94 % | −4,5 | −30,1 % | 0,34 | 464 | 1,21 | 115 % | 2 | 1.049 $ |
+| f5_off_s2_off_rsc_s3 | 1,22 % | −8,2 | −36,0 % | 0,17 | 96 | 1,03 | 1440 % | 1 | 206 $ |
+| f5_off_f4_off | 2,72 % | −6,7 | −31,1 % | 0,23 | 447 | 1,09 | 176 % | 2 | 942 $ |
+| f5_off_f4_12_rsc_s3 | 1,15 % | −8,3 | −29,1 % | 0,16 | 457 | 1,07 | 270 % | 0 | 943 $ |
+| f5_off_coppock_14_11 | 3,62 % | −5,9 | −28,8 % | 0,28 | 502 | 1,13 | 155 % | 1 | 1.126 $ |
+| f5_off_coppock_14_11_rsc_s3 | 1,98 % | −7,5 | −35,8 % | 0,20 | 521 | 1,06 | 294 % | 1 | 1.078 $ |
+| f5_off_rsc_s3_pos20 | 3,58 % | −5,9 | −28,6 % | 0,28 | 923 | 1,14 | 84 % | 2 | 1.015 $ |
+| rsc_s3 | 3,32 % | −6,2 | −22,1 % | 0,28 | 136 | 1,33 | 144 % | 2 | 317 $ |
+| rsc_s3_f4_12 | 5,73 % | −3,7 | −20,6 % | 0,41 | 128 | 1,74 | 70 % | 2 | 317 $ |
+| rsc_s3_s2_off | −0,20 % | −9,7 | −29,5 % | 0,09 | 83 | 0,96 | — | 1 | 174 $ |
+| *SPY* | *9,47 %* | | *−31,8 %* | *0,55* | | | | | |
+
+**Lectura.**
+1. Los efectos **no son aditivos**: lo que mejoraba por separado empeora al
+   combinarlo (S3 restaba en todas las combinaciones sin F5; con F5 activo
+   sumaba). Con F5 y S2 activos o no, el ranking cambia el resultado en
+   ±7 pp (`f5_off_rsc` 6,7 % frente a `f5_off_vpm5` 13,7 %).
+2. Dos variantes superan a SPY en calibración: `f5_off_vpm5` (+4,2 pp,
+   Sharpe 0,71, top-5 63 %) y `f5_off_s2_off` (+2,7 pp, pero solo 50 ops en
+   5 años: casi comprar y mantener 10 acciones).
+3. Sin F5 pero con S2, el motor vende toda la cartera cada semana bajista y
+   recompra a la siguiente (≈ 400 salidas S2): es una rotación semanal
+   forzada en los mercados bajistas, no una regla de Weinstein.
+4. Esta sensibilidad sugiere que buena parte de la diferencia es **ruido de
+   selección** (qué 10 acciones de entre muchos candidatos). Antes de elegir
+   se mide con rankings aleatorios (ronda 3).
+
+## 2026-11-03 (13) — O2 rondas 3 y 4: robustez frente a rankings aleatorios
+
+Comandos: `python -m backtest.estudios.o2_barrido --ronda 3` y `--ronda 4`
+(`historial/backtests/o2_barrido_calibracion_r{3,4}.csv` y `_r{3,4}_resumen.csv`).
+Cada conjunto de reglas se ejecuta con los 3 rankings reales y con 20
+rankings aleatorios reproducibles (crc32 de semilla, ticker y semana). La
+distribución del azar dice cuánto del resultado es suerte en la selección.
+Nueva condición inactiva por defecto para la ronda 4:
+`F5b_mercado_no_bajista` (entra si el Coppock está alcista **o neutro**).
+
+| Reglas | Azar p10 | Azar mediana | Azar p90 | Sharpe mediano | DD mediano | MOM (pct) | RSC (pct) | VPM5 (pct) |
+|---|---|---|---|---|---|---|---|---|
+| producción (F5 + S2) | −2,30 % | 1,23 % | 3,00 % | 0,16 | −28,3 % | −1,92 % (15) | 2,97 % (90) | 3,16 % (90) |
+| F5b + S2 | 0,93 % | 3,41 % | 5,26 % | 0,28 | −28,0 % | 0,70 % (10) | 4,11 % (80) | 7,18 % (100) |
+| F5b + S2 + S3 | 1,42 % | 3,12 % | 5,23 % | 0,26 | −28,2 % | 1,68 % (15) | 3,29 % (50) | 6,14 % (95) |
+| F4 12 % + S3 | 0,51 % | 3,22 % | 5,16 % | 0,28 | −24,6 % | 3,16 % (50) | 5,73 % (95) | 3,66 % (60) |
+| sin F5 (con S2) | 4,26 % | 7,60 % | 10,40 % | 0,45 | −30,3 % | 6,79 % (35) | 6,68 % (35) | 13,65 % (100) |
+| sin F5 ni S2 | 5,36 % | 7,90 % | 10,36 % | 0,46 | −31,6 % | 12,21 % (100) | 9,62 % (70) | 5,76 % (20) |
+
+(pct = % de las 20 semillas aleatorias que quedan por debajo. SPY en el
+tramo: 9,47 %, Sharpe 0,55, DD −31,8 %.)
+
+**Conclusiones de O2 (calibración).**
+1. **El filtro de mercado del Coppock resta rentabilidad**, y es el efecto
+   más robusto del estudio: la mediana con ranking aleatorio sube de forma
+   monótona al relajarlo (1,2 % → 3,4 % → 7,6 % → 7,9 %), y el p10 sin F5
+   supera al p90 de producción. El tramo incluye la caída y el rebote en V
+   de 2020, que castiga mucho a un filtro lento.
+2. **MOM, el ranking de producción, es peor que el azar** en 4 de 6
+   conjuntos (percentil mediano ≈ 25). Elige las acciones más extendidas
+   sobre su WMA30.
+3. **VPM5 es el ranking más consistente** (≥ 90 en 4 de 6, mediana ≈ 92);
+   RSC queda segundo (mediana ≈ 75). Las diferencias entre rankings son del
+   mismo orden que la dispersión del azar, así que es evidencia débil.
+4. Ningún conjunto de reglas bate a SPY con un ranking típico. Solo algunas
+   combinaciones concretas lo hacen, y eso es elegir el máximo de una
+   distribución ruidosa.
+5. S1 (umbral −0,5) y F1 (0,10) ya estaban en su mejor valor del barrido;
+   F6 empeora; S3 ayuda solo con el filtro de mercado activo.
+
+## 2026-11-03 (14) — Pre-registro de O3 (antes de mirar validación)
+
+Escrito y commiteado **antes** de ejecutar nada en validación
+(2023-01-06 → 2026-10-30), para que no se pueda ajustar a posteriori.
+
+- **Candidato elegido (por reglas robustas, no por el máximo):** reglas
+  "sin F5 ni S2" (mejor mediana con azar, menos operaciones y costes,
+  concentración baja) + ranking **VPM5** (el más consistente frente al
+  azar). Es decir: F1-F4 de entrada, S1 de salida, sin filtro de mercado.
+  Su cifra concreta en calibración es mediocre (5,76 %, percentil 20), y
+  aun así se elige porque la elección se basa en lo que fue robusto.
+- **Se ejecutan en validación**, con 3 rankings reales + 20 aleatorios, los
+  conjuntos producción, F5b + S2, sin F5 y sin F5 ni S2.
+- **Hipótesis:**
+  - H1: la mediana con azar de "sin F5" y "sin F5 ni S2" supera a la de
+    producción.
+  - H2: VPM5 supera la mediana del azar en la mayoría de los conjuntos y
+    MOM no.
+  - H3: el candidato supera al baseline de producción (MOM) en CAGR y
+    Sharpe.
+- **Regla de decisión (O4):** el candidato pasa a producción solo si se
+  cumplen H1 y H3, y se documenta su diferencia con SPY sea cual sea. Si
+  H1 falla, se mantiene producción y se documenta que el estudio no
+  encontró mejoras robustas.

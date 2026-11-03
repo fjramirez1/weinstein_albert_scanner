@@ -118,12 +118,14 @@ Bugs encontrados en la revisión del 2026-11-03, ordenados por impacto:
       de SPY en 2017-12 → 2026-10. Tramos fijados: calibración 2017-12-01 →
       2022-12-30, validación 2023-01-06 → 2026-10-30. Cuando se resuelva V1,
       repetir con la versión fiel al vídeo.
-- [ ] **O2.** Rehacer el barrido con presupuesto acotado (~20 configs):
+- [x] **O2.** (`backtest/estudios/o2_barrido.py`, rondas 1-4; bitácora
+      2026-11-03 (11)-(13)). Rehacer el barrido con presupuesto acotado (~20 configs):
       ranking, umbral S1, F1/F4, nº posiciones, parámetros del Coppock
       (14 + 11 vs 12 + 6; hoy fijos en `config.py`, habrá que exponerlos en
       `StrategyConfig`). Mirar siempre nº operaciones,
       Sharpe, drawdown, profit factor, % PnL en top-5 y vs benchmark.
 - [ ] **O3.** Validar la ganadora en el tramo fuera de muestra (disjunto).
+      Candidato e hipótesis pre-registrados: bitácora 2026-11-03 (14).
 - [ ] **O4.** Decisión final documentada.
 
 ## Fase 5 — Producción y documentación final
@@ -167,10 +169,13 @@ ampliar el catálogo y hacerlo cómodo de usar.
   (`coppock_roc_long/short`, `coppock_wma`, `coppock_lookback`); si difieren
   de `config.py` el motor recalcula F5/S2.
 - **Hecho:** F1 de la Fase 6 (F6/S3 registradas, inactivas por defecto).
-- **Siguiente paso:** estudio O2. Escribir y ejecutar
-  `python -m backtest.estudios.o2_barrido` (~20 configs SOLO en calibración
-  2017-12-01 → 2022-12-30; ranking, S1, F1/F4, F6, S3, Coppock 14+11 vs
-  12+6, nº de posiciones) y anotar la tabla en la bitácora.
+- **Hecho:** O2. El filtro de mercado del Coppock es lo que más resta; MOM
+  es peor que un ranking aleatorio; VPM5 es el más consistente. Ninguna
+  variante bate a SPY de forma robusta en calibración.
+- **Siguiente paso:** O3, una sola vez:
+  `python -m backtest.estudios.o3_validacion`. Anotar en la bitácora el
+  resultado de H1-H3 y aplicar la regla de decisión pre-registrada
+  (bitácora 2026-11-03 (14)) en O4.
 - **Sectores GICS de delistados:** verificados (bitácora 2026-11-03 (9)).
 - **Pendiente del usuario:** contenido del vídeo (V1).
 - **Caché:** repoblada el 2026-11-03 (`backtest/.cache/`, periodo `10y`).

@@ -129,6 +129,18 @@ def _f5_mercado_alcista(ctx: TickerContext, coppock_bullish_aligned: pd.Series |
     return coppock_bullish_aligned.reindex(ctx.close.index, method="ffill").fillna(False)
 
 
+def _f5b_mercado_no_bajista(ctx: TickerContext, coppock_bearish_aligned: pd.Series | None = None) -> pd.Series:
+    """
+    F5b (fuera de producción): el Coppock del S&P 500 NO está bajista, es
+    decir, alcista o neutro. Alternativa más laxa a F5; con S2 activo evita
+    recomprar la semana siguiente a una salida por mercado bajista.
+    """
+    if coppock_bearish_aligned is None:
+        return pd.Series(False, index=ctx.close.index)
+    bajista = coppock_bearish_aligned.reindex(ctx.close.index, method="ffill")
+    return ~bajista.fillna(True).astype(bool)
+
+
 def _f6_cierre_sobre_wma30(ctx: TickerContext, min_distancia: float = 0.0) -> pd.Series:
     """F6 (vídeo, fuera de producción): cierre por encima del WMA30 (distancia % > mínimo)."""
     return (ctx.dist_wma30_pct > min_distancia).fillna(False)
@@ -164,6 +176,13 @@ ENTRY_CONDITIONS: dict[str, ConditionSpec] = {
         label="F5: Coppock SP500 alcista",
         func=_f5_mercado_alcista,
         default_params={},  # coppock_bullish_aligned se inyecta desde el motor
+    ),
+    "F5b_mercado_no_bajista": ConditionSpec(
+        name="F5b_mercado_no_bajista",
+        label="F5b: Coppock SP500 no bajista",
+        func=_f5b_mercado_no_bajista,
+        default_params={},  # coppock_bearish_aligned se inyecta desde el motor
+        enabled_by_default=False,
     ),
     "F6_cierre_sobre_wma30": ConditionSpec(
         name="F6_cierre_sobre_wma30",
