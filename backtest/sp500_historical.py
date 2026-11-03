@@ -106,8 +106,12 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 
-from weinstein.config import SP500_WIKIPEDIA_URL
 from weinstein.data import load_sp500_tickers
+
+# La tabla de cambios (id="changes") ya no está en "List of S&P 500
+# companies": Wikipedia la movió (2026) a un artículo propio, con una 7ª
+# columna "Refs" al final.
+SP500_CHANGES_URL = "https://en.wikipedia.org/wiki/Historical_components_of_the_S%26P_500"
 
 CACHE_DIR = Path(__file__).parent / ".cache"
 CHANGES_CACHE_PATH = CACHE_DIR / "sp500_changes.parquet"
@@ -161,7 +165,7 @@ def _fetch_changes_table_raw() -> pd.DataFrame:
             "python-requests"
         )
     }
-    response = requests.get(SP500_WIKIPEDIA_URL, headers=headers, timeout=30)
+    response = requests.get(SP500_CHANGES_URL, headers=headers, timeout=30)
     response.raise_for_status()
 
     soup = BeautifulSoup(response.text, "lxml")
@@ -182,7 +186,7 @@ def _fetch_changes_table_raw() -> pd.DataFrame:
     for tr in data_rows:
         cells = tr.find_all("td", recursive=False)
         texts = [c.get_text(strip=True) for c in cells]
-        if len(texts) != 6:
+        if len(texts) not in (6, 7):  # 7 = con la columna "Refs" (formato 2026)
             n_descartadas_por_columnas += 1
             continue
         records.append({
@@ -197,7 +201,7 @@ def _fetch_changes_table_raw() -> pd.DataFrame:
     if n_descartadas_por_columnas > 0:
         print(
             f"  ⚠ sp500_historical: {n_descartadas_por_columnas} filas de la tabla "
-            "de cambios descartadas por no tener el nº de columnas esperado (6). "
+            "de cambios descartadas por no tener el nº de columnas esperado (6 o 7). "
             "Puede indicar un cambio de formato en la tabla de Wikipedia.",
             file=sys.stderr,
         )
