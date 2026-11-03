@@ -36,6 +36,74 @@ from weinstein.config import (
 )
 
 
+# ── Normalización de velas semanales ──────────────────────────────────
+#
+# yfinance etiqueta cada vela semanal con el LUNES de la semana; Tiingo con
+# el VIERNES (último día de la semana). El backtest de cartera cruza series
+# por fecha exacta, así que sin normalizar los tickers servidos por Tiingo
+# (precisamente los delistados) nunca coincidían con el calendario del
+# S&P 500 y no podían operar (bug B1, ver docs/BITACORA.md 2026-11-03).
+#
+# Convención única del proyecto: cada vela se etiqueta con el VIERNES de su
+# semana de negociación (lunes-viernes), venga de la fuente que venga.
+#
+# Además se descarta la vela de la semana en curso si aún no ha cerrado
+# (bug B3): si se descarga a mitad de semana, la última vela es parcial y
+# sus indicadores cambiarían antes del cierre real del viernes.
+
+_MARKET_TZ = "America/New_York"
+_WEEKLY_CLOSE_TIME = pd.Timedelta(hours=16, minutes=30)  # margen tras el cierre de las 16:00
+
+
+def last_closed_friday(now: pd.Timestamp | None = None) -> pd.Timestamp:
+    """
+    Viernes (fecha sin hora) de la última semana bursátil ya cerrada.
+
+    Una semana se da por cerrada a partir del viernes a las 16:30 hora de
+    Nueva York. ``now`` es inyectable para tests; si no lleva zona horaria
+    se interpreta ya en hora de Nueva York.
+    """
+    if now is None:
+        now = pd.Timestamp.now(tz=_MARKET_TZ)
+    elif now.tzinfo is not None:
+        now = now.tz_convert(_MARKET_TZ)
+    now = now.tz_localize(None) if now.tzinfo is not None else now
+
+    day = now.normalize()
+    friday = day - pd.Timedelta(days=(day.weekday() - 4) % 7)
+    if friday == day and now - day < _WEEKLY_CLOSE_TIME:
+        friday -= pd.Timedelta(days=7)
+    return friday
+
+
+def normalize_weekly_bars(
+    df: pd.DataFrame,
+    now: pd.Timestamp | None = None,
+) -> pd.DataFrame:
+    """
+    Reetiqueta cada vela con el viernes de su semana y descarta la semana
+    en curso si aún no ha cerrado (ver comentario de la sección).
+
+    Idempotente: aplicarla dos veces da el mismo resultado, así que también
+    se usa al leer de la caché en disco. Si dos filas caen en la misma
+    semana (yfinance a veces añade una fila extra con la fecha de hoy) se
+    conserva la última.
+    """
+    if df is None or df.empty:
+        return df
+
+    idx = pd.DatetimeIndex(df.index)
+    if idx.tz is not None:
+        idx = idx.tz_localize(None)
+    idx = idx.normalize()
+    fridays = idx - pd.to_timedelta(idx.weekday - 4, unit="D")
+
+    out = df.copy()
+    out.index = pd.DatetimeIndex(fridays, name="Date")
+    out = out[~out.index.duplicated(keep="last")].sort_index()
+    return out.loc[out.index <= last_closed_friday(now)]
+
+
 # ── Fallback Tiingo para tickers delistados ───────────────────────────
 #
 # yfinance (Yahoo Finance) deja de servir histórico de un ticker en
@@ -207,6 +275,7 @@ def download_weekly_tiingo(
     cols_presentes = [c for c in rename if c in raw.columns]
     raw = raw[cols_presentes].rename(columns=rename)
     raw.dropna(subset=["Close"], inplace=True)
+    raw = normalize_weekly_bars(raw)
 
     if len(raw) >= min_bars:
         print(f"  ✓ [{ticker}] recuperado vía Tiingo (fallback, {len(raw)} velas)")
@@ -309,6 +378,7 @@ def download_weekly(
         cols = [c for c in ("Open", "High", "Low", "Close", "Volume") if c in raw.columns]
         raw  = raw[cols].copy()
         raw.dropna(subset=["Close"], inplace=True)
+        raw = normalize_weekly_bars(raw)
 
         if len(raw) < MIN_BARS:
             print(

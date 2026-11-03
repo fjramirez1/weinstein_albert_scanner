@@ -69,7 +69,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from weinstein.data import download_weekly
+from weinstein.data import download_weekly, normalize_weekly_bars
 
 CACHE_DIR = Path(__file__).parent / ".cache"
 
@@ -151,14 +151,19 @@ def get_cached_weekly(
 
     if not refresh and path.exists():
         try:
-            return pd.read_parquet(path)
+            # Normalizar también al leer: cubre ficheros escritos antes de
+            # introducir la convención de velas en viernes (bug B1).
+            return normalize_weekly_bars(pd.read_parquet(path))
         except Exception as exc:
             # Caché corrupta (p.ej. interrupción a mitad de escritura):
             # se ignora y se vuelve a descargar en vez de fallar.
             print(f"  ⚠ [{ticker}] caché corrupta, redescargando: {exc}", file=sys.stderr)
 
     data = download_weekly(ticker, period=period)
-    if data is None:
+    if data is not None:
+        data = normalize_weekly_bars(data)
+    if data is None or data.empty:
+        data = None
         if not is_current_constituent:
             CACHE_DIR.mkdir(parents=True, exist_ok=True)
             try:
