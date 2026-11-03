@@ -192,3 +192,47 @@ curso del agente.)
 Herramienta: se instaló `pyflakes` en el venv para revisar importaciones
 (no está en `requirements.txt`). Quitada una importación sobrante en
 `backtest/portfolio_engine.py`.
+
+## 2026-11-03 (6) — D1/R3: descarga reanudable y dos claves de Tiingo
+
+**Trabajo del agente** (revisado; 262 tests al entregar, ningún commit con
+coautoría):
+- `5c395cc`: `TiingoRateLimitError` (HTTP 429, o HTTP 200 con
+  `{"detail": "...allocation..."}`) nunca se confunde con "sin datos" ni
+  escribe `.nodata`; contador de peticiones (alias incluidos) y presupuesto.
+- `d505bca`: `python -m backtest.download_data` (R3): fase yfinance, fase
+  Tiingo con presupuesto por hora/día, estado en
+  `backtest/.cache/descarga_estado.json`, `--wait`. `launcher.py` eliminado.
+- `5cafee5`: Wikipedia movió la tabla de cambios del S&P 500 a
+  "Historical components of the S&P 500" (con una 7ª columna "Refs"); el
+  universo histórico no se podía construir. Revisado: 414 cambios desde 1976,
+  20-30 por año entre 2015 y 2026 (lo esperable).
+
+**Dos claves de Tiingo** (petición del usuario, `edb4809`): claves en `.env`
+como `TIINGO_API_KEY` y `TIINGO_API_KEY_2` (nunca en git ni en logs). Cada
+clave tiene contador y bloqueo propios; un límite en una reintenta con otra;
+el presupuesto del descargador es por clave (45/h → 90/h). Se avisó al usuario
+de que usar varias cuentas gratuitas puede ir contra las condiciones de
+Tiingo. `tests/conftest.py` quita las claves reales del entorno en cada test.
+Bug encontrado por los tests: el diccionario `params` se reutilizaba entre
+reintentos (ahora se pasa una copia por petición).
+
+**Validación contra la API real:** en la segunda ventana la clave 1 recibió
+el límite real ("You have run over your hourly request allocation"); se
+detectó, se bloqueó solo esa clave y el mismo ticker (HES) se descargó con la
+clave 2.
+
+**Otros arreglos del informe del agente** (`bb30a5f`, `f5044e6`):
+- `get_cached_weekly` ya no usa Tiingo para tickers vigentes (los spin-offs
+  recientes FDXF, HONA, KVUE, Q, VYLR gastaban cupo en cada backtest).
+- Un fallo transitorio de Tiingo (red, 5xx, token) ya no marca `.nodata`
+  fuera del descargador.
+- Menciones a `launcher.py` actualizadas (CLAUDE.md, BACKTEST.md, README).
+- Pendiente menor, sin cambiar: `clear_cache()` también borra
+  `sp500_changes.parquet` (se regenera desde Wikipedia).
+
+**Cobertura** (10y, universo histórico, 699 tickers, 503 vigentes): tras la
+primera ventana, yfinance 588, Tiingo 37, sin datos 5 (APC, BBBY, CDAY,
+CSRA, ENDP), pendientes 69. Tras la segunda ventana (dos claves): +33 vía
+Tiingo, 27 pendientes para la ventana de las 11:01. Cifra final: ver la
+entrada siguiente.

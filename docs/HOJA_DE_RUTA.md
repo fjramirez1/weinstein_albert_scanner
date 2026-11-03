@@ -154,8 +154,9 @@ ampliar el catálogo y hacerlo cómodo de usar.
 
 - **Fase 1:** ✅ código corregido y con tests (229 passed). Sin verificar
   todavía con datos reales: se verá en D1/D2.
-- **En curso:** D1 + R3 (descarga reanudable que respeta el límite de
-  Tiingo de 50 peticiones/hora), delegado a un agente en paralelo.
+- **En curso:** D1, la descarga del universo histórico de 10 años, en marcha con
+  `python -m backtest.download_data --period 10y --universe historical
+  --wait` (dos claves de Tiingo, 90/h). R3 hecho.
 - **Siguiente paso:** cuando termine D1, D2 (cobertura del universo) y O1
   (baseline con el motor corregido). V1 sigue pendiente del vídeo.
 - **Pendiente del usuario:** contenido del vídeo (V1); permiso para la
