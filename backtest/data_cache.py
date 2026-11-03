@@ -81,6 +81,7 @@ import pandas as pd
 
 from weinstein.data import (
     TiingoRateLimitError,
+    TiingoUnavailableError,
     download_weekly,
     last_closed_friday,
     normalize_weekly_bars,
@@ -241,13 +242,22 @@ def get_cached_weekly(
             return cached
 
     try:
-        data = download_weekly(ticker, period=period, raise_on_rate_limit=True)
-    except TiingoRateLimitError:
-        # Tiingo limitado: NO es "sin datos". Sin marcador `.nodata`; se
-        # reintentará en otra ejecución (ver docstring del módulo).
+        # Tiingo solo para delistados: un vigente lo sirve yfinance y, si
+        # tiene pocas velas (alta reciente), Tiingo no tendría más; así no
+        # se gasta cupo en cada ejecución del backtest.
+        data = download_weekly(
+            ticker, period=period,
+            use_tiingo=not is_current_constituent,
+            raise_on_rate_limit=True,
+            raise_on_tiingo_error=True,
+        )
+    except (TiingoRateLimitError, TiingoUnavailableError) as exc:
+        # Tiingo limitado o caído: NO es "sin datos". Sin marcador `.nodata`;
+        # se reintentará en otra ejecución (ver docstring del módulo).
         if cached is not None:
             return cached
-        print(f"  ⚠ [{ticker}] pendiente: Tiingo limitado, se reintentará en otra "
+        motivo = "Tiingo limitado" if isinstance(exc, TiingoRateLimitError) else "Tiingo no disponible"
+        print(f"  ⚠ [{ticker}] pendiente: {motivo}, se reintentará en otra "
               "ejecución (python -m backtest.download_data)", file=sys.stderr)
         return None
     if data is not None:

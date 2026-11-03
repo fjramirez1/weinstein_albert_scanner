@@ -568,7 +568,7 @@ def download_weekly_tiingo(
     return None
 
 
-def _try_tiingo_fallback(ticker: str) -> pd.DataFrame | None:
+def _try_tiingo_fallback(ticker: str, raise_on_error: bool = False) -> pd.DataFrame | None:
     """
     Punto único de entrada al fallback de Tiingo desde ``download_weekly``.
 
@@ -584,7 +584,7 @@ def _try_tiingo_fallback(ticker: str) -> pd.DataFrame | None:
         return None
 
     print(f"  → [{ticker}] yfinance sin datos, probando fallback Tiingo...", file=sys.stderr)
-    return download_weekly_tiingo(ticker)
+    return download_weekly_tiingo(ticker, raise_on_error=raise_on_error)
 
 
 # ── Descarga OHLCV semanal ────────────────────────────────────────────
@@ -595,6 +595,7 @@ def download_weekly(
     max_retries: int = DOWNLOAD_MAX_RETRIES,
     use_tiingo: bool = True,
     raise_on_rate_limit: bool = False,
+    raise_on_tiingo_error: bool = False,
 ) -> pd.DataFrame | None:
     """
     Descarga datos OHLCV semanales de un ticker con yfinance.
@@ -623,12 +624,14 @@ def download_weekly(
     escáneres no distinguen); con ``raise_on_rate_limit=True`` se propaga la
     excepción para que el llamador NO lo confunda con "sin datos" (lo usa
     `backtest/data_cache.py` para no escribir un `.nodata` permanente).
+    Con ``raise_on_tiingo_error=True`` también se propaga
+    `TiingoUnavailableError` (red, 5xx, token): tampoco prueba "sin datos".
     """
     def fallback() -> pd.DataFrame | None:
         if not use_tiingo:
             return None
         try:
-            return _try_tiingo_fallback(ticker)
+            return _try_tiingo_fallback(ticker, raise_on_error=raise_on_tiingo_error)
         except TiingoRateLimitError:
             if raise_on_rate_limit:
                 raise

@@ -156,7 +156,7 @@ class TestTryTiingoFallback:
         with patch("weinstein.config.TIINGO_FALLBACK_ENABLED", True):
             with patch("weinstein.data.download_weekly_tiingo", return_value=fake_df) as mock_dl:
                 resultado = _try_tiingo_fallback("TST")
-        mock_dl.assert_called_once_with("TST")
+        mock_dl.assert_called_once_with("TST", raise_on_error=False)
         assert resultado is fake_df
 
 
@@ -172,7 +172,7 @@ class TestDownloadWeeklyConFallback:
                 with patch("weinstein.data.download_weekly_tiingo", return_value=fake_tiingo_df) as mock_tiingo:
                     resultado = download_weekly("DELISTED", max_retries=1)
 
-        mock_tiingo.assert_called_once_with("DELISTED")
+        mock_tiingo.assert_called_once_with("DELISTED", raise_on_error=False)
         assert resultado is not None
         assert len(resultado) == 100
 

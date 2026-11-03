@@ -209,3 +209,23 @@ class TestHelpersDeEstado:
         assert sorted(p.name for p in data_cache.CACHE_DIR.iterdir()) == [
             "OLD__5y.nodata", "TST__5y.parquet",
         ]
+
+
+class TestTiingoDesdeLaCache:
+
+    def test_vigente_no_usa_tiingo(self):
+        with patch.object(data_cache, "download_weekly", return_value=_fake_df()) as mock_dl:
+            data_cache.get_cached_weekly("CUR", "5y", is_current_constituent=True)
+        assert mock_dl.call_args.kwargs["use_tiingo"] is False
+
+    def test_delistado_si_usa_tiingo(self):
+        with patch.object(data_cache, "download_weekly", return_value=_fake_df()) as mock_dl:
+            data_cache.get_cached_weekly("OLD", "5y", is_current_constituent=False)
+        assert mock_dl.call_args.kwargs["use_tiingo"] is True
+
+    def test_tiingo_caido_no_marca_nodata(self):
+        from weinstein.data import TiingoUnavailableError
+
+        with patch.object(data_cache, "download_weekly", side_effect=TiingoUnavailableError("HTTP 503", "http")):
+            assert data_cache.get_cached_weekly("OLD", "5y", is_current_constituent=False) is None
+        assert data_cache.cache_stats()["n_fallos_cacheados"] == 0
