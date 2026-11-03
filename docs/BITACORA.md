@@ -236,3 +236,12 @@ primera ventana, yfinance 588, Tiingo 37, sin datos 5 (APC, BBBY, CDAY,
 CSRA, ENDP), pendientes 69. Tras la segunda ventana (dos claves): +33 vía
 Tiingo, 27 pendientes para la ventana de las 11:01. Cifra final: ver la
 entrada siguiente.
+
+**Cambio de criterio (mismo día, `4673e22`):** el usuario vio en Tiingo que
+la segunda cuenta aún tenía 11 peticiones libres cuando nuestro presupuesto
+(45/h por clave) ya daba la hora por gastada: el contador propio no coincide
+con el de Tiingo. Ahora no hay tope propio por defecto: se pide hasta que
+Tiingo devuelve su error de límite, que bloquea esa clave y pasa a la
+siguiente; con todas limitadas se reintenta a los 10 minutos
+(`TIINGO_LIMIT_RETRY_S`) en vez de esperar a la hora en punto.
+`--tiingo-budget` queda como tope opcional. 276 tests.

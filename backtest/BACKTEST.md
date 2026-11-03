@@ -413,9 +413,11 @@ sección 6) en vez de escribir el bucle a mano.
 > descargador reanudable `backtest/download_data.py` (tarea R3).
 >
 > **Varias API keys de Tiingo:** definir `TIINGO_API_KEY`, `TIINGO_API_KEY_2`…
-> (o `TIINGO_API_KEYS=k1,k2`) en `.env`. Cada clave lleva su propio contador
-> y bloqueo; `--tiingo-budget` es por clave (45/h por defecto, así que con
-> dos claves son 90/h).
+> (o `TIINGO_API_KEYS=k1,k2`) en `.env`. Cada clave lleva su propio bloqueo.
+> **Manda la respuesta de Tiingo, no nuestro contador** (no coinciden): se
+> pide hasta que Tiingo devuelve su error de límite, que bloquea esa clave y
+> pasa a la siguiente; con todas limitadas se reintenta a los 10 minutos.
+> `--tiingo-budget` (por clave y hora) es solo un tope opcional.
 
 Puebla `backtest/.cache/` con la misma clave (ticker, periodo) que
 `get_cached_weekly`, así que después
