@@ -80,9 +80,9 @@ Se pueden borrar → tarea R4, pendiente de OK del usuario.
 `Co-Authored-By`), y nada de carpetas extra. Eliminados los dos worktrees de
 `../weinstein_albert_scanner.worktrees/`, la carpeta vacía y las tres ramas
 locales `agents/*` (todas fusionadas en `main`). Regla añadida a `CLAUDE.md`.
-Los commits `d2a3e89`, `7b21c4f` y `0d2ea9c` (ya subidos) aún llevan la
-línea de coautoría; reescribirlos requiere `push --force` → pendiente de
-decisión del usuario.
+Los tres primeros commits de la sesión (ya subidos) llevaban la línea de
+coautoría; reescribirlos requería `push --force` → ver la entrada
+siguiente.
 
 **Commits de la fase** (`python -m pytest`: 202 → 229 passed):
 
@@ -124,3 +124,36 @@ Communication Services no puede pasar F1 hasta ~jun-2019.
 
 **Siguiente paso.** V1 (contenido del vídeo) cuando el usuario lo facilite;
 mientras, R1 sin red.
+
+---
+
+## 2026-11-03 (3) — Intento de reescribir el historial sin coautoría (descartado)
+
+Con permiso del usuario se reescribieron en local los 9 commits posteriores a
+`8221d77` quitando la línea `Co-Authored-By` (`git filter-branch
+--msg-filter`, contenido idéntico). GitHub **rechazó** el `push
+--force-with-lease`: `main` está protegida (`GH006: Cannot force-push to this
+branch`). No se ha saltado la protección. El usuario decidió no insistir
+("no es importante"): se devolvió el local a `origin/main` (`172fdc0`) y el
+trabajo posterior se reaplicó encima. Resultado: `d2a3e89`, `7b21c4f` y
+`0d2ea9c` conservan la línea de coautoría; todos los commits desde `4b77170`
+salen solo a nombre de `fjramirez1`. Los hashes citados en esta bitácora y en
+la hoja de ruta son los de GitHub.
+
+## 2026-11-03 (4) — Reglas del vídeo retiradas, recuperadas del historial
+
+El usuario recuerda que el vídeo mostraba backtests por regla y que algunas
+se quitaron por restar rentabilidad. Revisado el historial de git:
+
+- `456c810` (2026-05-18) quita la entrada **Cierre > WMA30**.
+- `73b185c` (2026-05-18) quita la salida **trailing stop de 15 barras**
+  (cierre < mínimo de los 15 cierres semanales previos, tras más de 15
+  semanas en posición; código en `weinstein_albert_exit_scanner.py` de
+  `4182c36`).
+- Ningún commit explica el motivo de ninguna de las dos retiradas.
+- **Hallazgo:** hasta `9155c85` (2026-06-28) ambos scripts usaban Coppock
+  **ROC 14 + 11**; desde la refactorización al paquete usa 12 + 6, sin
+  justificación. Abierto como V2b.
+
+Documentado en `docs/ESTRATEGIA.md` §10 y como Fase 6 (condiciones
+editables) en la hoja de ruta.

@@ -82,6 +82,9 @@ Bugs encontrados en la revisión del 2026-11-03, ordenados por impacto:
       del RSC Mansfield (×10 vs ×100, condiciona los umbrales 0,10 y -0,5),
       parámetros del Coppock (ROC 12+6, WMA10 — el Coppock clásico es 14+11
       mensual), definición de VPM5, regla de desempate, tamaño de cartera.
+- [ ] **V2b.** Coppock: el código original usaba **ROC 14 + 11** y cambió a
+      12 + 6 sin justificar en la refactorización `9155c85` (2026-06-28).
+      Confirmar con el vídeo cuál es el correcto (ver `docs/ESTRATEGIA.md` §10).
 - [ ] **V3.** Corregir las discrepancias que el usuario confirme (con
       `SCANNER_LOGIC_VERSION` → v4). Esta versión fiel es el **baseline** de
       la Fase 4.
@@ -124,6 +127,23 @@ Bugs encontrados en la revisión del 2026-11-03, ordenados por impacto:
       `OPTIMIZACION_BACKTEST.md` como histórico.
 - [ ] **P4.** Ejecutar `entry` y `exit` reales (con permiso) y revisar salida.
 
+## Fase 6 — Futuro: condiciones de entrada/salida editables
+
+Objetivo final del backtest: poder añadir, quitar y editar condiciones de
+entrada y salida sin tocar el motor. La base ya existe (`ConditionSpec` +
+`StrategyConfig` en `backtest/conditions.py` / `strategy_config.py`); falta
+ampliar el catálogo y hacerlo cómodo de usar.
+
+- [ ] **F1.** Registrar las reglas del vídeo que no están en producción
+      (`docs/ESTRATEGIA.md` §10) como condiciones **desactivadas por
+      defecto**: entrada `Cierre > WMA30` y salida `trailing stop de 15
+      barras`. Medirlas con el motor corregido (puede adelantarse a O2: es
+      barato y responde si su retirada estaba justificada).
+- [ ] **F2.** Definir configuraciones en fichero (YAML/JSON) en vez de flags
+      sueltos: activar/desactivar condiciones, umbrales y ranking.
+- [ ] **F3.** Condiciones parametrizables genéricas (p. ej. "indicador X
+      mayor/menor que umbral") para no escribir una función por regla.
+
 ---
 
 ## Estado actual
@@ -133,7 +153,7 @@ Bugs encontrados en la revisión del 2026-11-03, ordenados por impacto:
 - **Siguiente paso:** V1, en cuanto el usuario facilite la transcripción
   o sus notas del vídeo. Mientras tanto, sin red: R1 (módulo de señales
   único para escáner y backtest).
-- **Pendiente del usuario:** contenido del vídeo (V1); permiso para la
-  descarga masiva de datos (D1).
+- **Pendiente del usuario:** contenido del vídeo (V1, incluida la duda del
+  Coppock V2b); permiso para la descarga masiva de datos (D1).
 - **Caché:** `backtest/.cache/` está **vacía** (borrada por el test
   defectuoso el 2026-11-03). Se regenera en D1.

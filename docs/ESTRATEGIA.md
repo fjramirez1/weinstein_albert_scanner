@@ -147,3 +147,36 @@ La columna `S2 Coppock Bajista` refleja directamente el resultado de `sp500_baji
 
 - Este documento pretende ser complementario a la explicación de uso; no modifica la lógica del código ni los parámetros por defecto. Para ajustar umbrales o lógica, editar las constantes y funciones referenciadas en el código y mantener la coherencia con estas notas.
 - Referencia original explicativa (video): https://youtu.be/reQWjzedlX0?si=xSsagVeCSqrX7miV
+
+## 10. Reglas del vídeo que no están en producción
+
+El vídeo de Albert Albareda presenta más reglas de las que usa hoy el escáner
+y muestra, con su propio backtest, si cada una aporta rentabilidad o no. Según
+recuerda el usuario, las dos primeras se quitaron porque el autor comprobaba
+que restaban rentabilidad. Se conservan aquí para poder añadirlas como
+condiciones activables del backtest (ver `docs/HOJA_DE_RUTA.md`, Fase 6) y
+volver a medirlas con el motor corregido. Reconstruido desde el historial de
+git (2026-11-03).
+
+| Regla | Tipo | Definición original | Quitada en | Motivo registrado |
+|---|---|---|---|---|
+| **Cierre > WMA30** | Entrada (AND) | El cierre semanal debe estar por encima de la WMA de 30 semanas | `456c810` (2026-05-18) | Ninguno en el commit; según el usuario, el vídeo la desaconsejaba |
+| **Trailing stop de 15 barras** | Salida (OR) | Solo tras más de 15 semanas en posición: salir si el cierre actual es menor que el mínimo de los 15 cierres semanales anteriores (desde la entrada) | `73b185c` (2026-05-18) | Ídem |
+
+Notas para cuando se vuelvan a probar:
+
+- **Cierre > WMA30 cambia el sentido de F4.** Hoy F4 (`Dist% < 8 %`) no tiene
+  cota inferior, así que el escáner puede comprar valores *por debajo* de su
+  WMA30. Con esta regla el rango efectivo sería `0 % < Dist% < 8 %`, que es la
+  "etapa 2" clásica de Weinstein (precio sobre una media creciente).
+- **Trailing stop**: en el código original vivía en el escáner de salida
+  (columnas `Trailing Stop Ref`, `Barras Abierto`, `S2 Trailing Stop`) y la
+  condición de Coppock bajista era entonces la S3.
+
+### Discrepancia abierta: parámetros del Coppock
+
+Los scripts originales (mayo-junio 2026) calculaban `Coppock = WMA10(ROC14 +
+ROC11)`, los parámetros clásicos de Coppock. En la refactorización al paquete
+`weinstein/` (`9155c85`, 2026-06-28) pasaron a `ROC12 + ROC6` sin que ningún
+commit ni documento lo justifique. Los CSV de `historial/` anteriores a esa
+fecha se generaron con 14 + 11. Pendiente de confirmar con el vídeo (tarea V2).
