@@ -41,7 +41,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-from backtest.conditions import ENTRY_CONDITIONS, EXIT_CONDITIONS, RANKING_CRITERIA, TickerContext
+from backtest.conditions import ENTRY_CONDITIONS, EXIT_CONDITIONS, TickerContext
 from backtest.strategy_config import StrategyConfig
 
 

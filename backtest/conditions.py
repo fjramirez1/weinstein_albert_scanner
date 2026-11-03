@@ -44,152 +44,23 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable
 
-import numpy as np
 import pandas as pd
 
-from weinstein.config import (
-    COPPOCK_RECENT_LOOKBACK,
-    MAX_DISTANCIA_WMA30,
-    RSC_EXIT_THRESHOLD,
-    SECTOR_RSC_MIN,
-    VPM_BASE_PERIOD,
-    VPM_SMOOTHING,
-    WMA30_PERIOD,
-)
-from weinstein.indicators import (
-    coppock_curve,
-    distancia_wma_pct,
-    momentum_vs_wma,
-    rsc_mansfield,
-    sp500_alcista,
-    sp500_bajista,
-    vpm5,
-    wma,
+from weinstein.config import MAX_DISTANCIA_WMA30, RSC_EXIT_THRESHOLD, SECTOR_RSC_MIN
+from weinstein.signals import (  # noqa: F401  (re-exportados: API histórica del backtest)
+    MIN_CONTEXT_BARS,
+    TickerContext,
+    build_ticker_context,
+    f1_sector_fuerte,
+    f2_volumen_positivo,
+    f3_rsc_activo_positivo,
+    f4_distancia_wma30,
+    market_state_series,
+    s1_rsc_debil,
 )
 
-
-# ── Contexto precalculado por ticker ───────────────────────────────────
-
-@dataclass
-class TickerContext:
-    """
-    Todo lo que las condiciones necesitan sobre UN ticker, precalculado
-    una única vez sobre el histórico completo (vectorizado).
-
-    Todas las series comparten el mismo índice temporal (`close.index`),
-    ya realineado contra el S&P 500 / ETF sectorial, para que acceder a
-    `serie.iloc[i]` en la semana `i` sea válido para cualquier serie de
-    este contexto sin realineaciones repetidas dentro del bucle de
-    simulación (que sí sería caro).
-    """
-    ticker: str
-    sector: str
-    close: pd.Series
-    volume: pd.Series
-    wma30: pd.Series
-    vpm5: pd.Series
-    rsc_activo: pd.Series          # RSC Mansfield activo vs S&P 500
-    dist_wma30_pct: pd.Series
-    momentum: pd.Series
-    rsc_sector: pd.Series          # RSC Mansfield del sector vs S&P 500 (reindexado a `close`)
-    coppock_bullish: pd.Series     # F5 evaluado semana a semana (bool)
-    coppock_bearish: pd.Series     # S2 evaluado semana a semana (bool)
-    open: pd.Series | None = None  # apertura semanal (ejecución "next_open"); None → se usa close
-
-
-def build_ticker_context(
-    ticker: str,
-    sector: str,
-    data: pd.DataFrame,
-    sp500_close: pd.Series,
-    sector_etf_close: pd.Series | None,
-) -> TickerContext | None:
-    """
-    Precalcula todos los indicadores necesarios para un ticker, alineados
-    a su propio índice de fechas. Devuelve ``None`` si no hay histórico
-    suficiente para calcular nada útil.
-
-    Importante — cálculo "sin look-ahead" de F5/S2 semana a semana:
-    tanto `sp500_alcista` como `sp500_bajista` solo miran el valor actual
-    y el anterior (o una ventana de N anteriores) del Coppock, así que
-    evaluarlos con `.expanding()` reproduce exactamente lo que habría
-    visto el escáner en tiempo real cada semana, sin usar información
-    futura. Se calculan una única vez para todo el histórico del S&P 500
-    (compartido entre todos los tickers) fuera de esta función — ver
-    `precompute_market_series` — y aquí solo se reindexan al calendario
-    del ticker.
-    """
-    close = data["Close"].squeeze().astype(float)
-    volume = data["Volume"].squeeze().astype(float)
-    open_ = data["Open"].squeeze().astype(float) if "Open" in data.columns else None
-
-    if len(close) < 60:
-        return None
-
-    wma30 = wma(close, WMA30_PERIOD)
-    vpm5_series = vpm5(data, VPM_BASE_PERIOD, VPM_SMOOTHING)
-
-    close_a, sp500_a = close.align(sp500_close, join="inner")
-    rsc_activo_full = rsc_mansfield(close_a, sp500_a)
-    rsc_activo = rsc_activo_full.reindex(close.index)
-
-    dist_wma30 = ((close - wma30) / wma30) * 100.0
-    momentum = (close - wma30) / wma30
-
-    if sector_etf_close is not None:
-        sector_a, sp500_b = sector_etf_close.align(sp500_close, join="inner")
-        rsc_sector_full = rsc_mansfield(sector_a, sp500_b)
-        rsc_sector = rsc_sector_full.reindex(close.index, method="ffill")
-    else:
-        rsc_sector = pd.Series(np.nan, index=close.index)
-
-    return TickerContext(
-        ticker=ticker,
-        sector=sector,
-        close=close,
-        volume=volume,
-        wma30=wma30,
-        vpm5=vpm5_series,
-        rsc_activo=rsc_activo,
-        dist_wma30_pct=dist_wma30,
-        momentum=momentum,
-        rsc_sector=rsc_sector,
-        coppock_bullish=pd.Series(dtype=bool),  # se rellena por el motor (ver market context)
-        coppock_bearish=pd.Series(dtype=bool),
-        open=open_,
-    )
-
-
-def precompute_market_series(
-    sp500_close: pd.Series,
-    recent_lookback: int = COPPOCK_RECENT_LOOKBACK,
-) -> tuple[pd.Series, pd.Series]:
-    """
-    Calcula F5 (Sp500alcista) y S2 (Sp500bajista) semana a semana sobre
-    TODO el histórico del S&P 500, sin look-ahead: en la semana `i` solo
-    se usa `coppock.iloc[:i+1]`.
-
-    Se hace una sola vez (no por ticker) porque es la misma serie de
-    mercado para todos los tickers; el resultado se reindexa después al
-    calendario de cada ticker en `build_ticker_context` / en el motor.
-    """
-    copk = coppock_curve(sp500_close)
-    n = len(copk)
-
-    bullish = np.zeros(n, dtype=bool)
-    bearish = np.zeros(n, dtype=bool)
-
-    for i in range(n):
-        sub = copk.iloc[: i + 1]
-        b, _ = sp500_alcista(sub, recent_lookback=recent_lookback)
-        d, _ = sp500_bajista(sub)
-        bullish[i] = b
-        bearish[i] = d
-
-    return (
-        pd.Series(bullish, index=copk.index),
-        pd.Series(bearish, index=copk.index),
-    )
+# Nombre antiguo, conservado para no romper llamadas existentes.
+precompute_market_series = market_state_series
 
 
 # ── Especificación de una condición ─────────────────────────────────────
@@ -209,24 +80,27 @@ class ConditionSpec:
 
 # ── Condiciones de ENTRADA (F1-F5), combinadas con AND ─────────────────
 
+# Envoltorios finos: la regla en sí vive en weinstein/signals.py y es la
+# misma que aplica el escáner de producción.
+
 def _f1_sector_fuerte(ctx: TickerContext, umbral: float = SECTOR_RSC_MIN) -> pd.Series:
     """F1: RSC Mansfield del sector >= umbral."""
-    return (ctx.rsc_sector >= umbral).fillna(False)
+    return f1_sector_fuerte(ctx.rsc_sector, umbral)
 
 
 def _f2_volumen_positivo(ctx: TickerContext, umbral: float = 0.0) -> pd.Series:
     """F2: VPM5 > umbral (volumen por encima de su media histórica)."""
-    return (ctx.vpm5 > umbral).fillna(False)
+    return f2_volumen_positivo(ctx.vpm5, umbral)
 
 
 def _f3_rsc_activo_positivo(ctx: TickerContext, umbral: float = 0.0) -> pd.Series:
     """F3: RSC Mansfield del activo > umbral."""
-    return (ctx.rsc_activo > umbral).fillna(False)
+    return f3_rsc_activo_positivo(ctx.rsc_activo, umbral)
 
 
 def _f4_distancia_wma30(ctx: TickerContext, max_distancia: float = MAX_DISTANCIA_WMA30) -> pd.Series:
     """F4: distancia % al WMA30 por debajo del máximo permitido (sin cota inferior)."""
-    return (ctx.dist_wma30_pct < max_distancia).fillna(False)
+    return f4_distancia_wma30(ctx.dist_wma30_pct, max_distancia)
 
 
 def _f5_mercado_alcista(ctx: TickerContext, coppock_bullish_aligned: pd.Series | None = None) -> pd.Series:
@@ -274,7 +148,7 @@ ENTRY_CONDITIONS: dict[str, ConditionSpec] = {
 
 def _s1_rsc_debil(ctx: TickerContext, umbral: float = RSC_EXIT_THRESHOLD) -> pd.Series:
     """S1: RSC Mansfield del activo < umbral."""
-    return (ctx.rsc_activo < umbral).fillna(False)
+    return s1_rsc_debil(ctx.rsc_activo, umbral)
 
 
 def _s2_mercado_bajista(ctx: TickerContext, coppock_bearish_aligned: pd.Series | None = None) -> pd.Series:

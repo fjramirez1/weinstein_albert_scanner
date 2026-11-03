@@ -18,11 +18,11 @@ Optimizaciones respecto a la versión original
    pool hace una única descarga, así que el pool ya serializa la
    concurrencia al mismo número).
 5. **Descarga de ETFs en paralelo**: antes del loop principal.
-6. **WMA30 calculada una sola vez por ticker**: tanto la distancia %
-   respecto a WMA30 (F4) como el Momentum (MOM, usado para el ranking)
-   necesitaban la misma media móvil ponderada; antes se recalculaba dos
-   veces (operación cara: `rolling().apply()` sobre todo el histórico).
-   Ahora se calcula una vez y se reutiliza.
+6. **Mismas señales que el backtest**: los indicadores se calculan con
+   `weinstein.signals.build_ticker_context` y cada filtro con las reglas de
+   `weinstein/signals.py`, las mismas que usa `backtest/` (tarea R1). Lo
+   que el backtest simula una semana es exactamente lo que el escáner
+   habría dado esa semana (ver `tests/test_signals_paridad.py`).
 """
 
 from __future__ import annotations
@@ -35,29 +35,23 @@ import numpy as np
 import pandas as pd
 
 from weinstein.config import (
-    COPPOCK_RECENT_LOOKBACK,
     DOWNLOAD_PERIOD_ENTRY,
     MAX_CANDIDATES,
-    MAX_DISTANCIA_WMA30,
-    RSC_SMA_PERIOD,
     SCANNER_LOGIC_VERSION,
-    SECTOR_RSC_MIN,
     SECTOR_TO_ETF,
     SP500_INDEX,
-    VPM_BASE_PERIOD,
-    VPM_SMOOTHING,
-    WMA30_PERIOD,
-    resolve_sector_etf
+    resolve_sector_etf,
 )
 from weinstein.data import download_weekly, load_sp500_tickers
-from weinstein.indicators import (
-    coppock_curve,
-    distancia_wma_pct,
-    momentum_vs_wma,
-    rsc_mansfield,
-    sp500_alcista,
-    vpm5,
-    wma,
+from weinstein.indicators import coppock_curve
+from weinstein.signals import (
+    build_ticker_context,
+    f1_sector_fuerte,
+    f2_volumen_positivo,
+    f3_rsc_activo_positivo,
+    f4_distancia_wma30,
+    market_state_series,
+    sector_rsc_series,
 )
 
 # Máximo de hilos concurrentes contra yfinance.
@@ -76,7 +70,7 @@ def _download_etf_rsc(
     if data is None:
         return etf, None
     try:
-        rsc_val = float(rsc_mansfield(data["Close"].squeeze(), sp500_close).iloc[-1])
+        rsc_val = float(sector_rsc_series(data["Close"].squeeze(), sp500_close).iloc[-1])
         return etf, rsc_val
     except Exception:
         return etf, None
@@ -93,7 +87,9 @@ def _precompute_market_context(
     (coppock_bullish, coppock_direction, sector_rsc_map)
     """
     copk = coppock_curve(sp500_close)
-    coppock_bullish, direction = sp500_alcista(copk, recent_lookback=COPPOCK_RECENT_LOOKBACK)
+    bullish_series, _ = market_state_series(sp500_close)
+    coppock_bullish = bool(bullish_series.iloc[-1])
+    direction = "↑ Alcista" if coppock_bullish else "↓ No alcista"
 
     print(f"\n  Coppock SP500 actual   : {float(copk.iloc[-1]):+.4f}")
     print(f"  Coppock SP500 anterior : {float(copk.iloc[-2]):+.4f}")
@@ -101,7 +97,7 @@ def _precompute_market_context(
 
     # ── Early-exit: si el mercado ya es bajista, no hay nada que escanear ──
     if not coppock_bullish:
-        print("\n  ⛔ Mercado BAJISTA (F5 falla). No se procesa ningún ticker.")
+        print("\n  ⛔ Coppock no alcista (F5 falla). No se procesa ningún ticker.")
         return coppock_bullish, direction, {}
 
     unique_etfs = sorted(set(SECTOR_TO_ETF.values()))
@@ -118,7 +114,7 @@ def _precompute_market_context(
             etf, rsc_val = fut.result()
             if rsc_val is not None:
                 sector_rsc_map[etf] = rsc_val
-                ok = "✓" if rsc_val >= SECTOR_RSC_MIN else "✗"
+                ok = "✓" if f1_sector_fuerte(rsc_val) else "✗"
                 print(f"    {ok} {etf}: RSC = {rsc_val:+.4f}")
             else:
                 print(f"    ✗ {etf}: sin datos")
@@ -154,8 +150,7 @@ def _evaluate_ticker(
     # F1: RSC sector — conocido de antemano, sin coste
     etf_ticker     = resolve_sector_etf(sector_name)
     rsc_sector_val = sector_rsc_map.get(etf_ticker, np.nan) if etf_ticker else np.nan
-    f1_ok = (not pd.isna(rsc_sector_val)) and rsc_sector_val >= SECTOR_RSC_MIN
-    if not f1_ok:
+    if not f1_sector_fuerte(rsc_sector_val):
         return None, "filtrado"
 
     # Descarga del ticker — único I/O de esta función
@@ -163,35 +158,30 @@ def _evaluate_ticker(
     if data is None:
         return None, "sin_datos"
 
-    close = data["Close"].squeeze()
-    if len(close) < RSC_SMA_PERIOD + 5:
+    # Mismos indicadores que el backtest. El RSC sectorial ya se evaluó
+    # arriba con el valor precalculado del ETF, por eso no se pasa aquí.
+    ctx = build_ticker_context(ticker, sector_name, data, sp500_close, None)
+    if ctx is None:
         return None, "sin_datos"
+    close = ctx.close
 
-    # F3: RSC Mansfield activo > 0  (solo necesita close + sp500)
-    close_a, sp500_a = close.align(sp500_close, join="inner")
-    rsc_activo_val = float(rsc_mansfield(close_a, sp500_a).iloc[-1])
-    if pd.isna(rsc_activo_val) or rsc_activo_val <= 0.0:
+    # F3: RSC Mansfield activo > 0
+    rsc_activo_val = float(ctx.rsc_activo.iloc[-1])
+    if not f3_rsc_activo_positivo(rsc_activo_val):
         return None, "filtrado"
 
     # F2: VPM5 > 0
-    vpm5_val = float(vpm5(data, VPM_BASE_PERIOD, VPM_SMOOTHING).iloc[-1])
-    if pd.isna(vpm5_val) or vpm5_val <= 0.0:
+    vpm5_val = float(ctx.vpm5.iloc[-1])
+    if not f2_volumen_positivo(vpm5_val):
         return None, "filtrado"
-
-    # WMA30 calculada una única vez y reutilizada en F4 y en MOM.
-    wma30_series = wma(close, WMA30_PERIOD)
-    wma30_val    = float(wma30_series.iloc[-1]) if len(wma30_series) else float("nan")
-    if pd.isna(wma30_val) or wma30_val <= 0:
-        return None, "sin_datos"
 
     # F4: distancia WMA30 < MAX_DISTANCIA_WMA30
-    dist = distancia_wma_pct(close, WMA30_PERIOD, wma_series=wma30_series)
-    if dist is None or dist >= MAX_DISTANCIA_WMA30:
-        return None, "filtrado"
-
-    mom = momentum_vs_wma(close, WMA30_PERIOD, wma_series=wma30_series)
-    if mom is None:
+    dist = float(ctx.dist_wma30_pct.iloc[-1])
+    mom = float(ctx.momentum.iloc[-1])
+    if pd.isna(dist) or pd.isna(mom):
         return None, "sin_datos"
+    if not f4_distancia_wma30(dist):
+        return None, "filtrado"
 
     return {
         "Ticker"                 : ticker,

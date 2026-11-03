@@ -63,12 +63,12 @@ from weinstein.config import (
     EXIT_REASON_S1_LABEL,
     EXIT_REASON_S2_LABEL,
     RSC_EXIT_THRESHOLD,
-    RSC_SMA_PERIOD,
     SCANNER_LOGIC_VERSION,
     SP500_INDEX,
 )
 from weinstein.data import download_weekly, load_positions
-from weinstein.indicators import coppock_curve, rsc_mansfield, sp500_bajista
+from weinstein.indicators import coppock_curve
+from weinstein.signals import MIN_CONTEXT_BARS, market_state_series, rsc_activo_series, s1_rsc_debil
 
 MAX_WORKERS = 10  # las posiciones suelen ser pocas; 10 es más que suficiente
 
@@ -116,16 +116,16 @@ def _evaluate_exit(
 
     close = data["Close"].copy()
 
-    # S1: RSC Mansfield activo < umbral
+    # S1: RSC Mansfield activo < umbral (misma regla que el backtest,
+    # weinstein/signals.py)
     try:
-        close_a, sp500_a = close.align(sp500_close, join="inner")
-        if len(close_a) < RSC_SMA_PERIOD + 5:
+        if len(close.index.intersection(sp500_close.index)) < MIN_CONTEXT_BARS:
             result["Error"] = "Histórico insuficiente para RSC"
             # S2 aún puede activar SALIDA
         else:
-            rsc_val = float(rsc_mansfield(close_a, sp500_a).iloc[-1])
+            rsc_val = float(rsc_activo_series(close, sp500_close).iloc[-1])
             result["RSC Mansfield"] = round(rsc_val, 4)
-            result["S1 RSC < -0.5"] = rsc_val < RSC_EXIT_THRESHOLD
+            result["S1 RSC < -0.5"] = s1_rsc_debil(rsc_val)
     except Exception as exc:
         result["Error"] = f"Error calculando RSC: {exc}"
 
@@ -219,7 +219,9 @@ def run_exit_scanner(csv_path: str) -> pd.DataFrame:
 
     sp500_close = sp500_data["Close"].copy()
     copk = coppock_curve(sp500_close)
-    coppock_bearish, estado_mkt = sp500_bajista(copk)
+    _, bearish_series = market_state_series(sp500_close)
+    coppock_bearish = bool(bearish_series.iloc[-1])
+    estado_mkt = "↓ Bajista" if coppock_bearish else "→ No bajista"
 
     print(f"  Coppock actual   : {float(copk.iloc[-1]):+.4f}")
     print(f"  Coppock anterior : {float(copk.iloc[-2]):+.4f}")
