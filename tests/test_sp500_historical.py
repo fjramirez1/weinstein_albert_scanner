@@ -238,12 +238,11 @@ class TestParseChangesTable:
 class TestFetchChangesTableCache:
 
     @pytest.fixture(autouse=True)
-    def _clean_cache(self):
-        if sh.CHANGES_CACHE_PATH.exists():
-            sh.CHANGES_CACHE_PATH.unlink()
+    def _clean_cache(self, tmp_path, monkeypatch):
+        # Directorio temporal: nunca borrar la caché real de backtest/.cache/.
+        monkeypatch.setattr(sh, "CACHE_DIR", tmp_path / "cache")
+        monkeypatch.setattr(sh, "CHANGES_CACHE_PATH", tmp_path / "cache" / "sp500_changes.parquet")
         yield
-        if sh.CHANGES_CACHE_PATH.exists():
-            sh.CHANGES_CACHE_PATH.unlink()
 
     def test_primera_llamada_descarga_y_cachea(self):
         raw = pd.DataFrame({

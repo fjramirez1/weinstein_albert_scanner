@@ -17,11 +17,16 @@ from backtest import data_cache
 
 
 @pytest.fixture(autouse=True)
-def _clean_cache():
-    """Asegura una caché vacía antes y después de cada test de este módulo."""
-    data_cache.clear_cache()
+def _clean_cache(tmp_path, monkeypatch):
+    """
+    Redirige la caché a un directorio temporal vacío por test.
+
+    Nunca debe tocarse `backtest/.cache/` real: una versión anterior de
+    este fixture llamaba a `clear_cache()` sobre el directorio real y
+    borraba toda la caché de datos descargada al ejecutar `pytest`.
+    """
+    monkeypatch.setattr(data_cache, "CACHE_DIR", tmp_path / "cache")
     yield
-    data_cache.clear_cache()
 
 
 def _fake_df():
