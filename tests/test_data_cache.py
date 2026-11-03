@@ -12,8 +12,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from tests.conftest import weekly_index
 from backtest import data_cache
+from weinstein.data import last_closed_friday
 
 
 @pytest.fixture(autouse=True)
@@ -29,8 +29,9 @@ def _clean_cache(tmp_path, monkeypatch):
     yield
 
 
-def _fake_df():
-    idx = weekly_index(100)
+def _fake_df(end=None):
+    # Termina en la última semana cerrada: una caché al día no se refresca.
+    idx = pd.date_range(end=end or last_closed_friday(), periods=100, freq="W-FRI")
     return pd.DataFrame({
         "Open": 1.0, "High": 1.0, "Low": 1.0,
         "Close": np.linspace(100, 200, 100), "Volume": 1000.0,
@@ -111,3 +112,30 @@ class TestCacheStatsYClear:
 
     def test_clear_cache_sobre_cache_vacia_no_falla(self):
         assert data_cache.clear_cache() == 0
+
+
+class TestCaducidad:
+
+    def test_ticker_vigente_con_cache_desfasada_se_refresca(self):
+        viejo = _fake_df(end=last_closed_friday() - pd.Timedelta(weeks=3))
+        nuevo = _fake_df()
+        with patch.object(data_cache, "download_weekly", side_effect=[viejo, nuevo]) as mock_dl:
+            data_cache.get_cached_weekly("TST", "5y", is_current_constituent=True)
+            result = data_cache.get_cached_weekly("TST", "5y", is_current_constituent=True)
+        assert mock_dl.call_count == 2
+        assert result.index[-1] == last_closed_friday()
+
+    def test_ticker_delistado_nunca_se_refresca(self):
+        viejo = _fake_df(end=pd.Timestamp("2021-06-04"))
+        with patch.object(data_cache, "download_weekly", return_value=viejo) as mock_dl:
+            data_cache.get_cached_weekly("OLD", "5y", is_current_constituent=False)
+            data_cache.get_cached_weekly("OLD", "5y", is_current_constituent=False)
+        assert mock_dl.call_count == 1
+
+    def test_si_falla_el_refresco_se_usa_la_cache_antigua(self):
+        viejo = _fake_df(end=last_closed_friday() - pd.Timedelta(weeks=3))
+        with patch.object(data_cache, "download_weekly", side_effect=[viejo, None]):
+            data_cache.get_cached_weekly("TST", "5y")
+            result = data_cache.get_cached_weekly("TST", "5y")
+        assert result is not None
+        assert result.index[-1] == viejo.index[-1]

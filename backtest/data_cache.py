@@ -18,10 +18,10 @@ fichero cacheado sin tocar la red, así que solo la primera ejecución es
 lenta.
 
 La caché es deliberadamente simple (un archivo parquet por ticker+periodo
-en `backtest/.cache/`), sin invalidación automática por fecha: los datos
-de mercado de una semana ya cerrada no cambian, así que no hay necesidad
-de "refrescar" salvo que el usuario quiera datos de una semana nueva. Para
-eso existe `refresh=True` / borrar la carpeta de caché manualmente.
+en `backtest/.cache/`). Caducidad: el fichero de un ticker que sigue en el
+índice se vuelve a descargar en cuanto cierra una semana que no contiene
+(`weinstein.data.last_closed_friday`); el de un ticker delistado vale para
+siempre (su histórico ya no crece). `refresh=True` fuerza la descarga.
 
 Caché de FALLOS (tickers sin histórico suficiente o sin datos)
 ------------------------------------------------------------------
@@ -69,7 +69,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from weinstein.data import download_weekly, normalize_weekly_bars
+from weinstein.data import download_weekly, last_closed_friday, normalize_weekly_bars
 
 CACHE_DIR = Path(__file__).parent / ".cache"
 
@@ -149,21 +149,35 @@ def get_cached_weekly(
             # respeta sin tocar la red.
             return None
 
+    cached: pd.DataFrame | None = None
     if not refresh and path.exists():
         try:
             # Normalizar también al leer: cubre ficheros escritos antes de
             # introducir la convención de velas en viernes (bug B1).
-            return normalize_weekly_bars(pd.read_parquet(path))
+            cached = normalize_weekly_bars(pd.read_parquet(path))
         except Exception as exc:
             # Caché corrupta (p.ej. interrupción a mitad de escritura):
             # se ignora y se vuelve a descargar en vez de fallar.
             print(f"  ⚠ [{ticker}] caché corrupta, redescargando: {exc}", file=sys.stderr)
+
+    if cached is not None and not cached.empty:
+        # Caducidad (B10): un ticker delistado tiene histórico cerrado y su
+        # caché vale para siempre; uno vigente queda desfasado en cuanto
+        # cierra una semana nueva que no está en el fichero.
+        if not is_current_constituent or cached.index[-1] >= last_closed_friday():
+            return cached
 
     data = download_weekly(ticker, period=period)
     if data is not None:
         data = normalize_weekly_bars(data)
     if data is None or data.empty:
         data = None
+        if cached is not None and not cached.empty:
+            # Falló el refresco: mejor datos con alguna semana de retraso
+            # que ninguno (y sin marcar fallo).
+            print(f"  ⚠ [{ticker}] no se pudo refrescar; se usa la caché hasta "
+                  f"{cached.index[-1].date()}", file=sys.stderr)
+            return cached
         if not is_current_constituent:
             CACHE_DIR.mkdir(parents=True, exist_ok=True)
             try:
