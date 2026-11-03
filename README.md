@@ -250,3 +250,5 @@ y comandos mínimos.
 
 - Estrategia original: <https://youtu.be/reQWjzedlX0?si=xSsagVeCSqrX7miV>
 - Descripción técnica completa: [docs/ESTRATEGIA.md](docs/ESTRATEGIA.md)
+- Plan de trabajo y estado: [docs/HOJA_DE_RUTA.md](docs/HOJA_DE_RUTA.md) · registro de sesiones: [docs/BITACORA.md](docs/BITACORA.md)
+- Instrucciones para agentes de IA: [CLAUDE.md](CLAUDE.md)

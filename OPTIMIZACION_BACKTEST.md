@@ -1,5 +1,14 @@
 # Plan de estudio y optimización de la estrategia Weinstein-Albert
 
+> ⚠️ **Documento histórico — conclusiones invalidadas (2026-11-03).** La
+> revisión de código encontró bugs en el motor que afectan a todas las cifras
+> de este estudio: los tickers delistados obtenidos vía Tiingo nunca podían
+> operar (fechas en viernes vs. lunes), las posiciones sin datos se valoraban
+> a coste para siempre, la ejecución era al mismo cierre de la señal y la
+> "validación 8y" no era fuera de muestra (contiene el tramo de 6y). La
+> optimización se rehace con el motor corregido: ver
+> [docs/HOJA_DE_RUTA.md](docs/HOJA_DE_RUTA.md) y [docs/BITACORA.md](docs/BITACORA.md).
+
 Este documento registra el progreso, los comandos ejecutados, los resultados y las
 conclusiones del proceso de estudio/optimización del backtest de cartera
 (`backtest/portfolio_backtest.py`). Está pensado para que cualquiera (persona o IA
