@@ -47,10 +47,7 @@ def _cmd_exit(args: argparse.Namespace) -> None:
 
 
 def _cmd_backtest(args: argparse.Namespace) -> None:
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    if project_root not in sys.path:
-        sys.path.insert(0, project_root)
-
+    _project_root_on_path()
     from backtest.strategy_backtest import run_strategy_backtest
 
     tickers = [t.strip().upper() for t in args.tickers.split(",")] if args.tickers else None
@@ -69,55 +66,16 @@ def _cmd_backtest(args: argparse.Namespace) -> None:
             print("\n  ⚠ No hay operaciones que exportar.")
 
 
-def _cmd_portfolio_backtest(args: argparse.Namespace) -> None:
+def _project_root_on_path() -> None:
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if project_root not in sys.path:
         sys.path.insert(0, project_root)
 
-    from backtest.data_cache import cache_stats, clear_cache
-    from backtest.portfolio_backtest import prepare_universe, print_report, run_portfolio_backtest
-    from backtest.run_portfolio_backtest import _build_config_from_args, _demo_sweep_configs
-    from backtest.sweep import run_sweep
 
-    if args.clear_cache:
-        n = clear_cache()
-        print(f"  🗑  Caché vaciada: {n} archivos eliminados.")
+def _cmd_portfolio_backtest(args: argparse.Namespace) -> None:
+    from backtest.run_portfolio_backtest import run_from_args
 
-    stats = cache_stats()
-    print(f"  📦 Caché de datos: {stats['n_archivos']} archivos ({stats['tamano_mb']} MB)")
-
-    tickers = [t.strip().upper() for t in args.tickers.split(",")] if args.tickers else None
-
-    if args.sweep_demo:
-        run_sweep(
-            configs=_demo_sweep_configs(args.capital, args.max_positions),
-            period=args.period,
-            tickers=tickers,
-            max_tickers=args.max_tickers,
-            universe=args.universe,
-        )
-        return
-
-    config = _build_config_from_args(args)
-    print(f"\n  Configuración: {config.describe()}")
-
-    sp500_close, coppock_bullish, coppock_bearish, contexts, universe_info = prepare_universe(
-        period=args.period, tickers=tickers, max_tickers=args.max_tickers, universe=args.universe,
-    )
-    result = run_portfolio_backtest(
-        config, sp500_close, coppock_bullish, coppock_bearish, contexts,
-        universe_info=universe_info,
-    )
-    print_report(result, universe_info=universe_info)
-
-    if args.export:
-        df = result.to_trades_dataframe()
-        if not df.empty:
-            os.makedirs(os.path.dirname(args.export) or ".", exist_ok=True)
-            df.to_csv(args.export, index=False, encoding="utf-8-sig")
-            print(f"\n  ✅ Detalle de operaciones exportado → {args.export}")
-        else:
-            print("\n  ⚠ No hay operaciones que exportar.")
+    run_from_args(args)
 
 
 def main() -> None:
@@ -183,31 +141,17 @@ def main() -> None:
         help="Ruta donde exportar el detalle de operaciones simuladas a CSV",
     )
 
-    # Subcomando: portfolio-backtest (cartera completa, capital compartido)
+    # Subcomando: portfolio-backtest (cartera completa, capital compartido).
+    # Las opciones viven en backtest/run_portfolio_backtest.py para no duplicarlas.
+    _project_root_on_path()
+    from backtest.run_portfolio_backtest import add_portfolio_arguments
+
     pbt_parser = subparsers.add_parser(
         "portfolio-backtest",
         help="Backtest de CARTERA completa: capital inicial, máx. nº posiciones, "
              "condiciones de entrada/salida configurables (ver backtest/README.md)",
     )
-    pbt_parser.add_argument("--period", default="8y", help="Periodo de histórico yfinance (default: 8y)")
-    pbt_parser.add_argument("--tickers", default=None, help="Lista de tickers separados por coma (default: S&P 500 completo)")
-    pbt_parser.add_argument("--max-tickers", type=int, default=None, help="Límite de tickers a procesar (pruebas rápidas)")
-    pbt_parser.add_argument("--max-positions", type=int, default=10, help="Nº máximo de posiciones simultáneas (default: 10)")
-    pbt_parser.add_argument("--capital", type=float, default=10_000.0, help="Capital inicial en USD (default: 10000)")
-    pbt_parser.add_argument("--ranking", default="momentum", choices=["momentum", "rsc_activo", "vpm5"],
-                             help="Criterio de desempate para elegir candidatos (default: momentum)")
-    pbt_parser.add_argument("--disable", action="append", default=None,
-                             help="Nombre de condición a desactivar (repetible)")
-    pbt_parser.add_argument("--f1-umbral", type=float, default=None, help="Umbral F1 (RSC sector), default 0.10")
-    pbt_parser.add_argument("--f4-max-distancia", type=float, default=None, help="Umbral F4 (distancia %% WMA30), default 8.0")
-    pbt_parser.add_argument("--s1-umbral", type=float, default=None, help="Umbral S1 (RSC activo salida), default -0.5")
-    pbt_parser.add_argument("--name", default="config_cli", help="Nombre de esta configuración")
-    pbt_parser.add_argument("--export", default=None, metavar="CSV", help="Ruta donde exportar el detalle de operaciones")
-    pbt_parser.add_argument("--sweep-demo", action="store_true", help="Compara un set de configuraciones de ejemplo")
-    pbt_parser.add_argument("--clear-cache", action="store_true", help="Vacía la caché de datos en disco antes de ejecutar")
-    pbt_parser.add_argument("--universe", default="current", choices=["current", "historical"],
-                             help="'current' (default) o 'historical' (reconstruye altas/bajas reales del "
-                                  "índice para mitigar el sesgo de supervivencia, ver backtest/sp500_historical.py)")
+    add_portfolio_arguments(pbt_parser)
 
     args = parser.parse_args()
 

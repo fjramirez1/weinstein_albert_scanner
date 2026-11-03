@@ -177,11 +177,22 @@ from backtest.portfolio_engine import (
 )
 from backtest.sp500_historical import build_membership_calendar_cached, universe_union
 from backtest.strategy_config import StrategyConfig
-from weinstein.config import SECTOR_TO_ETF, SP500_INDEX, resolve_historical_sector, resolve_sector_etf
+from weinstein.config import (
+    SECTOR_TO_ETF,
+    SP500_INDEX,
+    VPM_BASE_PERIOD,
+    VPM_SMOOTHING,
+    resolve_historical_sector,
+    resolve_sector_etf,
+)
 from weinstein.data import load_sp500_tickers
 
 DEFAULT_BACKTEST_PERIOD = "8y"   # ventana recomendada para limitar el sesgo de supervivencia
 MAX_WORKERS = 20
+BENCHMARK_TICKER = "SPY"   # total return (dividendos incluidos con auto_adjust), a diferencia de ^GSPC
+# Semanas de calentamiento antes de que todos los indicadores existan:
+# VPM5 = 52 de base + 5 de suavizado - 1 (la más larga; RSC usa 52, WMA 30, Coppock 21).
+WARMUP_WEEKS = VPM_BASE_PERIOD + VPM_SMOOTHING - 1
 
 
 @dataclass
@@ -210,6 +221,9 @@ class UniverseInfo:
     membership_calendar: dict[pd.Timestamp, set[str]] | None = None
     tickers_historicos_sin_precio: list[str] = field(default_factory=list)
     tickers_sector_desconocido: list[str] = field(default_factory=list)
+    # Benchmark buy & hold (por defecto SPY, que incluye dividendos, para
+    # comparar en igualdad con precios ajustados de las acciones).
+    benchmark_close: pd.Series | None = None
 
 
 # ── Descarga + precálculo de contexto (una vez, se reutiliza entre configs) ──
@@ -474,7 +488,12 @@ def prepare_universe(
         s for s in unknown_sector_candidates if s in contexts
     ) if universe == "historical" and not tickers else []
 
+    benchmark_data = get_cached_weekly(BENCHMARK_TICKER, period, False, True)
+    if benchmark_data is None:
+        print(f"  ⚠ No se pudo obtener el benchmark {BENCHMARK_TICKER}; el informe no lo incluirá.")
+
     info = UniverseInfo(
+        benchmark_close=benchmark_data["Close"].squeeze() if benchmark_data is not None else None,
         mode=universe if not tickers else "current",
         membership_calendar=membership_calendar,
         tickers_historicos_sin_precio=(
@@ -503,6 +522,40 @@ def prepare_universe(
 
 # ── Simulación de cartera para UNA configuración ────────────────────────
 
+MOTIVO_SIN_DATOS = "SIN_DATOS"
+
+
+def _last_price(ctx: TickerContext, fecha: pd.Timestamp) -> float | None:
+    """Último cierre conocido en o antes de `fecha` (None si no hay ninguno)."""
+    pos = ctx.close.index.searchsorted(fecha, side="right") - 1
+    if pos < 0:
+        return None
+    return float(ctx.close.iloc[pos])
+
+
+def _exec_price(ctx: TickerContext, fecha: pd.Timestamp, execution: str) -> float | None:
+    """Precio de ejecución de una orden en `fecha` (apertura o cierre), o None si no hay vela."""
+    if fecha not in ctx.close.index:
+        return None
+    series = ctx.open if execution == "next_open" and ctx.open is not None else ctx.close
+    val = series.loc[fecha]
+    if pd.isna(val) or float(val) <= 0:
+        val = ctx.close.loc[fecha]  # apertura ausente/corrupta: mejor cierre que perder la orden
+    return float(val) if pd.notna(val) and float(val) > 0 else None
+
+
+def default_simulation_start(sp500_close: pd.Series) -> pd.Timestamp | None:
+    """
+    Primera semana en la que todos los indicadores ya están calculados
+    (la ventana más larga es VPM5: 52 semanas de base + 5 de suavizado).
+    Arrancar la simulación antes solo añade semanas en efectivo que
+    deprimen el CAGR sin aportar información.
+    """
+    if len(sp500_close) <= WARMUP_WEEKS:
+        return None
+    return sp500_close.index[WARMUP_WEEKS]
+
+
 def run_portfolio_backtest(
     config: StrategyConfig,
     sp500_close: pd.Series,
@@ -511,179 +564,202 @@ def run_portfolio_backtest(
     contexts: dict[str, TickerContext],
     universe_info: UniverseInfo | None = None,
     verbose: bool = True,
+    start: pd.Timestamp | str | None = None,
+    end: pd.Timestamp | str | None = None,
 ) -> PortfolioBacktestResult:
     """
     Ejecuta la simulación de cartera semana a semana para una
     `StrategyConfig` concreta, sobre un universo ya preparado
     (`prepare_universe`). Permite lanzar muchas configuraciones sobre los
-    mismos datos sin repetir descargas ni recálculo de indicadores base.
+    mismos datos sin repetir descargas ni recálculo de indicadores.
 
-    Orden de eventos POR SEMANA (ver docstring de portfolio_engine.py):
-      1. Evaluar y cerrar salidas de posiciones abiertas.
-      2. Evaluar candidatos de entrada, rankear, abrir hasta llenar huecos.
-      3. Registrar punto de la curva de equity.
+    `start` / `end` acotan las semanas SIMULADAS (inclusive). Los datos
+    anteriores a `start` se siguen usando para calcular indicadores, así
+    que se puede calibrar en un tramo y validar en otro disjunto con la
+    misma descarga. Por defecto se simula todo el calendario del S&P 500.
+
+    Modelo de ejecución, costes y orden de eventos: ver docstring de
+    `backtest/portfolio_engine.py`.
 
     Filtro de membresía histórica (si `universe_info.membership_calendar`
-    está presente): en el paso 2, un ticker solo se considera candidato
-    de ENTRADA esa semana si pertenecía al S&P 500 en esa fecha según el
-    calendario reconstruido. No afecta al paso 1: una posición ya
-    abierta se gestiona con normalidad aunque el ticker haya salido del
-    índice mientras tanto.
+    está presente): un ticker solo puede ser candidato de ENTRADA en una
+    semana si pertenecía al S&P 500 esa semana. Una posición ya abierta se
+    gestiona con normalidad aunque el ticker salga del índice.
     """
     t0 = time.time()
     extra = {"coppock_bullish": coppock_bullish, "coppock_bearish": coppock_bearish}
-
     membership_calendar = universe_info.membership_calendar if universe_info else None
+    benchmark_close = universe_info.benchmark_close if universe_info else None
+    execution = config.execution
+    coste = config.cost_pct / 100.0
 
-    # Precalcular máscaras de entrada/salida para cada ticker una vez
-    # (vectorizado), y no en cada iteración semanal.
-    entry_masks: dict[str, pd.Series] = {}
+    # Máscaras precalculadas (vectorizado) y, para entradas, el índice
+    # inverso fecha -> tickers con señal, para no recorrer todo el universo
+    # cada semana.
     exit_masks: dict[str, dict[str, pd.Series]] = {}
+    candidatos_por_fecha: dict[pd.Timestamp, list[str]] = {}
     for ticker, ctx in contexts.items():
-        entry_masks[ticker] = evaluate_entry_mask(ctx, config, extra)
         exit_masks[ticker] = evaluate_exit_masks(ctx, config, extra)
+        mask = evaluate_entry_mask(ctx, config, extra)
+        for fecha in mask.index[mask.to_numpy(dtype=bool)]:
+            candidatos_por_fecha.setdefault(fecha, []).append(ticker)
 
     ranking_fn = RANKING_CRITERIA[config.ranking_criterion]
 
-    # Calendario maestro: unión de fechas de todos los tickers, limitado
-    # al rango del S&P 500 (evita simular semanas sin contexto de mercado).
-    all_dates = sorted(sp500_close.index)
+    all_dates = pd.DatetimeIndex(sorted(sp500_close.index))
+    if start is not None:
+        all_dates = all_dates[all_dates >= pd.Timestamp(start)]
+    if end is not None:
+        all_dates = all_dates[all_dates <= pd.Timestamp(end)]
 
     capital_disponible = config.initial_capital
-    valor_cartera_ref = config.initial_capital  # ver docstring: no fluctúa con precio no realizado
+    valor_cartera_ref = config.initial_capital  # no fluctúa con precio no realizado
+    costes_totales = 0.0
     open_positions: dict[str, OpenPosition] = {}
     closed_trades: list[ClosedTrade] = []
     equity_curve: list[EquityPoint] = []
+    pending_exits: list[tuple[str, str]] = []   # (ticker, motivo) a ejecutar la semana siguiente
+    pending_entries: list[str] = []             # tickers ya rankeados, a comprar la semana siguiente
+
+    def cerrar(ticker: str, fecha_salida: pd.Timestamp, precio: float, motivo: str) -> None:
+        nonlocal capital_disponible, valor_cartera_ref, costes_totales
+        pos = open_positions.pop(ticker)
+        ctx = contexts[ticker]
+        bruto = pos.n_acciones * precio
+        comision = bruto * coste
+        neto = bruto - comision
+        capital_disponible += neto
+        valor_cartera_ref = valor_cartera_ref - pos.capital_invertido + neto
+        costes_totales += comision
+        idx_salida = int(ctx.close.index.searchsorted(fecha_salida, side="right") - 1)
+        closed_trades.append(ClosedTrade(
+            ticker=ticker,
+            sector=pos.sector,
+            fecha_entrada=pos.fecha_entrada,
+            precio_entrada=pos.precio_entrada,
+            n_acciones=pos.n_acciones,
+            capital_invertido=pos.capital_invertido,
+            fecha_salida=fecha_salida,
+            precio_salida=precio,
+            motivo_salida=motivo,
+            semanas_en_pos=max(0, idx_salida - pos.idx_entrada),
+            retorno_pct=round((neto / pos.capital_invertido - 1.0) * 100.0, 2),
+            pnl_usd=round(neto - pos.capital_invertido, 2),
+        ))
+
+    def abrir(ticker: str, fecha: pd.Timestamp, precio: float) -> None:
+        nonlocal capital_disponible, costes_totales
+        capital_objetivo = valor_cartera_ref / config.max_positions
+        capital_a_invertir = min(capital_objetivo, capital_disponible)
+        if capital_a_invertir <= 0:
+            return
+        comision = capital_a_invertir * coste
+        ctx = contexts[ticker]
+        capital_disponible -= capital_a_invertir
+        costes_totales += comision
+        open_positions[ticker] = OpenPosition(
+            ticker=ticker,
+            sector=ctx.sector,
+            fecha_entrada=fecha,
+            precio_entrada=precio,
+            n_acciones=(capital_a_invertir - comision) / precio,
+            capital_invertido=capital_a_invertir,
+            idx_entrada=int(ctx.close.index.get_loc(fecha)),
+        )
+
+    def candidatos_rankeados(fecha: pd.Timestamp) -> list[str]:
+        vigentes = membership_calendar.get(fecha) if membership_calendar is not None else None
+        scored = []
+        for ticker in candidatos_por_fecha.get(fecha, ()):
+            if ticker in open_positions:
+                continue
+            if vigentes is not None and ticker not in vigentes:
+                continue
+            ctx = contexts[ticker]
+            scored.append((ticker, ranking_fn(ctx, int(ctx.close.index.get_loc(fecha)))))
+        # Desempate final por ticker para que el resultado no dependa del
+        # orden de iteración del diccionario.
+        scored.sort(key=lambda x: (-x[1], x[0]))
+        return [t for t, _ in scored]
 
     for fecha in all_dates:
-        # ── Paso 1: evaluar salidas de posiciones abiertas ──────────────
-        tickers_a_cerrar: list[tuple[str, str]] = []  # (ticker, motivo)
-        for ticker in list(open_positions.keys()):
-            ctx = contexts.get(ticker)
-            if ctx is None or fecha not in ctx.close.index:
-                continue
-            motivos_activos = []
-            for cname, mask in exit_masks.get(ticker, {}).items():
-                if fecha in mask.index and bool(mask.loc[fecha]):
-                    label = cname
-                    motivos_activos.append(label)
-            if motivos_activos:
-                tickers_a_cerrar.append((ticker, "+".join(motivos_activos)))
-
-        for ticker, motivo in tickers_a_cerrar:
-            pos = open_positions.pop(ticker)
+        # ── 1. Cierres forzosos: el ticker ya no tiene datos (delisting) ──
+        for ticker in list(open_positions):
             ctx = contexts[ticker]
-            precio_salida = float(ctx.close.loc[fecha])
-            valor_salida = pos.n_acciones * precio_salida
-            capital_disponible += valor_salida
-            valor_cartera_ref = valor_cartera_ref - pos.capital_invertido + valor_salida
+            ultima = ctx.close.index[-1]
+            if fecha > ultima:
+                cerrar(ticker, ultima, float(ctx.close.iloc[-1]), MOTIVO_SIN_DATOS)
+        pending_exits = [(t, m) for t, m in pending_exits if t in open_positions]
 
-            retorno_pct = round(((precio_salida / pos.precio_entrada) - 1.0) * 100.0, 2)
-            idx_actual = ctx.close.index.get_loc(fecha)
-            semanas_en_pos = idx_actual - pos.idx_entrada
-
-            closed_trades.append(ClosedTrade(
-                ticker=ticker,
-                sector=pos.sector,
-                fecha_entrada=pos.fecha_entrada,
-                precio_entrada=pos.precio_entrada,
-                n_acciones=pos.n_acciones,
-                capital_invertido=pos.capital_invertido,
-                fecha_salida=fecha,
-                precio_salida=precio_salida,
-                motivo_salida=motivo,
-                semanas_en_pos=int(semanas_en_pos),
-                retorno_pct=retorno_pct,
-                pnl_usd=round(valor_salida - pos.capital_invertido, 2),
-            ))
-
-        # ── Paso 2: evaluar entradas y llenar huecos libres ─────────────
-        huecos_libres = config.max_positions - len(open_positions)
-        if huecos_libres > 0:
-            tickers_vigentes = membership_calendar.get(fecha) if membership_calendar is not None else None
-
-            candidatos: list[tuple[str, float]] = []  # (ticker, score)
-            for ticker, ctx in contexts.items():
-                if ticker in open_positions:
+        # ── 2a. next_open: ejecutar a la apertura las órdenes de la semana pasada ──
+        if execution == "next_open":
+            for ticker, motivo in pending_exits:
+                precio = _exec_price(contexts[ticker], fecha, execution)
+                if precio is not None:
+                    cerrar(ticker, fecha, precio, motivo)
+                # Sin vela esta semana: la señal se reevalúa en la siguiente.
+            for ticker in pending_entries:
+                if len(open_positions) >= config.max_positions or ticker in open_positions:
                     continue
-                if fecha not in ctx.close.index:
-                    continue
-                # Filtro de membresía histórica: solo se puede ABRIR una
-                # posición nueva en un ticker que pertenecía al índice
-                # esa semana. No aplica a posiciones ya abiertas (paso 1).
-                if tickers_vigentes is not None and ticker not in tickers_vigentes:
-                    continue
-                mask = entry_masks.get(ticker)
-                if mask is None or fecha not in mask.index:
-                    continue
-                if bool(mask.loc[fecha]):
-                    idx_actual = ctx.close.index.get_loc(fecha)
-                    score = ranking_fn(ctx, idx_actual)
-                    candidatos.append((ticker, score))
+                precio = _exec_price(contexts[ticker], fecha, execution)
+                if precio is not None:
+                    abrir(ticker, fecha, precio)
+            pending_exits, pending_entries = [], []
 
-            candidatos.sort(key=lambda x: x[1], reverse=True)
-            elegidos = candidatos[:huecos_libres]
+        # ── 2b. Señales al cierre de esta semana ──
+        salidas: list[tuple[str, str]] = []
+        for ticker in list(open_positions):
+            masks = exit_masks.get(ticker, {})
+            motivos = [
+                cname for cname, mask in masks.items()
+                if fecha in mask.index and bool(mask.loc[fecha])
+            ]
+            if motivos:
+                salidas.append((ticker, "+".join(motivos)))
 
-            for ticker, _score in elegidos:
-                ctx = contexts[ticker]
-                precio_entrada = float(ctx.close.loc[fecha])
-                if precio_entrada <= 0:
-                    continue
+        if execution == "close":
+            for ticker, motivo in salidas:
+                cerrar(ticker, fecha, float(contexts[ticker].close.loc[fecha]), motivo)
+            huecos = config.max_positions - len(open_positions)
+            if huecos > 0:
+                for ticker in candidatos_rankeados(fecha)[:huecos]:
+                    precio = _exec_price(contexts[ticker], fecha, execution)
+                    if precio is not None:
+                        abrir(ticker, fecha, precio)
+        else:
+            pending_exits = salidas
+            huecos = config.max_positions - len(open_positions) + len(salidas)
+            if huecos > 0:
+                pending_entries = candidatos_rankeados(fecha)[:huecos]
 
-                capital_objetivo = valor_cartera_ref / config.max_positions
-                capital_a_invertir = min(capital_objetivo, capital_disponible)
-                if capital_a_invertir <= 0:
-                    continue
-
-                n_acciones = capital_a_invertir / precio_entrada
-                capital_disponible -= capital_a_invertir
-                idx_actual = ctx.close.index.get_loc(fecha)
-
-                open_positions[ticker] = OpenPosition(
-                    ticker=ticker,
-                    sector=ctx.sector,
-                    fecha_entrada=fecha,
-                    precio_entrada=precio_entrada,
-                    n_acciones=n_acciones,
-                    capital_invertido=capital_a_invertir,
-                    idx_entrada=idx_actual,
-                )
-
-        # ── Paso 3: registrar curva de equity (valor a mercado) ─────────
-        valor_posiciones_mercado = 0.0
+        # ── 3. Valoración al cierre (último precio conocido si hay hueco) ──
+        valor_posiciones = 0.0
         for ticker, pos in open_positions.items():
-            ctx = contexts[ticker]
-            if fecha in ctx.close.index:
-                precio_actual = float(ctx.close.loc[fecha])
-                valor_posiciones_mercado += pos.n_acciones * precio_actual
-            else:
-                valor_posiciones_mercado += pos.capital_invertido
-
-        valor_total = capital_disponible + valor_posiciones_mercado
+            precio = _last_price(contexts[ticker], fecha)
+            valor_posiciones += pos.n_acciones * precio if precio is not None else pos.capital_invertido
         equity_curve.append(EquityPoint(
             fecha=fecha,
-            valor_cartera=valor_total,
+            valor_cartera=capital_disponible + valor_posiciones,
             capital_disponible=capital_disponible,
             n_posiciones_abiertas=len(open_positions),
         ))
 
-    # Posiciones que siguen abiertas al final del periodo simulado.
-    open_at_end = list(open_positions.values())
-
     result = PortfolioBacktestResult(
         config=config,
         closed_trades=closed_trades,
-        open_positions_at_end=open_at_end,
+        open_positions_at_end=list(open_positions.values()),
         equity_curve=equity_curve,
         tickers_procesados=len(contexts),
         tickers_sin_datos=0,
         semanas_simuladas=len(all_dates),
+        costes_totales=costes_totales,
+        benchmark_close=benchmark_close,
     )
 
     if verbose:
         elapsed = time.time() - t0
         print(f"\n  ✓ [{config.name}] simulación completa en {elapsed:.1f}s "
-              f"({len(closed_trades)} operaciones cerradas, {len(open_at_end)} abiertas al final)")
+              f"({len(closed_trades)} operaciones cerradas, {len(open_positions)} abiertas al final)")
 
     return result
 
@@ -704,6 +780,16 @@ def print_report(result: PortfolioBacktestResult, universe_info: UniverseInfo | 
     print(f"  CAGR                         : {m['cagr_pct']}%" if m['cagr_pct'] is not None else "  CAGR                         : —")
     print(f"  Máx. drawdown                : {m['max_drawdown_pct']}%" if m['max_drawdown_pct'] is not None else "  Máx. drawdown                : —")
     print(f"  Sharpe aprox. (semanal, x√52): {m['sharpe_aprox']}")
+    print(f"  Costes totales               : ${m['costes_totales_usd']:,.2f}")
+    if result.equity_curve:
+        print(f"  Tramo simulado               : {result.equity_curve[0].fecha.date()} → "
+              f"{result.equity_curve[-1].fecha.date()}")
+    if m["benchmark_rentabilidad_pct"] is not None:
+        print("─" * 72)
+        print(f"  Benchmark {BENCHMARK_TICKER} (buy & hold, mismo tramo)")
+        print(f"    Rentabilidad / CAGR        : {m['benchmark_rentabilidad_pct']:+.2f}% / {m['benchmark_cagr_pct']}%")
+        print(f"    Máx. drawdown / Sharpe     : {m['benchmark_max_drawdown_pct']}% / {m['benchmark_sharpe_aprox']}")
+        print(f"  Exceso de CAGR vs benchmark  : {m['exceso_cagr_pct']} pp")
     print("─" * 72)
     print(f"  Operaciones cerradas         : {m['n_operaciones_cerradas']}")
     print(f"  Posiciones abiertas al final : {m['n_operaciones_abiertas_al_final']}")
@@ -712,7 +798,8 @@ def print_report(result: PortfolioBacktestResult, universe_info: UniverseInfo | 
     print(f"  Retorno mediana por operación: {m['retorno_mediana_pct']}%")
     print(f"  Mejor operación              : {m['mejor_operacion_pct']}%")
     print(f"  Peor operación                : {m['peor_operacion_pct']}%")
-    print(f"  Profit factor                : {m['profit_factor']}")
+    print(f"  Profit factor (en $)         : {m['profit_factor']}")
+    print(f"  % del P&L en las 5 mejores   : {m['pct_pnl_top5']}%")
     print(f"  Semanas medias en posición   : {m['semanas_medias_en_pos']}")
     print(f"  % semanas con capital invertido: {m['pct_semanas_invertido']}%")
     print("═" * 72)

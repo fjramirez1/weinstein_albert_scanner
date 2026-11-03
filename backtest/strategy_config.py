@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 
 from backtest.conditions import ENTRY_CONDITIONS, EXIT_CONDITIONS, RANKING_CRITERIA
 
+EXECUTION_MODES = ("next_open", "close")
+
 
 @dataclass
 class ConditionToggle:
@@ -46,6 +48,13 @@ class StrategyConfig:
         candidatos cuando hay más señales de entrada que huecos libres.
     max_positions : nº máximo de posiciones abiertas simultáneas.
     initial_capital : capital inicial de la cartera simulada, en USD.
+    execution : cuándo se ejecutan las órdenes generadas por la señal de
+        la semana t. "next_open" (por defecto, realista): a la apertura de
+        la semana t+1, que es cuando se puede operar tras ejecutar el
+        escáner en fin de semana. "close": al cierre de la propia semana t
+        (comportamiento antiguo, optimista; solo para comparar).
+    cost_pct : coste por lado (comisión + deslizamiento) en % del importe
+        operado. 0.10 = 0,10 % al comprar y otro 0,10 % al vender.
     """
     name: str = "default"
     entry_conditions: dict[str, ConditionToggle] = field(default_factory=dict)
@@ -53,6 +62,8 @@ class StrategyConfig:
     ranking_criterion: str = "momentum"
     max_positions: int = 10
     initial_capital: float = 10_000.0
+    execution: str = "next_open"
+    cost_pct: float = 0.10
 
     def __post_init__(self):
         for cname in self.entry_conditions:
@@ -76,6 +87,10 @@ class StrategyConfig:
             raise ValueError("max_positions debe ser >= 1")
         if self.initial_capital <= 0:
             raise ValueError("initial_capital debe ser > 0")
+        if self.execution not in EXECUTION_MODES:
+            raise ValueError(f"execution debe ser uno de {EXECUTION_MODES}, recibido: '{self.execution}'")
+        if not 0 <= self.cost_pct < 100:
+            raise ValueError("cost_pct debe estar en [0, 100)")
 
     def active_entry_conditions(self) -> dict[str, dict]:
         """Devuelve {nombre: params_efectivos} de las condiciones de entrada activas."""
@@ -104,7 +119,8 @@ class StrategyConfig:
         return (
             f"[{self.name}] max_pos={self.max_positions} "
             f"capital_inicial=${self.initial_capital:,.0f} "
-            f"ranking={self.ranking_criterion} | "
+            f"ranking={self.ranking_criterion} "
+            f"ejecucion={self.execution} coste={self.cost_pct}%/lado | "
             f"Entrada: {entradas} | Salida: {salidas}"
         )
 

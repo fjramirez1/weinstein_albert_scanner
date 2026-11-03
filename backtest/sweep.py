@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from backtest.portfolio_backtest import prepare_universe, run_portfolio_backtest
+from backtest.portfolio_backtest import default_simulation_start, prepare_universe, run_portfolio_backtest
 from backtest.strategy_config import StrategyConfig
 
 
@@ -21,6 +21,8 @@ def run_sweep(
     tickers: list[str] | None = None,
     max_tickers: int | None = None,
     universe: str = "current",
+    start: str | pd.Timestamp | None = None,
+    end: str | pd.Timestamp | None = None,
 ) -> pd.DataFrame:
     """
     Ejecuta el backtest de cartera para cada config en `configs`, sobre
@@ -31,6 +33,8 @@ def run_sweep(
     Parameters
     ----------
     universe : "current" o "historical", ver `prepare_universe`.
+    start, end : tramo simulado (ver `run_portfolio_backtest`). Si `start`
+        es None se arranca en cuanto los indicadores están calculados.
     """
     if not configs:
         raise ValueError("run_sweep necesita al menos una StrategyConfig")
@@ -41,12 +45,14 @@ def run_sweep(
         period=period, tickers=tickers, max_tickers=max_tickers, universe=universe,
     )
 
+    start = start or default_simulation_start(sp500_close)
+
     filas = []
     for i, config in enumerate(configs, start=1):
         print(f"\n[{i}/{len(configs)}] Simulando: {config.describe()}")
         result = run_portfolio_backtest(
             config, sp500_close, coppock_bullish, coppock_bearish, contexts,
-            universe_info=universe_info,
+            universe_info=universe_info, start=start, end=end,
         )
         m = result.metrics()
         filas.append({
@@ -60,7 +66,9 @@ def run_sweep(
             "Profit Factor": m["profit_factor"],
             "Sharpe aprox.": m["sharpe_aprox"],
             "Ret. Medio Op. %": m["retorno_medio_pct"],
+            "% PnL Top-5": m["pct_pnl_top5"],
             "% Semanas Invertido": m["pct_semanas_invertido"],
+            "Exceso CAGR vs SPY": m["exceso_cagr_pct"],
         })
 
     df = pd.DataFrame(filas).sort_values("Rentabilidad %", ascending=False).reset_index(drop=True)

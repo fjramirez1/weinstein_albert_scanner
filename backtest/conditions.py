@@ -94,6 +94,7 @@ class TickerContext:
     rsc_sector: pd.Series          # RSC Mansfield del sector vs S&P 500 (reindexado a `close`)
     coppock_bullish: pd.Series     # F5 evaluado semana a semana (bool)
     coppock_bearish: pd.Series     # S2 evaluado semana a semana (bool)
+    open: pd.Series | None = None  # apertura semanal (ejecución "next_open"); None → se usa close
 
 
 def build_ticker_context(
@@ -120,6 +121,7 @@ def build_ticker_context(
     """
     close = data["Close"].squeeze().astype(float)
     volume = data["Volume"].squeeze().astype(float)
+    open_ = data["Open"].squeeze().astype(float) if "Open" in data.columns else None
 
     if len(close) < 60:
         return None
@@ -154,6 +156,7 @@ def build_ticker_context(
         rsc_sector=rsc_sector,
         coppock_bullish=pd.Series(dtype=bool),  # se rellena por el motor (ver market context)
         coppock_bearish=pd.Series(dtype=bool),
+        open=open_,
     )
 
 
