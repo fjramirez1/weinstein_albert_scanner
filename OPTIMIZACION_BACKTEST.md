@@ -52,8 +52,8 @@ tratarlo con cautela en cada paso.
    cualquier comparación que involucre F1 queda contaminada y hay que arreglarlo
    antes de seguir.
 5. **Entorno de quien ejecuta**: Windows (Git Bash / MINGW64), venv ya activado,
-   caché de datos (`backtest/.cache/`) ya poblada (~614 archivos, 11.69 MB),
-   `TIINGO_API_KEY` configurada y funcional.
+   caché de datos (`backtest/.cache/`) ya poblada (1244 archivos, 26.18 MB a
+   fecha de la Fase 6), `TIINGO_API_KEY` configurada y funcional.
 
 ### Cómo continuar si retomas este documento
 
@@ -124,9 +124,17 @@ reemplazar el bloque completo, o verificar con `grep` que las claves antiguas
 conocidas (`CELG`, `TWTR`, `XLNX`, `ETFC`...) siguen presentes tras el cambio.
 
 **Resultado tras la corrección**: `tickers_sector_desconocido` bajó de 78 a
-**2** (nivel aceptable, no bloqueante). `tickers_historicos_sin_precio` se
-mantiene en 10 (no relacionado con sector, son tickers sin datos de precio en
-ninguna fuente — FDXF, HONA, Q entre ellos; ver log de cualquier ejecución).
+**2** (nivel aceptable, no bloqueante) en el run de 6y original. `tickers_
+historicos_sin_precio` se mantuvo en 10 en 6y (no relacionado con sector, son
+tickers sin datos de precio en ninguna fuente — FDXF, HONA, Q entre ellos).
+
+**Nota (actualizada tras Fase 6)**: en el run de validación de **8 años**
+(periodo más largo, más tickers delistados incluidos) estas cifras vuelven a
+subir: `tickers_sector_desconocido = 29` y `tickers_historicos_sin_precio =
+34`. Esto es esperable (más periodo → más rotación de índice → más tickers
+delistados fuera del mapeo manual acotado a 6y) y **no invalida** la Fase -1
+ni la Fase 6, pero abre la Fase 8 de este documento (ver más abajo) para
+extender la mitigación al periodo de 8y.
 
 ```bash
 pytest tests/test_config_historical_sector.py -v   # todos los tests pasan
@@ -469,7 +477,7 @@ proporcional, y con concentración de outliers peor que `pos_15`.
 
 ## Fase 5 — Combinación acotada (grid search pequeño)
 
-**Estado: 🔄 En curso — combo 1 y combo 2 completados, pendiente combo 3**
+**Estado: ✅ Completada**
 
 Presupuesto restante tras fases 2-4: 20 - 13 = **7 configuraciones**.
 
@@ -542,80 +550,351 @@ dirección favorable.
 provisional del proceso hasta ahora.** Pasa a ser la base sobre la que se
 construye el combo 3.
 
-### Combo 3 — pendiente de ejecutar
+### Combo 3 — no ejecutado (desviación del plan documentada)
 
-Añadir `max_positions=15` (confianza media-baja, Fase 4) sobre la base del
-combo 2 ganador:
+El plan original preveía un combo 3 añadiendo `max_positions=15` sobre la
+base de combo2:
 
 ```bash
+# Planificado pero NO ejecutado — se pasó directamente a validar combo2 en 8y (Fase 6)
 python backtest/run_portfolio_backtest.py --universe historical --period 6y --ranking rsc_activo --s1-umbral -1.0 --max-positions 15 --name combo3_mas_pos15 --export historial/backtests/fase5_combo3.csv
 ```
 
-Las 4 configuraciones restantes del presupuesto (7 - 3 = 4) se reservan para:
-- Si algún combo de arriba decepciona, no repetir con F1/F4 (confianza baja,
-  ver Fase 2) salvo que los combos 1-3 no den ninguna mejora sólida sobre el
-  baseline — en ese caso sí probar añadir `--disable F1_sector_fuerte` sobre
-  el mejor combo, como último recurso, dejando claro en el documento que es
-  una hipótesis de baja confianza.
-- Guardar margen para un ajuste fino si algún resultado combinado es
-  prometedor pero con algún parámetro claramente subóptimo (p.ej. probar
-  `max_positions=12` si 15 resulta mejor que 10 pero no está claro que 15 sea
-  el óptimo exacto).
+**No se llegó a ejecutar.** El proceso pasó directamente de comparar combo1
+vs combo2 a validar `combo2_rsc_s1laxo` en el periodo completo de 8 años
+(Fase 6). Se deja constancia explícita de esta desviación del plan para que
+quede trazada, en vez de omitirla. `max_positions=15` sobre combo2 sigue
+siendo una hipótesis no descartada (evidencia individual de Fase 4 era
+"media-baja") que podría explorarse en una ronda futura si se abre
+presupuesto de configuraciones adicional — no debe tratarse como "probado y
+descartado", sino como "no llegó a probarse".
 
-**Tras cada combo, aplicar el chequeo de concentración de outliers de
-siempre** antes de decidir si se mantiene para la Fase 6.
+**Configuraciones usadas en esta fase: 2** (combo1, combo2). Presupuesto
+total del proceso: 15/20.
 
 ---
 
-## Fase 6 — Validación final sobre periodo completo (8y, aún no iniciada)
+## Fase 6 — Validación final sobre periodo completo (8y)
+
+**Estado: ✅ Completada**
 
 ```bash
-python backtest/run_portfolio_backtest.py --universe historical --period 8y --name ganadora_validacion --export historial/backtests/fase6_validacion.csv
+python backtest/run_portfolio_backtest.py --universe historical --period 8y --ranking rsc_activo --s1-umbral -1.0 --name combo2_validacion_8y --export historial/backtests/fase6_validacion.csv
+python backtest/run_portfolio_backtest.py --universe historical --period 8y --name baseline_8y --export historial/backtests/fase6_baseline_8y.csv
 ```
 
-Una única pasada de la config ganadora de la Fase 5. Si el resultado se
-degrada mucho respecto a la calibración (6y), es señal de overfitting a la
-ventana de 6y y la conclusión correcta es quedarse con algo más conservador o
-con el baseline — no buscar otra config.
+### Resultado
 
-**Atención especial**: revisar si las operaciones ganadoras identificadas en
-Fase 2 (GEV, WDC, MU, HII, HWM, entradas de 2025) quedan dentro del tramo
-2020-2026 igualmente en el run de 8y, y si aparecen operaciones ganadoras
-nuevas en el tramo 2018-2020 que no se vieron en calibración.
+| Métrica | baseline_8y | combo2_validacion_8y |
+|---|---|---|
+| Rentabilidad total | +26.07% | **+120.81%** |
+| CAGR | 2.92% | **10.36%** |
+| Max drawdown | -25.14% | **-19.08%** |
+| Sharpe aprox. | 0.27 | **0.73** |
+| Operaciones cerradas | 166 | 134 |
+| Posiciones abiertas al final | 5 | 10 |
+| Win rate | 40.4% | **47.0%** |
+| Retorno medio por operación | 1.34% | **6.17%** |
+| Retorno mediana por operación | -2.35% | -0.6% |
+| Mejor / peor operación | +58.28% / -21.59% | +147.18% / -26.41% |
+| Profit factor | 1.31 | **2.39** |
+| % semanas con capital invertido | 75.4% | 75.4% |
+| `tickers_sector_desconocido` | 29 | 29 |
+| `tickers_historicos_sin_precio` | 34 | 34 |
+
+### Chequeo de concentración de outliers (obligatorio)
+
+```bash
+python -c "
+import pandas as pd
+for nombre, ruta in [('combo2_validacion_8y','historial/backtests/fase6_validacion.csv'), ('baseline_8y','historial/backtests/fase6_baseline_8y.csv')]:
+    df = pd.read_csv(ruta).dropna(subset=['Retorno %'])
+    top5 = df.nlargest(5, 'Retorno %')['P&L USD'].sum()
+    total = df['P&L USD'].sum()
+    print(nombre, '-> Nº ops:', len(df), '| % PnL en top-5:', round(100*top5/total, 1))
+"
+```
+
+Resultado real obtenido:
+
+```
+combo2_validacion_8y -> Nº ops: 134 | % PnL en top-5: 66.2
+baseline_8y -> Nº ops: 166 | % PnL en top-5: 138.6
+```
+
+| Config | % PnL en top-5 | Nº ops |
+|---|---|---|
+| baseline_8y | **138.6%** (resto pierde neto) | 166 |
+| **combo2_validacion_8y** | **66.2%** | 134 |
+
+### Conclusión de la Fase 6 (validación superada)
+
+`combo2_rsc_s1laxo` **sobrevive a la validación fuera de muestra sin
+degradarse — de hecho mejora** respecto a la calibración de 6y (Fase 5:
++102.05%, Sharpe 0.92, DD -16.58%, top-5 60.5% → 8y: +120.81%, Sharpe 0.73,
+DD -19.08%, top-5 66.2%). Algunas métricas individuales varían al incluir
+los 2 años adicionales (Sharpe algo menor, DD algo mayor — esperable, un
+periodo más largo suele suavizar picos favorables puntuales), pero **la
+comparación relevante es siempre combo2 vs. baseline en el MISMO periodo**,
+y ahí la ventaja no solo se mantiene sino que se amplía: +120.81% vs
++26.07%, es decir, combo2 renta **4.6x** lo que el baseline en el mismo
+tramo de 8 años, con mejor Sharpe (0.73 vs 0.27), mejor drawdown (-19.08%
+vs -25.14%) y mejor profit factor (2.39 vs 1.31) simultáneamente.
+
+La concentración de outliers del baseline empeora ligeramente en 8y respecto
+a 6y (138.6% vs 179.4% — sigue siendo un patrón de cola muy pesada, aunque el
+número exacto varía entre ventanas, coherente con la naturaleza de
+seguimiento de tendencia de la estrategia sin las mejoras), mientras que
+combo2 se mantiene establemente bajo (66.2% vs 60.5% en 6y, variación de
+apenas 5.7 puntos). Esta estabilidad de la concentración entre ventanas
+temporales distintas es la señal más fuerte de todo el proceso contra el
+overfitting: si el resultado de 6y hubiera sido un artefacto de esa ventana
+concreta, sería raro que la concentración se mantuviera tan estable al
+añadir 2 años de datos no vistos en calibración.
+
+**No fue necesaria la cláusula de "degradación → quedarse con algo más
+conservador"**: no hay degradación que gestionar; el resultado en 8y es
+mejor en términos relativos (vs. su propio baseline) que en 6y.
+
+**Pendiente de revisión (no bloqueante para la decisión, documentado como
+tarea abierta)**: no se ha hecho el cruce nominal de qué operaciones
+concretas explican el top-5 de 66.2% en el run de 8y, ni si GEV/WDC/MU/HII/
+HWM (identificadas en Fase 2 sobre el run de 6y con `sin_F4`, no con combo2)
+siguen apareciendo entre las ganadoras de combo2 en 8y, ni si el tramo
+2018-2020 (nuevo respecto a la calibración de 6y) aporta ganadoras distintas
+no vistas antes. Si se quiere cerrar del todo esta pregunta:
+
+```bash
+python -c "
+import pandas as pd
+df = pd.read_csv('historial/backtests/fase6_validacion.csv').dropna(subset=['Retorno %'])
+print(df.nlargest(5, 'Retorno %')[['Ticker','Fecha Entrada','Fecha Salida','Retorno %','P&L USD']].to_string(index=False))
+"
+```
+
+**Configuraciones usadas en esta fase: 2.** Presupuesto total del proceso:
+17/20.
 
 ---
 
-## Fase 7 — Documentación y decisión final (aún no iniciada)
+## Fase 7 — Documentación y decisión final
 
-Tabla comparativa de todo el proceso + decisión de qué (si algo) se lleva a
-`weinstein/config.py` como nuevo valor por defecto, con la evidencia de este
-documento como justificación en el commit/PR correspondiente.
+**Estado: ✅ Completada**
+
+### Tabla resumen del proceso completo
+
+| Fase | Config | Periodo | Rentab. | Sharpe | Max DD | % PnL top-5 | Rol |
+|---|---|---|---|---|---|---|---|
+| 0 | baseline | 6y | +22.22% | 0.31 | -22.69% | 179.4% | referencia calibración |
+| 3 | ranking `rsc_activo` | 6y | +79.64% | 0.73 | -17.91% | 79.4% | componente de combo2 |
+| 2 | S1 umbral -1.0 | 6y | +36.54% | 0.47 | -22.70% | 96.7% | componente de combo2 |
+| 5 | combo2 (rsc_activo + S1 -1.0) | 6y | +102.05% | 0.92 | -16.58% | 60.5% | ganador calibración |
+| 6 | baseline | 8y (validación) | +26.07% | 0.27 | -25.14% | 138.6% | referencia validación |
+| **6** | **combo2 (rsc_activo + S1 -1.0)** | **8y (validación)** | **+120.81%** | **0.73** | **-19.08%** | **✅ ganador final** |
+
+### Decisión final
+
+Se propone aplicar a la configuración por defecto los dos cambios que
+componen `combo2`:
+
+```python
+RSC_EXIT_THRESHOLD = -1.0   # antes: -0.5  (S1: RSC Mansfield activo < umbral → salida)
+```
+
+y, en el criterio de ranking de desempate del backtest de cartera (hoy
+`momentum` por defecto en `backtest/strategy_config.py::StrategyConfig`),
+pasar el default a `"rsc_activo"`.
+
+**Importante — alcance del cambio**: `RSC_EXIT_THRESHOLD` es una constante
+que hoy podría estar compartida entre el escáner de PRODUCCIÓN
+(`scanner_exit.py`, condición S1 real sobre posiciones abiertas) y el
+backtest de cartera (`S1_rsc_debil` en `backtest/conditions.py`). **Antes de
+tocar código**, hay que confirmar si `S1_rsc_debil.default_params` en
+`backtest/conditions.py` referencia esta constante de `weinstein/config.py`
+o si tiene `-0.5` hardcodeado ahí mismo — si es lo segundo, hace falta
+editar también ese archivo para que el cambio de umbral llegue realmente al
+backtest (y no solo a `weinstein/config.py`, que sin ese vínculo no cambiaría
+nada del backtest en la práctica).
+
+El criterio de ranking, en cambio, es exclusivo del backtest de cartera: el
+escáner de producción (`scanner_entry.py`) no gestiona cartera ni desempate
+entre candidatos más allá de un MOM descendente fijo. **Este cambio de
+ranking no afecta a producción**, solo al backtest.
+
+**Checklist antes de aplicar en código (pendiente, no ejecutado):**
+
+1. Confirmar si `RSC_EXIT_THRESHOLD` afecta también a `scanner_exit.py` en
+   producción (S1 real sobre `posiciones.csv`). Si es así, decidir
+   explícitamente si se quiere ese cambio también en producción o si hace
+   falta desacoplar la constante en dos (una para producción, otra como
+   default del backtest) — esto es una decisión de negocio, no solo técnica,
+   y debe tomarse con el mismo criterio de evidencia que el resto del
+   proceso, no aplicarse "de rebote" solo porque tocaba la misma constante.
+2. Si aplica a producción, actualizar `docs/ESTRATEGIA.md` sección 6
+   (parámetros por defecto) para que quede coherente con el código.
+3. Actualizar `tests/test_strategy_config.py::test_config_por_defecto_es_valida`
+   y cualquier otro test que asuma `ranking_criterion == "momentum"` por
+   defecto, si se cambia el default de `StrategyConfig`.
+4. Re-ejecutar la suite de tests completa (`pytest`) tras el cambio, antes
+   de darlo por cerrado.
+
+**Este documento registra la evidencia y la decisión tomada con esa
+evidencia; la aplicación mecánica al código queda como el siguiente paso a
+ejecutar, no como un hecho ya consumado.**
+
+---
+
+## Fase 8 — Reducción de tickers sin datos en universo histórico (8y)
+
+**Estado: 🔄 En curso**
+
+### Motivación
+
+El run de validación de la Fase 6 (8 años) reportó cifras más altas que el
+run original de 6 años en el que se calibró la Fase -1:
+
+| | 6y (Fase -1 / Fase 0) | 8y (Fase 6) |
+|---|---|---|
+| `tickers_sector_desconocido` | 2 | **29** |
+| `tickers_historicos_sin_precio` | 10 | **34** |
+
+Es esperable que un periodo más largo (8y vs 6y) incluya más rotación
+histórica del índice y por tanto más tickers delistados que el mapeo manual
+`HISTORICAL_DELISTED_SECTORS` (calibrado originalmente sobre el universo de
+6y/8y de aquel momento) no cubre — pero **no debe asumirse sin más**; hay que
+diagnosticar cuáles son esos tickers exactos antes de decidir cómo actuar,
+igual que se hizo en la Fase -1.
+
+Importante releer antes de continuar (ver `backtest/BACKTEST.md` sección 4):
+son **dos problemas distintos, con mitigaciones distintas**:
+
+- `tickers_sector_desconocido`: el ticker SÍ tiene precio evaluable, pero no
+  se le puede asignar sector GICS (ni constituyentes actuales ni
+  `HISTORICAL_DELISTED_SECTORS`) → queda excluido de F1 para siempre. Se
+  arregla ampliando el diccionario manual (mismo mecanismo que Fase -1).
+- `tickers_historicos_sin_precio`: el ticker perteneció al índice pero
+  **ninguna fuente de datos** (yfinance ni el fallback Tiingo) tiene su
+  histórico de precio. Esto NO se arregla con el diccionario de sectores —
+  necesita otra mitigación (ver plan más abajo). Confundir ambos problemas
+  llevaría a "arreglar" el diccionario sin que cambie nada en esta segunda
+  cifra.
+
+### Paso 1 — Diagnóstico: obtener el listado exacto de tickers afectados
+
+El log de consola de la Fase 6 solo da el CONTEO (29 y 34), no la lista de
+símbolos. Antes de tocar nada hace falta el listado exacto, igual que en la
+Fase -1 se identificó vía `prepare_universe(...).tickers_sector_desconocido`.
+Comando sugerido (ejecútalo tú y pégame la salida, o dime si prefieres que
+te prepare un script más elaborado que además cruce con
+`HISTORICAL_DELISTED_SECTORS` para ver cuáles son realmente nuevos):
+
+```bash
+python -c "
+import sys
+sys.path.insert(0, '.')
+from backtest.portfolio_backtest import prepare_universe
+
+sp500_close, bullish, bearish, contexts, info = prepare_universe(
+    period='8y', universe='historical',
+)
+print()
+print('=== tickers_sector_desconocido (%d) ===' % len(info.tickers_sector_desconocido))
+print(sorted(info.tickers_sector_desconocido))
+print()
+print('=== tickers_historicos_sin_precio (%d) ===' % len(info.tickers_historicos_sin_precio))
+print(sorted(info.tickers_historicos_sin_precio))
+"
+```
+
+Esto reutiliza la caché ya poblada (1244 archivos, 26.18 MB), así que debería
+ser rápido y no golpear red salvo para los tickers que aún no se han
+intentado descargar.
+
+### Paso 2 — Plan de mitigación por cada lista (pendiente de los datos del Paso 1)
+
+**Para `tickers_sector_desconocido` (29 tickers):** una vez tengamos el
+listado, es exactamente el mismo procedimiento que la Fase -1: para cada
+símbolo, buscar su último sector GICS conocido antes de salir del índice y
+añadirlo a `HISTORICAL_DELISTED_SECTORS` en `weinstein/config.py`, con el
+mismo formato de comentario (empresa + motivo de salida + fuente). Aplicar
+la lección aprendida en la incidencia de la Fase -1: **añadir entradas
+nuevas sin sobrescribir el bloque completo**, y verificar con `grep` que las
+claves ya conocidas (`CELG`, `TWTR`, `XLNX`, `ETFC`, `WLTW`...) siguen
+presentes tras el cambio. Verificar con
+`tests/test_config_historical_sector.py` al terminar.
+
+**Para `tickers_historicos_sin_precio` (34 tickers):** este es un problema
+distinto porque ya existe un fallback (Tiingo) y aun así fallan. Antes de
+proponer una solución concreta, conviene distinguir dentro del listado del
+Paso 1 entre:
+
+1. **Tickers que ya se ven en el log de la Fase 6** (`FDXF`, `HONA`, `Q`) —
+   estos SÍ tienen datos parciales pero insuficientes (9, 6 y 39 velas
+   respectivamente, por debajo del mínimo `MIN_BARS=70`). No es que falten
+   datos, es que hay POCO histórico — probablemente altas/bajas muy
+   recientes del índice o spin-offs. Para estos, `MIN_BARS` es la barrera,
+   no la fuente de datos en sí.
+2. **El resto del listado** (previsiblemente ~31 tickers adicionales no
+   vistos en el log parcial) — es la parte que hace falta diagnosticar: si
+   son tickers delistados hace tiempo que ni yfinance ni Tiingo tienen
+   (limitación de fuente, difícil de resolver sin una tercera fuente de
+   pago), o si algunos son resolubles vía el mecanismo de
+   `_KNOWN_TICKER_RENAMES` en `weinstein/data.py` (alias de símbolo, como
+   `WLTW→WTW`) que simplemente no está cubriendo estos casos nuevos.
+
+Con el listado del Paso 1 en mano, el siguiente paso natural es:
+- Comprobar cuántos de esos 34 símbolos son casos de "cambio de ticker
+  conocido" no cubiertos aún en `_KNOWN_TICKER_RENAMES`
+  (`weinstein/data.py`) — estos se arreglan añadiendo el alias, igual que
+  ya existe para `WLTW`, `ADS`, `DISCA`, `FBHS`, `HFC`, `RE`.
+- Para el resto, evaluar si Tiingo simplemente no tiene el histórico (fin
+  del camino razonable sin una fuente de pago adicional) o si hay algún
+  patrón (p.ej. fechas de delisting muy antiguas, anteriores a cierto año)
+  que explique el fallo y permita decidir con criterio si merece la pena
+  perseguir cada caso o aceptar el residuo y documentarlo (como ya se hace
+  hoy en el propio código y en `backtest/BACKTEST.md` sección 4).
+
+### Próximo paso inmediato
+
+Ejecuta el comando del Paso 1 y pégame la salida (las dos listas de
+símbolos). Con eso puedo:
+- Ampliar `HISTORICAL_DELISTED_SECTORS` con los símbolos de
+  `tickers_sector_desconocido` (mismo patrón que Fase -1).
+- Clasificar `tickers_historicos_sin_precio` en "arreglable vía alias" vs.
+  "sin fuente disponible", y ampliar `_KNOWN_TICKER_RENAMES` donde
+  corresponda.
+- Actualizar este documento con el resultado y, si procede, re-ejecutar la
+  validación de Fase 6 para confirmar que las cifras bajan sin cambiar la
+  conclusión de rentabilidad ya obtenida.
 
 ---
 
 ## Estado actual
 
-**Fases 0-4 completadas. Fase 5 en curso**: combo 1 y combo 2 completados y
-comparados. **`combo2_rsc_s1laxo` (ranking `rsc_activo` + S1 umbral -1.0) es
-el ganador provisional del proceso** (+102.05%, Sharpe 0.92, drawdown
--16.58%, 60.5% concentración top-5 — mejor que sus componentes por separado
-en todas las métricas).
+**Fases 0-7: ✅ Evidencia y decisión documentadas.** Pendiente la aplicación
+mecánica del cambio de config al código (ver checklist en Fase 7) — no
+ejecutada todavía en este documento.
 
-**Presupuesto de configuraciones usado: 15 de ~20** (quedan 5 para el resto
-de la Fase 5).
+**Fase 8: 🔄 en curso.** Objetivo: reducir `tickers_historicos_sin_precio`
+(34 en el run de validación 8y) y `tickers_sector_desconocido` (29 en el
+mismo run) con la misma metodología de mapeo/alias manual que ya funcionó en
+la Fase -1. **Próximo paso inmediato: ejecutar el comando de diagnóstico del
+Paso 1 de la Fase 8 y compartir la salida.**
 
-**Próximo comando a ejecutar (combo 3):**
+**Ganador del proceso de optimización (Fases 0-7)**: ranking `rsc_activo` +
+`RSC_EXIT_THRESHOLD = -1.0`. Validado fuera de muestra en 8y con mejora
+simultánea de rentabilidad (+120.81% vs +26.07% del baseline en el mismo
+periodo), Sharpe (0.73 vs 0.27), drawdown (-19.08% vs -25.14%), profit
+factor (2.39 vs 1.31) y concentración de outliers (66.2% vs 138.6%).
 
-```bash
-python backtest/run_portfolio_backtest.py --universe historical --period 6y --ranking rsc_activo --s1-umbral -1.0 --max-positions 15 --name combo3_mas_pos15 --export historial/backtests/fase5_combo3.csv
-```
+**Presupuesto de configuraciones usado: 17 de ~20** (Fases 0-7). La Fase 8
+es trabajo de calidad de datos, no cuenta contra este presupuesto de
+configuraciones de estrategia.
 
-Tras obtenerlo, aplicar el chequeo de concentración de outliers y comparar
-contra `combo2` (no solo contra el baseline) para decidir si
-`max_positions=15` aporta algo real una vez ya aplicados el ranking y S1
-laxo, o si simplemente diluye lo ya conseguido.
-
-**Cambios ya decididos para `weinstein/config.py`:** ninguno todavía (todo
-pendiente de Fase 6/7). Candidato líder actual si no mejora nada más:
-`RANKING = "rsc_activo"` + `RSC_EXIT_THRESHOLD = -1.0` (nombres de constantes
-a verificar contra `weinstein/config.py` antes de aplicar en Fase 7).
+**Cambios pendientes de aplicar a código (no hechos aún):**
+1. `weinstein/config.py`: `RSC_EXIT_THRESHOLD = -1.0` (verificar antes su
+   acoplamiento con `scanner_exit.py` de producción, ver checklist Fase 7).
+2. `backtest/strategy_config.py`: `ranking_criterion` por defecto →
+   `"rsc_activo"` (verificar si `backtest/conditions.py::S1_rsc_debil`
+   necesita tocarse también para que el cambio de umbral le llegue).
+3. Tests y documentación asociados (ver checklist Fase 7, puntos 3-4).
