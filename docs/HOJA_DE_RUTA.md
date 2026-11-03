@@ -100,9 +100,9 @@ Bugs encontrados en la revisión del 2026-11-03, ordenados por impacto:
 - [ ] **R2.** Decidir qué hacer con `strategy_backtest.py` y
       `backtest_lookback.py` (duplican lógica del motor de cartera):
       eliminar o reducir a funciones sobre el motor común.
-- [ ] **R3.** Sustituir `launcher.py` (bucle infinito cada hora para sortear
-      el límite de Tiingo) por un comando de descarga reanudable que respete el
-      límite y termine.
+- [x] **R3** `d505bca` — `launcher.py` eliminado; lo sustituye
+      `python -m backtest.download_data` (reanudable, presupuesto horario y
+      diario por clave de Tiingo, `--wait`). Varias claves: `edb4809`.
 - [x] **R4.** Worktrees obsoletos y sus ramas locales eliminados (2026-11-03).
       Queda la rama remota `origin/agents/fix-test-entry-exit-same-week`
       (ya fusionada) en GitHub.

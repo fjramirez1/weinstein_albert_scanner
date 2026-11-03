@@ -56,7 +56,7 @@ python -m weinstein portfolio-backtest --universe historical --period 8y   # (re
   debe redirigir `CACHE_DIR` / rutas a `tmp_path` con `monkeypatch`. (Un
   fixture antiguo borró `backtest/.cache/` real; ver bitácora 2026-11-03.)
 - **No commitear** `backtest/.cache/`, `.env` ni datos de mercado descargados.
-- **`.env`** contiene `TIINGO_API_KEY`: no leer su valor, no imprimirlo, no
+- **`.env`** contiene las API keys de Tiingo (`TIINGO_API_KEY`, `TIINGO_API_KEY_2`): no leer su valor, no imprimirlo, no
   enviarlo a ningún sitio.
 - **CSV de posiciones** (`posiciones.csv`): conservar columnas `Ticker`,
   `Sector`, `Precio_Entrada`, `Fecha_Entrada` salvo migración acordada.
@@ -67,7 +67,9 @@ python -m weinstein portfolio-backtest --universe historical --period 8y   # (re
   sin evidencia registrada en la bitácora (comando + métricas + chequeo de
   concentración en outliers + comparación con benchmark) y validación fuera
   de muestra real.
-- No crear tareas programadas / bucles (cron, `launcher.py`) sin confirmación.
+- No crear tareas programadas / bucles (cron) sin confirmación. Para poblar la
+  caché: `python -m backtest.download_data --period 10y --universe historical
+  [--wait]` (respeta el límite de Tiingo; `--wait` espera entre ventanas).
 - **Git**: hay permiso para `commit` y `push` a `origin` para mantener un
   historial ordenado (un commit por bloque lógico: fix, refactor, docs...,
   mensajes en español). Autor **solo** con la config local del repo

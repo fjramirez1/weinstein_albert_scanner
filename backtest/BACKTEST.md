@@ -20,7 +20,7 @@ en producción — documentación ampliada, sin tocar la lógica del código.
 5. [Caché de datos y caché de fallos](#5-caché-de-datos-y-caché-de-fallos)
 6. [CLI y uso programático](#6-cli-y-uso-programático)
 7. [Sweep de configuraciones](#7-sweep-de-configuraciones)
-8. [Ejecución periódica (`launcher.py`)](#8-ejecución-periódica-launcherpy)
+8. [Descarga reanudable (`download_data.py`)](#8-descarga-reanudable-download_datapy)
 9. [Métricas reportadas](#9-métricas-reportadas)
 10. [Referencias de implementación](#10-referencias-de-implementación)
 
@@ -406,11 +406,16 @@ F1, S1 más laxo, ranking por RSC activo, máx. 5 posiciones. Para comparar
 configuraciones propias, usa `run_sweep` directamente (ver ejemplo en
 sección 6) en vez de escribir el bucle a mano.
 
-## 8. Ejecución periódica (`launcher.py`)
+## 8. Descarga reanudable (`download_data.py`)
 
 > `launcher.py` (que relanzaba el backtest completo cada 61 minutos solo
 > para sortear el límite horario de Tiingo) se eliminó: lo sustituye el
 > descargador reanudable `backtest/download_data.py` (tarea R3).
+>
+> **Varias API keys de Tiingo:** definir `TIINGO_API_KEY`, `TIINGO_API_KEY_2`…
+> (o `TIINGO_API_KEYS=k1,k2`) en `.env`. Cada clave lleva su propio contador
+> y bloqueo; `--tiingo-budget` es por clave (45/h por defecto, así que con
+> dos claves son 90/h).
 
 Puebla `backtest/.cache/` con la misma clave (ticker, periodo) que
 `get_cached_weekly`, así que después
@@ -496,7 +501,7 @@ valores exactos conocidos.
 | `backtest/run_portfolio_backtest.py` | CLI independiente |
 | `backtest/strategy_backtest.py` | Backtest por-ticker aislado (sin cartera compartida) — ver sección 1 |
 | `backtest/backtest_lookback.py` | Backtest de sensibilidad de `COPPOCK_RECENT_LOOKBACK` (F5) en aislamiento |
-| `launcher.py` | Ejecución periódica del backtest de cartera (universo histórico, cada hora) |
+| `backtest/download_data.py` | Descarga reanudable del universo (yfinance + Tiingo con presupuesto horario por clave) |
 
 Tests relevantes: `tests/test_conditions.py`, `tests/test_strategy_config.py`,
 `tests/test_portfolio_engine.py`, `tests/test_portfolio_metrics.py`,

@@ -42,7 +42,7 @@ python -m weinstein portfolio-backtest --period 8y --max-positions 10
 Para poblar antes la caché del universo histórico respetando el límite
 horario de Tiingo, usa el descargador reanudable
 `python -m backtest.download_data --period 10y --universe historical [--wait]`
-— detallado en [BACKTEST.md § 8](BACKTEST.md#8-ejecución-periódica-launcherpy).
+— detallado en [BACKTEST.md § 8](BACKTEST.md#8-descarga-reanudable-download_datapy).
 
 ## ⚠️ Limitación conocida: sesgo de supervivencia
 

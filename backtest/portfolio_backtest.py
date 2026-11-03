@@ -102,8 +102,8 @@ detalle completo y las cifras exactas.
 
 Caché de FALLOS de descarga (tickers sin histórico suficiente o sin datos)
 ------------------------------------------------------------------------------
-`launcher.py` está pensado para ejecutar este backtest en bucle (cada
-hora). En modo `universe="historical"` el universo incluye tickers que
+El backtest y el descargador `backtest/download_data.py` se ejecutan
+muchas veces. En modo `universe="historical"` el universo incluye tickers que
 ya NO pertenecen al S&P 500 actual (p.ej. empresas quebradas, absorbidas
 o privatizadas) junto con otros que sí pertenecen pero tienen histórico
 insuficiente por ser altas muy recientes (p.ej. un spin-off que entró al
