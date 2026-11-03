@@ -360,3 +360,25 @@ MBC y LVLT quedan como estaban (confianza media, sin evidencia en contra).
 TTD y PAYC estuvieron en el índice en el tramo de validación, así que las
 cifras de O1 pueden moverse algo; el baseline se recalcula dentro de O2.
 `python -m pytest`: 279 passed.
+
+## 2026-11-03 (10) — Fase 6 F1: reglas del vídeo como condiciones inactivas
+
+- `backtest/conditions.py`: `ConditionSpec.enabled_by_default` (True salvo
+  indicación). Nuevas condiciones **inactivas por defecto**:
+  - `F6_cierre_sobre_wma30` (entrada): `dist_wma30_pct > min_distancia`
+    (0 por defecto).
+  - `S3_trailing_stop` (salida): cierre < mínimo de los `ventana` (15)
+    cierres anteriores, con `min_semanas=15`.
+- `min_semanas` es un parámetro que interpreta el **motor** para cualquier
+  condición de salida (`ENGINE_PARAMS`): la salida solo cuenta con MÁS de N
+  semanas en posición. Las condiciones sin él siguen aplicándose desde la
+  semana de entrada (test de regresión: en `next_open`, S1 puede disparar
+  en la propia semana de compra).
+- CLI: `--enable NOMBRE` (repetible).
+- Tests: `tests/test_condiciones_video.py` (11). `python -m pytest`: 290
+  passed.
+- Regresión con datos reales (universo guardado antes del arreglo de
+  CDAY/DAY, periodo completo): la config por defecto da 209 ops / +15,19 %
+  con el código anterior y con el nuevo, idénticos. Con S3 activo salió
+  213 ops / +40,64 % (CAGR 3,9 %), pero esa cifra mezcla validación y **no
+  se usa para decidir**; la medición válida es la de calibración en O2.

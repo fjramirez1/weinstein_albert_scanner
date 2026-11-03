@@ -605,6 +605,13 @@ def run_portfolio_backtest(
     # inverso fecha -> tickers con señal, para no recorrer todo el universo
     # cada semana.
     exit_masks: dict[str, dict[str, pd.Series]] = {}
+    # Salidas que solo cuentan con MÁS de N semanas en posición (param.
+    # `min_semanas`); las demás se aplican desde la semana de entrada.
+    min_semanas_salida = {
+        cname: int(params["min_semanas"])
+        for cname, params in config.active_exit_conditions().items()
+        if "min_semanas" in params
+    }
     candidatos_por_fecha: dict[pd.Timestamp, list[str]] = {}
     for ticker, ctx in contexts.items():
         exit_masks[ticker] = evaluate_exit_masks(ctx, config, extra)
@@ -716,11 +723,16 @@ def run_portfolio_backtest(
 
         # ── 2b. Señales al cierre de esta semana ──
         salidas: list[tuple[str, str]] = []
-        for ticker in list(open_positions):
+        for ticker, pos in list(open_positions.items()):
             masks = exit_masks.get(ticker, {})
+            idx_close = contexts[ticker].close.index
+            if fecha not in idx_close:
+                continue
+            semanas = int(idx_close.get_loc(fecha)) - pos.idx_entrada
             motivos = [
                 cname for cname, mask in masks.items()
-                if fecha in mask.index and bool(mask.loc[fecha])
+                if bool(mask.loc[fecha])
+                and (cname not in min_semanas_salida or semanas > min_semanas_salida[cname])
             ]
             if motivos:
                 salidas.append((ticker, "+".join(motivos)))

@@ -80,6 +80,15 @@ def _build_config_from_args(args: argparse.Namespace) -> StrategyConfig:
             print(f"    Salida disponibles : {list(EXIT_CONDITIONS)}")
             sys.exit(1)
 
+    for cname in (args.enable or []):
+        if cname in ENTRY_CONDITIONS:
+            entry_conditions[cname] = ConditionToggle()
+        elif cname in EXIT_CONDITIONS:
+            exit_conditions[cname] = ConditionToggle()
+        else:
+            print(f"  ✗ Condición desconocida en --enable: '{cname}'")
+            sys.exit(1)
+
     if args.f1_umbral is not None:
         entry_conditions.setdefault("F1_sector_fuerte", ConditionToggle()).params["umbral"] = args.f1_umbral
     if args.f4_max_distancia is not None:
@@ -136,6 +145,8 @@ def add_portfolio_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--disable", action="append", default=None,
                         help="Nombre de condición a desactivar (repetible). "
                              f"Entrada: {list(ENTRY_CONDITIONS)} | Salida: {list(EXIT_CONDITIONS)}")
+    parser.add_argument("--enable", action="append", default=None,
+                        help="Activa una condición desactivada por defecto (repetible), p. ej. S3_trailing_stop")
     parser.add_argument("--f1-umbral", type=float, default=None, help=f"Umbral F1 (RSC sector), default {SECTOR_RSC_MIN}")
     parser.add_argument("--f4-max-distancia", type=float, default=None,
                         help=f"Umbral F4 (distancia %% WMA30), default {MAX_DISTANCIA_WMA30}")

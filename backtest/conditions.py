@@ -37,6 +37,21 @@ el nombre registrado en el config).
 Todas las condiciones son NULL-SAFE: donde no hay datos suficientes,
 deben devolver False (nunca lanzar) para no romper la simulación por un
 tramo inicial sin histórico suficiente.
+
+Condiciones desactivadas por defecto
+------------------------------------
+Algunas condiciones están registradas pero NO forman parte de la
+estrategia de producción (`enabled_by_default=False`): son reglas del
+vídeo que se retiraron y se conservan para poder probarlas en el
+backtest (ver `docs/ESTRATEGIA.md` §10). Solo se aplican si el config las
+activa explícitamente con `ConditionToggle()`.
+
+Parámetros que consume el motor
+-------------------------------
+`min_semanas` (en cualquier condición de salida): la salida solo cuenta
+si la posición lleva MÁS de `min_semanas` semanas abierta. La máscara de
+la condición no sabe cuándo se entró, así que el motor lo comprueba y el
+parámetro no se pasa a la función.
 """
 
 from __future__ import annotations
@@ -62,6 +77,9 @@ from weinstein.signals import (  # noqa: F401  (re-exportados: API histórica de
 # Nombre antiguo, conservado para no romper llamadas existentes.
 precompute_market_series = market_state_series
 
+# Parámetros de condición que interpreta el motor en vez de la función.
+ENGINE_PARAMS = ("min_semanas",)
+
 
 # ── Especificación de una condición ─────────────────────────────────────
 
@@ -76,6 +94,7 @@ class ConditionSpec:
     label: str
     func: Callable[..., pd.Series]
     default_params: dict = field(default_factory=dict)
+    enabled_by_default: bool = True
 
 
 # ── Condiciones de ENTRADA (F1-F5), combinadas con AND ─────────────────
@@ -110,6 +129,11 @@ def _f5_mercado_alcista(ctx: TickerContext, coppock_bullish_aligned: pd.Series |
     return coppock_bullish_aligned.reindex(ctx.close.index, method="ffill").fillna(False)
 
 
+def _f6_cierre_sobre_wma30(ctx: TickerContext, min_distancia: float = 0.0) -> pd.Series:
+    """F6 (vídeo, fuera de producción): cierre por encima del WMA30 (distancia % > mínimo)."""
+    return (ctx.dist_wma30_pct > min_distancia).fillna(False)
+
+
 ENTRY_CONDITIONS: dict[str, ConditionSpec] = {
     "F1_sector_fuerte": ConditionSpec(
         name="F1_sector_fuerte",
@@ -141,6 +165,13 @@ ENTRY_CONDITIONS: dict[str, ConditionSpec] = {
         func=_f5_mercado_alcista,
         default_params={},  # coppock_bullish_aligned se inyecta desde el motor
     ),
+    "F6_cierre_sobre_wma30": ConditionSpec(
+        name="F6_cierre_sobre_wma30",
+        label="F6: Cierre > WMA30",
+        func=_f6_cierre_sobre_wma30,
+        default_params={"min_distancia": 0.0},
+        enabled_by_default=False,
+    ),
 }
 
 
@@ -158,6 +189,16 @@ def _s2_mercado_bajista(ctx: TickerContext, coppock_bearish_aligned: pd.Series |
     return coppock_bearish_aligned.reindex(ctx.close.index, method="ffill").fillna(False)
 
 
+def _s3_trailing_stop(ctx: TickerContext, ventana: int = 15) -> pd.Series:
+    """
+    S3 (vídeo, fuera de producción): cierre semanal por debajo del mínimo de
+    los `ventana` cierres anteriores. El vídeo solo la aplica con más de 15
+    semanas en posición: eso lo controla el motor con `min_semanas`.
+    """
+    minimo_previo = ctx.close.shift(1).rolling(ventana, min_periods=ventana).min()
+    return (ctx.close < minimo_previo).fillna(False)
+
+
 EXIT_CONDITIONS: dict[str, ConditionSpec] = {
     "S1_rsc_debil": ConditionSpec(
         name="S1_rsc_debil",
@@ -170,6 +211,13 @@ EXIT_CONDITIONS: dict[str, ConditionSpec] = {
         label="S2: Coppock SP500 bajista",
         func=_s2_mercado_bajista,
         default_params={},
+    ),
+    "S3_trailing_stop": ConditionSpec(
+        name="S3_trailing_stop",
+        label="S3: Trailing stop 15 semanas",
+        func=_s3_trailing_stop,
+        default_params={"ventana": 15, "min_semanas": 15},
+        enabled_by_default=False,
     ),
 }
 

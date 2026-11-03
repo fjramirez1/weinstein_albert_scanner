@@ -121,9 +121,15 @@ de simulación, lo que hace viable simular ~500 tickers en tiempo razonable.
 | `F5_mercado_alcista` | Entrada | Coppock SP500 alcista (`sp500_alcista()`) | sin parámetros propios |
 | `S1_rsc_debil` | Salida | RSC Mansfield del activo < umbral | `umbral=-0.5` |
 | `S2_mercado_bajista` | Salida | Coppock SP500 bajista (`sp500_bajista()`) | sin parámetros propios |
+| `F6_cierre_sobre_wma30` | Entrada, **inactiva por defecto** | Cierre > WMA30 (distancia % > mínimo); regla del vídeo retirada | `min_distancia=0.0` |
+| `S3_trailing_stop` | Salida, **inactiva por defecto** | Cierre < mínimo de los `ventana` cierres anteriores, solo con más de `min_semanas` semanas en posición; regla del vídeo retirada | `ventana=15`, `min_semanas=15` |
 
 Las condiciones de entrada se combinan con **AND**; las de salida con **OR**
-(basta una para cerrar la posición). Ver `docs/ESTRATEGIA.md` sección 4 para
+(basta una para cerrar la posición). Las inactivas por defecto
+(`enabled_by_default=False`) no forman parte de la estrategia de producción:
+se activan con `ConditionToggle()` en el config o con `--enable NOMBRE` en la
+CLI. `min_semanas` vale para cualquier condición de salida y lo aplica el
+motor, porque la máscara de la condición no conoce la fecha de entrada. Ver `docs/ESTRATEGIA.md` sección 4 para
 el detalle conceptual de F5/S2 y por qué no son complementarias.
 
 ### Precálculo sin look-ahead de F5/S2
@@ -343,6 +349,7 @@ python backtest/run_portfolio_backtest.py
 
 python backtest/run_portfolio_backtest.py --capital 20000 --max-positions 8 --period 6y
 python backtest/run_portfolio_backtest.py --disable F1_sector_fuerte
+python backtest/run_portfolio_backtest.py --enable S3_trailing_stop --enable F6_cierre_sobre_wma30
 python backtest/run_portfolio_backtest.py --s1-umbral -1.0 --f4-max-distancia 12
 python backtest/run_portfolio_backtest.py --ranking rsc_activo
 python backtest/run_portfolio_backtest.py --universe historical

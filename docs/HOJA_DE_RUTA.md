@@ -143,11 +143,11 @@ entrada y salida sin tocar el motor. La base ya existe (`ConditionSpec` +
 `StrategyConfig` en `backtest/conditions.py` / `strategy_config.py`); falta
 ampliar el catálogo y hacerlo cómodo de usar.
 
-- [ ] **F1.** Registrar las reglas del vídeo que no están en producción
+- [x] **F1.** Registrar las reglas del vídeo que no están en producción
       (`docs/ESTRATEGIA.md` §10) como condiciones **desactivadas por
-      defecto**: entrada `Cierre > WMA30` y salida `trailing stop de 15
-      barras`. Medirlas con el motor corregido (puede adelantarse a O2: es
-      barato y responde si su retirada estaba justificada).
+      defecto**: `F6_cierre_sobre_wma30` y `S3_trailing_stop`
+      (`--enable` en la CLI; `min_semanas` genérico en el motor). Se miden
+      en O2.
 - [ ] **F2.** Definir configuraciones en fichero (YAML/JSON) en vez de flags
       sueltos: activar/desactivar condiciones, umbrales y ranking.
 - [ ] **F3.** Condiciones parametrizables genéricas (p. ej. "indicador X
@@ -166,13 +166,11 @@ ampliar el catálogo y hacerlo cómodo de usar.
 - **Hecho para O2:** parámetros del Coppock en `StrategyConfig`
   (`coppock_roc_long/short`, `coppock_wma`, `coppock_lookback`); si difieren
   de `config.py` el motor recalcula F5/S2.
-- **Siguiente paso:** F1 de la Fase 6. Registrar en `backtest/conditions.py`,
-  desactivadas por defecto, la entrada `F6_cierre_sobre_wma30`
-  (dist_wma30_pct > 0) y la salida `S3_trailing_stop` (cierre < mínimo de los
-  15 cierres previos, solo con más de 15 semanas en posición: el motor debe
-  comprobar las semanas desde la entrada). Después, el estudio O2
-  (`backtest/estudios/o2_barrido.py`, ~20 configs SOLO en calibración
-  2017-12-01 → 2022-12-30).
+- **Hecho:** F1 de la Fase 6 (F6/S3 registradas, inactivas por defecto).
+- **Siguiente paso:** estudio O2. Escribir y ejecutar
+  `python -m backtest.estudios.o2_barrido` (~20 configs SOLO en calibración
+  2017-12-01 → 2022-12-30; ranking, S1, F1/F4, F6, S3, Coppock 14+11 vs
+  12+6, nº de posiciones) y anotar la tabla en la bitácora.
 - **Sectores GICS de delistados:** verificados (bitácora 2026-11-03 (9)).
 - **Pendiente del usuario:** contenido del vídeo (V1).
 - **Caché:** repoblada el 2026-11-03 (`backtest/.cache/`, periodo `10y`).

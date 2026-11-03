@@ -41,7 +41,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-from backtest.conditions import ENTRY_CONDITIONS, EXIT_CONDITIONS, TickerContext
+from backtest.conditions import ENGINE_PARAMS, ENTRY_CONDITIONS, EXIT_CONDITIONS, TickerContext
 from backtest.strategy_config import StrategyConfig
 
 
@@ -296,7 +296,7 @@ def evaluate_exit_masks(ctx: TickerContext, config: StrategyConfig, extra: dict)
     result = {}
     for cname, params in active.items():
         spec = EXIT_CONDITIONS[cname]
-        call_params = dict(params)
+        call_params = {k: v for k, v in params.items() if k not in ENGINE_PARAMS}
         if cname == "S2_mercado_bajista":
             call_params["coppock_bearish_aligned"] = extra.get("coppock_bearish")
         result[cname] = spec.func(ctx, **call_params).reindex(ctx.close.index).fillna(False)

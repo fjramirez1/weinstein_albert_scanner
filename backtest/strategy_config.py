@@ -47,8 +47,10 @@ class StrategyConfig:
     name : etiqueta legible de esta configuración (útil en `sweep.py`).
     entry_conditions : {nombre_condición: ConditionToggle}. Cualquier
         condición registrada en `ENTRY_CONDITIONS` que no aparezca aquí
-        se asume activa con sus parámetros por defecto. Para desactivar
-        una condición, añadirla explícitamente con `enabled=False`.
+        toma su estado por defecto (`enabled_by_default`: activa para
+        F1-F5, inactiva para las reglas fuera de producción como F6) con
+        sus parámetros por defecto. Para desactivar una condición, añadirla
+        con `enabled=False`; para activar una inactiva, con `ConditionToggle()`.
     exit_conditions : igual que entry_conditions, pero sobre `EXIT_CONDITIONS`.
     ranking_criterion : clave de `RANKING_CRITERIA` usada para desempatar
         candidatos cuando hay más señales de entrada que huecos libres.
@@ -119,7 +121,7 @@ class StrategyConfig:
         """Devuelve {nombre: params_efectivos} de las condiciones de entrada activas."""
         result = {}
         for cname, spec in ENTRY_CONDITIONS.items():
-            toggle = self.entry_conditions.get(cname, ConditionToggle())
+            toggle = self.entry_conditions.get(cname, ConditionToggle(enabled=spec.enabled_by_default))
             if toggle.enabled:
                 params = {**spec.default_params, **toggle.params}
                 result[cname] = params
@@ -129,7 +131,7 @@ class StrategyConfig:
         """Devuelve {nombre: params_efectivos} de las condiciones de salida activas."""
         result = {}
         for cname, spec in EXIT_CONDITIONS.items():
-            toggle = self.exit_conditions.get(cname, ConditionToggle())
+            toggle = self.exit_conditions.get(cname, ConditionToggle(enabled=spec.enabled_by_default))
             if toggle.enabled:
                 params = {**spec.default_params, **toggle.params}
                 result[cname] = params

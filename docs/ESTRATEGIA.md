@@ -164,6 +164,10 @@ git (2026-11-03).
 | **Cierre > WMA30** | Entrada (AND) | El cierre semanal debe estar por encima de la WMA de 30 semanas | `456c810` (2026-05-18) | Ninguno en el commit; según el usuario, el vídeo la desaconsejaba |
 | **Trailing stop de 15 barras** | Salida (OR) | Solo tras más de 15 semanas en posición: salir si el cierre actual es menor que el mínimo de los 15 cierres semanales anteriores (desde la entrada) | `73b185c` (2026-05-18) | Ídem |
 
+Ambas están registradas en el backtest, inactivas por defecto, como
+`F6_cierre_sobre_wma30` y `S3_trailing_stop` (`backtest/conditions.py`;
+activables con `--enable`). Se miden en el estudio O2.
+
 Notas para cuando se vuelvan a probar:
 
 - **Cierre > WMA30 cambia el sentido de F4.** Hoy F4 (`Dist% < 8 %`) no tiene
