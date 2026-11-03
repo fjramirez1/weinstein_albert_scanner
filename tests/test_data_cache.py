@@ -13,7 +13,7 @@ import pandas as pd
 import pytest
 
 from backtest import data_cache
-from weinstein.data import last_closed_friday
+from weinstein.data import TiingoRateLimitError, last_closed_friday
 
 
 @pytest.fixture(autouse=True)
@@ -139,3 +139,73 @@ class TestCaducidad:
             result = data_cache.get_cached_weekly("TST", "5y")
         assert result is not None
         assert result.index[-1] == viejo.index[-1]
+
+
+class TestLimiteTiingo:
+    """Un ticker limitado por Tiingo NO es "sin datos": nunca deja `.nodata`."""
+
+    def test_delistado_limitado_no_escribe_nodata(self):
+        with patch.object(data_cache, "download_weekly",
+                          side_effect=TiingoRateLimitError("limitado")):
+            result = data_cache.get_cached_weekly("OLD", "5y", is_current_constituent=False)
+        assert result is None
+        assert data_cache.cache_stats()["n_fallos_cacheados"] == 0
+        assert data_cache.cache_status("OLD", "5y", is_current_constituent=False) == "falta"
+
+    def test_se_pide_a_download_weekly_que_propague_el_limite(self):
+        with patch.object(data_cache, "download_weekly", return_value=None) as mock_dl:
+            data_cache.get_cached_weekly("OLD", "5y", is_current_constituent=False)
+        assert mock_dl.call_args.kwargs.get("raise_on_rate_limit") is True
+
+    def test_tras_el_limite_se_reintenta_en_la_siguiente_llamada(self):
+        fake_df = _fake_df(end=pd.Timestamp("2021-06-04"))
+        with patch.object(data_cache, "download_weekly",
+                          side_effect=[TiingoRateLimitError("limitado"), fake_df]) as mock_dl:
+            assert data_cache.get_cached_weekly("OLD", "5y", is_current_constituent=False) is None
+            result = data_cache.get_cached_weekly("OLD", "5y", is_current_constituent=False)
+        assert mock_dl.call_count == 2
+        assert result is not None
+
+    def test_vigente_caducado_y_limitado_usa_la_cache_antigua(self):
+        viejo = _fake_df(end=last_closed_friday() - pd.Timedelta(weeks=3))
+        with patch.object(data_cache, "download_weekly",
+                          side_effect=[viejo, TiingoRateLimitError("limitado")]):
+            data_cache.get_cached_weekly("TST", "5y")
+            result = data_cache.get_cached_weekly("TST", "5y")
+        assert result is not None
+        assert result.index[-1] == viejo.index[-1]
+
+
+class TestHelpersDeEstado:
+
+    def test_cache_status_falta_ok_caducado_nodata(self):
+        assert data_cache.cache_status("TST", "5y") == "falta"
+        data_cache.save_cached("TST", "5y", _fake_df())
+        assert data_cache.cache_status("TST", "5y") == "ok"
+
+        data_cache.save_cached("VIE", "5y", _fake_df(end=last_closed_friday() - pd.Timedelta(weeks=2)))
+        assert data_cache.cache_status("VIE", "5y", is_current_constituent=True) == "caducado"
+        # Un delistado nunca caduca.
+        assert data_cache.cache_status("VIE", "5y", is_current_constituent=False) == "ok"
+
+        data_cache.mark_nodata("OLD", "5y")
+        assert data_cache.cache_status("OLD", "5y", is_current_constituent=False) == "nodata"
+        # Para un vigente el marcador no cuenta (get_cached_weekly lo ignora).
+        assert data_cache.cache_status("OLD", "5y", is_current_constituent=True) == "falta"
+
+    def test_save_cached_borra_marcador_y_lo_lee_get_cached_weekly(self):
+        data_cache.mark_nodata("OLD", "5y")
+        data_cache.save_cached("OLD", "5y", _fake_df(end=pd.Timestamp("2021-06-04")))
+        assert data_cache.cache_stats()["n_fallos_cacheados"] == 0
+        with patch.object(data_cache, "download_weekly") as mock_dl:
+            result = data_cache.get_cached_weekly("OLD", "5y", is_current_constituent=False)
+        mock_dl.assert_not_called()
+        assert result is not None and len(result) == 100
+
+    def test_helpers_escriben_solo_en_cache_dir_redirigido(self, tmp_path):
+        data_cache.save_cached("TST", "5y", _fake_df())
+        data_cache.mark_nodata("OLD", "5y")
+        assert data_cache.CACHE_DIR == tmp_path / "cache"
+        assert sorted(p.name for p in data_cache.CACHE_DIR.iterdir()) == [
+            "OLD__5y.nodata", "TST__5y.parquet",
+        ]

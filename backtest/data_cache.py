@@ -29,9 +29,9 @@ Cuando `universe="historical"` (ver `sp500_historical.py`), el universo
 a procesar incluye tickers que ya NO pertenecen al S&P 500 actual (p.ej.
 `FRC`, `APC`, `CDAY`) y otros que sí pertenecen pero tienen histórico
 insuficiente por ser altas muy recientes (p.ej. un spin-off que entró al
-índice hace pocas semanas). Sin caché de fallos, `launcher.py` (pensado
-para ejecutarse en bucle cada hora) repite la descarga fallida de esos
-mismos tickers en cada ejecución, indefinidamente.
+índice hace pocas semanas). Sin caché de fallos, cada ejecución del
+backtest repetiría la descarga fallida de esos mismos tickers,
+indefinidamente.
 
 La clave para cachear un fallo sin arriesgar "perder" un ticker que
 vuelve a tener datos válidos es: **solo se cachea el fallo de tickers
@@ -53,6 +53,16 @@ cuanto `load_sp500_tickers()` lo detecte como constituyente actual, el
 marcador de fallo antiguo se ignora y se borra automáticamente (ver
 `get_cached_weekly`), sin necesidad de intervención manual.
 
+Límite de Tiingo: "limitado" no es "sin datos"
+----------------------------------------------
+Si el fallback Tiingo responde con límite de peticiones
+(`weinstein.data.TiingoRateLimitError`), `get_cached_weekly` NO escribe el
+marcador `.nodata` (el ticker se perdería para siempre) y devuelve la caché
+antigua si la hay o ``None``: se reintentará en la próxima ejecución. El
+descargador reanudable `backtest/download_data.py` usa `cache_status`,
+`save_cached` y `mark_nodata` de este módulo para poblar la caché
+respetando el presupuesto horario de Tiingo.
+
 Nota técnica: el formato parquet no conserva el atributo `.freq` del
 `DatetimeIndex` original (pandas lo recupera como `None` tras un
 roundtrip). Los VALORES y FECHAS se conservan exactos; solo se pierde
@@ -69,7 +79,12 @@ from pathlib import Path
 
 import pandas as pd
 
-from weinstein.data import download_weekly, last_closed_friday, normalize_weekly_bars
+from weinstein.data import (
+    TiingoRateLimitError,
+    download_weekly,
+    last_closed_friday,
+    normalize_weekly_bars,
+)
 
 CACHE_DIR = Path(__file__).parent / ".cache"
 
@@ -90,6 +105,74 @@ def _fail_marker_path(ticker: str, period: str) -> Path:
     """
     safe_ticker = ticker.replace("/", "_").replace("\\", "_")
     return CACHE_DIR / f"{safe_ticker}__{period}.nodata"
+
+
+def read_cached(ticker: str, period: str) -> pd.DataFrame | None:
+    """Lee (normalizado) el parquet cacheado de `ticker`+`period`; ``None`` si no existe, está vacío o corrupto."""
+    path = _cache_path(ticker, period)
+    if not path.exists():
+        return None
+    try:
+        # Normalizar también al leer: cubre ficheros escritos antes de
+        # introducir la convención de velas en viernes (bug B1).
+        cached = normalize_weekly_bars(pd.read_parquet(path))
+    except Exception as exc:
+        # Caché corrupta (p.ej. interrupción a mitad de escritura): se
+        # ignora y se vuelve a descargar en vez de fallar.
+        print(f"  ⚠ [{ticker}] caché corrupta, redescargando: {exc}", file=sys.stderr)
+        return None
+    return cached if cached is not None and not cached.empty else None
+
+
+def cache_status(ticker: str, period: str, is_current_constituent: bool = True) -> str:
+    """
+    Estado de la caché de `ticker`+`period` con las MISMAS reglas que
+    `get_cached_weekly`, sin tocar la red:
+
+    - "ok": hay parquet y no está caducado (delistado, o vigente al día).
+    - "caducado": parquet de un vigente al que le falta la última semana cerrada.
+    - "nodata": marcador de fallo permanente (solo cuenta si no es vigente).
+    - "falta": no hay nada cacheado.
+    """
+    if not is_current_constituent and _fail_marker_path(ticker, period).exists():
+        return "nodata"
+    cached = read_cached(ticker, period)
+    if cached is None:
+        return "falta"
+    if not is_current_constituent or cached.index[-1] >= last_closed_friday():
+        return "ok"
+    return "caducado"
+
+
+def save_cached(ticker: str, period: str, data: pd.DataFrame) -> pd.DataFrame | None:
+    """
+    Normaliza y guarda `data` en la caché, borrando un marcador `.nodata`
+    previo. Devuelve el DataFrame normalizado, o ``None`` si queda vacío.
+    """
+    data = normalize_weekly_bars(data)
+    if data is None or data.empty:
+        return None
+    fail_path = _fail_marker_path(ticker, period)
+    if fail_path.exists():
+        try:
+            fail_path.unlink()
+        except FileNotFoundError:
+            pass
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        data.to_parquet(_cache_path(ticker, period))
+    except Exception as exc:
+        print(f"  ⚠ [{ticker}] no se pudo escribir caché: {exc}", file=sys.stderr)
+    return data
+
+
+def mark_nodata(ticker: str, period: str) -> None:
+    """Escribe el marcador de fallo permanente (solo para tickers que ya NO son constituyentes)."""
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        _fail_marker_path(ticker, period).touch()
+    except Exception as exc:
+        print(f"  ⚠ [{ticker}] no se pudo escribir marcador de fallo: {exc}", file=sys.stderr)
 
 
 def get_cached_weekly(
@@ -130,7 +213,6 @@ def get_cached_weekly(
           `load_sp500_tickers()` lo detecte) para que el marcador
           antiguo se ignore y se borre, sin intervención manual.
     """
-    path = _cache_path(ticker, period)
     fail_path = _fail_marker_path(ticker, period)
 
     if not refresh and fail_path.exists():
@@ -149,59 +231,42 @@ def get_cached_weekly(
             # respeta sin tocar la red.
             return None
 
-    cached: pd.DataFrame | None = None
-    if not refresh and path.exists():
-        try:
-            # Normalizar también al leer: cubre ficheros escritos antes de
-            # introducir la convención de velas en viernes (bug B1).
-            cached = normalize_weekly_bars(pd.read_parquet(path))
-        except Exception as exc:
-            # Caché corrupta (p.ej. interrupción a mitad de escritura):
-            # se ignora y se vuelve a descargar en vez de fallar.
-            print(f"  ⚠ [{ticker}] caché corrupta, redescargando: {exc}", file=sys.stderr)
+    cached = None if refresh else read_cached(ticker, period)
 
-    if cached is not None and not cached.empty:
+    if cached is not None:
         # Caducidad (B10): un ticker delistado tiene histórico cerrado y su
         # caché vale para siempre; uno vigente queda desfasado en cuanto
         # cierra una semana nueva que no está en el fichero.
         if not is_current_constituent or cached.index[-1] >= last_closed_friday():
             return cached
 
-    data = download_weekly(ticker, period=period)
+    try:
+        data = download_weekly(ticker, period=period, raise_on_rate_limit=True)
+    except TiingoRateLimitError:
+        # Tiingo limitado: NO es "sin datos". Sin marcador `.nodata`; se
+        # reintentará en otra ejecución (ver docstring del módulo).
+        if cached is not None:
+            return cached
+        print(f"  ⚠ [{ticker}] pendiente: Tiingo limitado, se reintentará en otra "
+              "ejecución (python -m backtest.download_data)", file=sys.stderr)
+        return None
     if data is not None:
         data = normalize_weekly_bars(data)
     if data is None or data.empty:
-        data = None
-        if cached is not None and not cached.empty:
+        if cached is not None:
             # Falló el refresco: mejor datos con alguna semana de retraso
             # que ninguno (y sin marcar fallo).
             print(f"  ⚠ [{ticker}] no se pudo refrescar; se usa la caché hasta "
                   f"{cached.index[-1].date()}", file=sys.stderr)
             return cached
         if not is_current_constituent:
-            CACHE_DIR.mkdir(parents=True, exist_ok=True)
-            try:
-                fail_path.touch()
-            except Exception as exc:
-                print(f"  ⚠ [{ticker}] no se pudo escribir marcador de fallo: {exc}", file=sys.stderr)
+            mark_nodata(ticker, period)
         return None
 
-    # Descarga con éxito: si existía un marcador de fallo previo (p.ej.
-    # de una ejecución anterior en la que is_current_constituent era
-    # False y ahora es True), se limpia para no dejar basura huérfana.
-    if fail_path.exists():
-        try:
-            fail_path.unlink()
-        except FileNotFoundError:
-            pass
-
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    try:
-        data.to_parquet(path)
-    except Exception as exc:
-        print(f"  ⚠ [{ticker}] no se pudo escribir caché: {exc}", file=sys.stderr)
-
-    return data
+    # Descarga con éxito: `save_cached` también limpia un marcador de fallo
+    # previo (p.ej. de una ejecución anterior en la que
+    # is_current_constituent era False y ahora es True).
+    return save_cached(ticker, period, data)
 
 
 def cache_stats() -> dict:

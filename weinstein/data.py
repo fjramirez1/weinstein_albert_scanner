@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -158,6 +159,156 @@ _KNOWN_TICKER_RENAMES: dict[str, str] = {
 }
 
 
+# ── Límite de peticiones de Tiingo (plan gratuito) ─────────────────────
+#
+# El plan gratuito de Tiingo permite ~50 peticiones/hora, ~1000/día y 500
+# símbolos distintos/mes. Al superarlo NO hay que confundir la respuesta con
+# "ticker sin datos": `backtest/data_cache.py` escribe un marcador `.nodata`
+# PERMANENTE para los delistados sin datos, así que un ticker limitado se
+# perdería para siempre. Por eso un límite se señala con la excepción
+# `TiingoRateLimitError` (nunca con ``None``) y, una vez detectado, se
+# bloquean las siguientes llamadas del proceso sin tocar la red hasta que
+# abra la siguiente ventana (no se martillea la API).
+#
+# Tiingo lo señala con HTTP 429 o, a veces, con HTTP 200 y un dict JSON del
+# tipo {"detail": "Error: You have run over your hourly request
+# allocation..."} en lugar de la lista de velas; se detectan ambas formas.
+#
+# Además se cuentan TODAS las peticiones HTTP hechas (incluidos los
+# reintentos con alias de `_KNOWN_TICKER_RENAMES`) y se puede fijar un
+# presupuesto por proceso (`set_tiingo_budget`): al agotarlo se lanza
+# `TiingoBudgetExhaustedError` ANTES de hacer la petición. Lo usa el
+# descargador reanudable `backtest/download_data.py`.
+
+
+class TiingoRateLimitError(RuntimeError):
+    """
+    Tiingo no ha servido el ticker por límite de peticiones (no por falta de
+    datos). ``motivo`` es "hora", "dia", "mes" o "presupuesto";
+    ``bloqueado_hasta`` es el epoch (``time.time()``) a partir del cual tiene
+    sentido volver a intentarlo (``float("inf")`` si no se sabe, p.ej. el
+    límite mensual).
+    """
+
+    def __init__(self, mensaje: str, motivo: str = "hora", bloqueado_hasta: float | None = None):
+        super().__init__(mensaje)
+        self.motivo = motivo
+        self.bloqueado_hasta = bloqueado_hasta
+
+
+class TiingoBudgetExhaustedError(TiingoRateLimitError):
+    """Se agotó el presupuesto de peticiones fijado con `set_tiingo_budget` (no se llegó a llamar a la API)."""
+
+
+_tiingo_lock = threading.Lock()
+_tiingo_requests = 0
+_tiingo_budget: int | None = None
+_tiingo_block: TiingoRateLimitError | None = None
+
+# Margen tras el inicio de la siguiente ventana antes de reintentar.
+_TIINGO_WINDOW_MARGIN_S = 60
+
+
+def next_hour_window(now: float | None = None) -> float:
+    """Epoch del inicio de la siguiente hora de reloj (más un margen)."""
+    now = time.time() if now is None else now
+    return (int(now // 3600) + 1) * 3600 + _TIINGO_WINDOW_MARGIN_S
+
+
+def next_day_window(now: float | None = None) -> float:
+    """Epoch de la siguiente medianoche UTC (más un margen)."""
+    now = time.time() if now is None else now
+    return (int(now // 86400) + 1) * 86400 + _TIINGO_WINDOW_MARGIN_S
+
+
+def tiingo_requests_made() -> int:
+    """Nº de peticiones HTTP a Tiingo hechas por este proceso desde el último reset."""
+    return _tiingo_requests
+
+
+def set_tiingo_budget(budget: int | None) -> None:
+    """Fija el máximo de peticiones a Tiingo permitidas (``None`` = sin límite propio)."""
+    global _tiingo_budget
+    with _tiingo_lock:
+        _tiingo_budget = budget
+
+
+def reset_tiingo_state() -> None:
+    """Pone a cero el contador, quita el presupuesto y el bloqueo (inicio de ventana nueva / tests)."""
+    global _tiingo_requests, _tiingo_budget, _tiingo_block
+    with _tiingo_lock:
+        _tiingo_requests = 0
+        _tiingo_budget = None
+        _tiingo_block = None
+
+
+def tiingo_block() -> TiingoRateLimitError | None:
+    """Bloqueo activo por límite de Tiingo en este proceso (o ``None``)."""
+    blk = _tiingo_block
+    if blk is not None and blk.bloqueado_hasta is not None and time.time() >= blk.bloqueado_hasta:
+        return None
+    return blk
+
+
+def _reserve_tiingo_request(ticker: str) -> None:
+    """
+    Comprueba bloqueo y presupuesto y, si se puede, cuenta la petición
+    (atómico entre hilos). Lanza `TiingoRateLimitError` si no se puede.
+    """
+    global _tiingo_requests, _tiingo_block
+    with _tiingo_lock:
+        blk = _tiingo_block
+        if blk is not None:
+            if blk.bloqueado_hasta is not None and time.time() >= blk.bloqueado_hasta:
+                _tiingo_block = None
+            else:
+                raise TiingoRateLimitError(
+                    f"[{ticker}] Tiingo bloqueado por límite previo ({blk.motivo})",
+                    motivo=blk.motivo, bloqueado_hasta=blk.bloqueado_hasta,
+                )
+        if _tiingo_budget is not None and _tiingo_requests >= _tiingo_budget:
+            raise TiingoBudgetExhaustedError(
+                f"[{ticker}] presupuesto de peticiones a Tiingo agotado "
+                f"({_tiingo_requests}/{_tiingo_budget})",
+                motivo="presupuesto", bloqueado_hasta=next_hour_window(),
+            )
+        _tiingo_requests += 1
+
+
+def _tiingo_limit_reason(texto: str) -> str | None:
+    """
+    Si ``texto`` (campo "detail" de Tiingo) describe un límite de peticiones,
+    devuelve su ventana ("hora", "dia", "mes"); si no, ``None``.
+    """
+    low = texto.lower()
+    if not any(k in low for k in ("allocation", "run over", "rate limit", "limit", "upgrade")):
+        return None
+    if "month" in low:
+        return "mes"
+    if "daily" in low or "day" in low:
+        return "dia"
+    return "hora"
+
+
+def _raise_tiingo_limit(ticker: str, motivo: str, detalle: str) -> None:
+    """Registra el bloqueo del proceso y lanza `TiingoRateLimitError`."""
+    global _tiingo_block
+    if motivo == "mes":
+        hasta = float("inf")
+    elif motivo == "dia":
+        hasta = next_day_window()
+    else:
+        hasta = next_hour_window()
+    exc = TiingoRateLimitError(
+        f"[{ticker}] Tiingo: límite de peticiones alcanzado ({motivo}): {detalle}",
+        motivo=motivo, bloqueado_hasta=hasta,
+    )
+    with _tiingo_lock:
+        _tiingo_block = exc
+    print(f"  ⚠ {exc}", file=sys.stderr)
+    raise exc
+
+
 def download_weekly_tiingo(
     ticker: str,
     period_years: int = 15,
@@ -183,6 +334,11 @@ def download_weekly_tiingo(
     adjClose/adjVolume --, coherente con ``auto_adjust=True`` en la
     descarga primaria de yfinance) o ``None`` si no hay datos
     suficientes o falta la API key.
+
+    Lanza ``TiingoRateLimitError`` (nunca devuelve ``None``) si Tiingo
+    responde con límite de peticiones, si el proceso ya estaba bloqueado por
+    un límite previo o si se agotó el presupuesto de `set_tiingo_budget`:
+    "limitado" no es "sin datos" (ver sección "Límite de peticiones").
     """
     global _tiingo_missing_key_warned
 
@@ -209,11 +365,23 @@ def download_weekly_tiingo(
         "token": api_key,
     }
 
+    _reserve_tiingo_request(ticker)  # puede lanzar TiingoRateLimitError
     try:
         response = requests.get(url, params=params, timeout=20)
     except Exception as exc:
         print(f"  ⚠ [{ticker}] Tiingo: error de red: {exc}", file=sys.stderr)
         return None
+
+    if response.status_code == 429:
+        detalle = ""
+        try:
+            body = response.json()
+            if isinstance(body, dict):
+                detalle = str(body.get("detail", ""))
+        except Exception:
+            pass
+        motivo = _tiingo_limit_reason(detalle) or "hora"
+        _raise_tiingo_limit(ticker, motivo, detalle or "HTTP 429")
 
     if response.status_code == 404:
         # Ticker no reconocido por Tiingo -- puede ser un cambio de
@@ -231,12 +399,17 @@ def download_weekly_tiingo(
             file=sys.stderr,
         )
         return None
-    if response.status_code == 429:
-        print(f"  ⚠ [{ticker}] Tiingo: límite de peticiones alcanzado (HTTP 429).", file=sys.stderr)
-        return None
     try:
         response.raise_for_status()
     except Exception as exc:
+        try:
+            body = response.json()
+            detalle = str(body.get("detail", "")) if isinstance(body, dict) else ""
+        except Exception:
+            detalle = ""
+        motivo = _tiingo_limit_reason(detalle) if detalle else None
+        if motivo:
+            _raise_tiingo_limit(ticker, motivo, detalle)
         print(f"  ⚠ [{ticker}] Tiingo: HTTP {response.status_code}: {exc}", file=sys.stderr)
         return None
 
@@ -245,6 +418,17 @@ def download_weekly_tiingo(
     except Exception as exc:
         print(f"  ⚠ [{ticker}] Tiingo: respuesta no es JSON válido: {exc}", file=sys.stderr)
         return None
+
+    if isinstance(payload, dict):
+        # Tiingo responde a veces HTTP 200 con {"detail": "..."} en vez de la
+        # lista de velas: puede ser un límite de peticiones (no es "sin
+        # datos") o un error del ticker.
+        detalle = str(payload.get("detail", payload))
+        motivo = _tiingo_limit_reason(detalle)
+        if motivo:
+            _raise_tiingo_limit(ticker, motivo, detalle)
+        print(f"  ⚠ [{ticker}] Tiingo: respuesta inesperada: {detalle[:200]}", file=sys.stderr)
+        payload = []
 
     if not payload:
         alias = _KNOWN_TICKER_RENAMES.get(ticker.strip().upper())
@@ -317,6 +501,8 @@ def download_weekly(
     ticker: str,
     period: str = DOWNLOAD_PERIOD_ENTRY,
     max_retries: int = DOWNLOAD_MAX_RETRIES,
+    use_tiingo: bool = True,
+    raise_on_rate_limit: bool = False,
 ) -> pd.DataFrame | None:
     """
     Descarga datos OHLCV semanales de un ticker con yfinance.
@@ -338,7 +524,24 @@ def download_weekly(
     Retorna un DataFrame con columnas [Open, High, Low, Close, Volume]
     o ``None`` si la descarga falla en ambas fuentes o el histórico es
     insuficiente en ambas.
+
+    ``use_tiingo=False`` desactiva el fallback (fase yfinance del
+    descargador `backtest/download_data.py`). Si Tiingo está limitado
+    (`TiingoRateLimitError`), por defecto se devuelve ``None`` (los
+    escáneres no distinguen); con ``raise_on_rate_limit=True`` se propaga la
+    excepción para que el llamador NO lo confunda con "sin datos" (lo usa
+    `backtest/data_cache.py` para no escribir un `.nodata` permanente).
     """
+    def fallback() -> pd.DataFrame | None:
+        if not use_tiingo:
+            return None
+        try:
+            return _try_tiingo_fallback(ticker)
+        except TiingoRateLimitError:
+            if raise_on_rate_limit:
+                raise
+            return None
+
     last_exc: Exception | None = None
 
     for intento in range(1, max_retries + 1):
@@ -360,7 +563,7 @@ def download_weekly(
                 f"  ✗ [{ticker}] descarga falló tras {max_retries} intentos: {exc}",
                 file=sys.stderr,
             )
-            return _try_tiingo_fallback(ticker)
+            return fallback()
 
         if raw is None or raw.empty:
             # No es necesariamente un error de red: puede ser un ticker
@@ -370,7 +573,7 @@ def download_weekly(
                 time.sleep(DOWNLOAD_RETRY_BACKOFF_S * intento)
                 continue
             print(f"  ⚠ [{ticker}] sin datos devueltos por yfinance", file=sys.stderr)
-            return _try_tiingo_fallback(ticker)
+            return fallback()
 
         # Normalizar MultiIndex que yfinance introduce en algunas versiones.
         if isinstance(raw.columns, pd.MultiIndex):
@@ -386,13 +589,13 @@ def download_weekly(
                 f"  ⚠ [{ticker}] histórico insuficiente ({len(raw)} < {MIN_BARS} velas)",
                 file=sys.stderr,
             )
-            return _try_tiingo_fallback(ticker)
+            return fallback()
 
         return raw
 
     if last_exc is not None:
         print(f"  ✗ [{ticker}] error de descarga: {last_exc}", file=sys.stderr)
-    return _try_tiingo_fallback(ticker)
+    return fallback()
 
 
 # ── Constituyentes del S&P 500 ────────────────────────────────────────

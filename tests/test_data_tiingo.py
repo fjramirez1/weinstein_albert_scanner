@@ -12,11 +12,26 @@ from unittest.mock import Mock, patch
 import pandas as pd
 import pytest
 
+import weinstein.data as data_mod
 from weinstein.data import (
+    TiingoBudgetExhaustedError,
+    TiingoRateLimitError,
     _try_tiingo_fallback,
     download_weekly,
     download_weekly_tiingo,
+    reset_tiingo_state,
+    set_tiingo_budget,
+    tiingo_block,
+    tiingo_requests_made,
 )
+
+
+@pytest.fixture(autouse=True)
+def _estado_tiingo_limpio():
+    """El contador/bloqueo de Tiingo es global del módulo: se resetea por test."""
+    reset_tiingo_state()
+    yield
+    reset_tiingo_state()
 
 
 def _tiingo_payload_ok(n_weeks: int = 100) -> list[dict]:
@@ -89,12 +104,16 @@ class TestDownloadWeeklyTiingo:
         assert resultado is None
         assert "401" in capsys.readouterr().err
 
-    def test_rate_limit_429_devuelve_none(self, monkeypatch):
+    def test_rate_limit_429_lanza_excepcion_no_none(self, monkeypatch):
+        # "Limitado" no es "sin datos": devolver None haría que data_cache
+        # escribiera un .nodata permanente para un delistado.
         monkeypatch.setenv("TIINGO_API_KEY", "fake-token")
         mock_resp = Mock(status_code=429)
+        mock_resp.json = Mock(side_effect=ValueError("sin cuerpo"))
         with patch("weinstein.data.requests.get", return_value=mock_resp):
-            resultado = download_weekly_tiingo("TST", min_bars=10)
-        assert resultado is None
+            with pytest.raises(TiingoRateLimitError) as info:
+                download_weekly_tiingo("TST", min_bars=10)
+        assert info.value.motivo == "hora"
 
     def test_historico_insuficiente_devuelve_none(self, monkeypatch):
         monkeypatch.setenv("TIINGO_API_KEY", "fake-token")
@@ -176,3 +195,145 @@ class TestDownloadWeeklyConFallback:
         mock_tiingo.assert_not_called()
         assert resultado is not None
         assert len(resultado) == 100
+
+
+class TestLimiteDePeticiones:
+    """Límite del plan gratuito de Tiingo (HTTP 429 o HTTP 200 con {"detail": ...})."""
+
+    def test_http_200_con_detail_de_limite_horario_lanza_excepcion(self, monkeypatch):
+        monkeypatch.setenv("TIINGO_API_KEY", "fake-token")
+        mock_resp = Mock(status_code=200)
+        mock_resp.raise_for_status = Mock()
+        mock_resp.json = Mock(return_value={
+            "detail": "Error: You have run over your hourly request allocation. "
+                      "Please upgrade at https://api.tiingo.com/pricing to have your limits increased."
+        })
+        with patch("weinstein.data.requests.get", return_value=mock_resp):
+            with pytest.raises(TiingoRateLimitError) as info:
+                download_weekly_tiingo("TST", min_bars=10)
+        assert info.value.motivo == "hora"
+        assert info.value.bloqueado_hasta is not None
+
+    def test_detail_de_limite_mensual_de_simbolos(self, monkeypatch):
+        monkeypatch.setenv("TIINGO_API_KEY", "fake-token")
+        mock_resp = Mock(status_code=200)
+        mock_resp.raise_for_status = Mock()
+        mock_resp.json = Mock(return_value={
+            "detail": "Error: You have run over your monthly unique symbol request allocation."
+        })
+        with patch("weinstein.data.requests.get", return_value=mock_resp):
+            with pytest.raises(TiingoRateLimitError) as info:
+                download_weekly_tiingo("TST", min_bars=10)
+        assert info.value.motivo == "mes"
+        assert info.value.bloqueado_hasta == float("inf")
+
+    def test_429_con_detail_diario(self, monkeypatch):
+        monkeypatch.setenv("TIINGO_API_KEY", "fake-token")
+        mock_resp = Mock(status_code=429)
+        mock_resp.json = Mock(return_value={"detail": "Error: You have run over your daily request allocation."})
+        with patch("weinstein.data.requests.get", return_value=mock_resp):
+            with pytest.raises(TiingoRateLimitError) as info:
+                download_weekly_tiingo("TST", min_bars=10)
+        assert info.value.motivo == "dia"
+
+    def test_dict_sin_mensaje_de_limite_es_sin_datos(self, monkeypatch):
+        # Un dict que no habla de límites (p.ej. ticker no encontrado) es
+        # "sin datos"; antes rompía en pd.DataFrame(dict de escalares).
+        monkeypatch.setenv("TIINGO_API_KEY", "fake-token")
+        mock_resp = Mock(status_code=200)
+        mock_resp.raise_for_status = Mock()
+        mock_resp.json = Mock(return_value={"detail": "Error: Ticker 'GHOST' not found"})
+        with patch("weinstein.data.requests.get", return_value=mock_resp):
+            assert download_weekly_tiingo("GHOST", min_bars=10) is None
+        assert tiingo_block() is None
+
+    def test_tras_el_limite_no_se_vuelve_a_llamar_a_la_api(self, monkeypatch):
+        monkeypatch.setenv("TIINGO_API_KEY", "fake-token")
+        mock_resp = Mock(status_code=429)
+        mock_resp.json = Mock(return_value={})
+        with patch("weinstein.data.requests.get", return_value=mock_resp) as mock_get:
+            with pytest.raises(TiingoRateLimitError):
+                download_weekly_tiingo("AAA", min_bars=10)
+            for t in ("BBB", "CCC", "DDD"):
+                with pytest.raises(TiingoRateLimitError):
+                    download_weekly_tiingo(t, min_bars=10)
+        assert mock_get.call_count == 1
+        assert tiingo_requests_made() == 1
+        assert tiingo_block() is not None
+
+    def test_el_bloqueo_caduca_al_abrir_la_siguiente_ventana(self, monkeypatch):
+        monkeypatch.setenv("TIINGO_API_KEY", "fake-token")
+        limitado = Mock(status_code=429)
+        limitado.json = Mock(return_value={})
+        ok = Mock(status_code=200)
+        ok.raise_for_status = Mock()
+        ok.json = Mock(return_value=_tiingo_payload_ok(20))
+        reloj = [1_000_000.0]
+        monkeypatch.setattr(data_mod.time, "time", lambda: reloj[0])
+        with patch("weinstein.data.requests.get", side_effect=[limitado, ok]):
+            with pytest.raises(TiingoRateLimitError) as info:
+                download_weekly_tiingo("AAA", min_bars=10)
+            reloj[0] = info.value.bloqueado_hasta + 1
+            assert download_weekly_tiingo("AAA", min_bars=10) is not None
+
+    def test_cuenta_peticiones_incluidos_alias(self, monkeypatch):
+        monkeypatch.setenv("TIINGO_API_KEY", "fake-token")
+        no_encontrado = Mock(status_code=404)
+        ok = Mock(status_code=200)
+        ok.raise_for_status = Mock()
+        ok.json = Mock(return_value=_tiingo_payload_ok(20))
+        # WLTW -> WTW (alias conocido): 404 + reintento con alias = 2 peticiones.
+        with patch("weinstein.data.requests.get", side_effect=[no_encontrado, ok]) as mock_get:
+            resultado = download_weekly_tiingo("WLTW", min_bars=10)
+        assert resultado is not None
+        assert mock_get.call_count == 2
+        assert tiingo_requests_made() == 2
+
+    def test_presupuesto_agotado_lanza_sin_hacer_la_peticion(self, monkeypatch):
+        monkeypatch.setenv("TIINGO_API_KEY", "fake-token")
+        ok = Mock(status_code=200)
+        ok.raise_for_status = Mock()
+        ok.json = Mock(return_value=_tiingo_payload_ok(20))
+        set_tiingo_budget(2)
+        with patch("weinstein.data.requests.get", return_value=ok) as mock_get:
+            download_weekly_tiingo("AAA", min_bars=10)
+            download_weekly_tiingo("BBB", min_bars=10)
+            with pytest.raises(TiingoBudgetExhaustedError) as info:
+                download_weekly_tiingo("CCC", min_bars=10)
+        assert mock_get.call_count == 2
+        assert info.value.motivo == "presupuesto"
+        assert isinstance(info.value, TiingoRateLimitError)
+
+    def test_presupuesto_cortado_a_mitad_de_alias(self, monkeypatch):
+        monkeypatch.setenv("TIINGO_API_KEY", "fake-token")
+        set_tiingo_budget(1)
+        with patch("weinstein.data.requests.get", return_value=Mock(status_code=404)) as mock_get:
+            with pytest.raises(TiingoBudgetExhaustedError):
+                download_weekly_tiingo("WLTW", min_bars=10)
+        assert mock_get.call_count == 1
+
+
+class TestDownloadWeeklyConLimite:
+
+    def test_por_defecto_el_limite_devuelve_none(self):
+        # Escáneres: comportamiento de siempre (None), sin excepción.
+        with patch("weinstein.data.yf.download", return_value=pd.DataFrame()):
+            with patch("weinstein.data.time.sleep"):
+                with patch("weinstein.data.download_weekly_tiingo",
+                           side_effect=TiingoRateLimitError("limitado")):
+                    assert download_weekly("DELISTED", max_retries=1) is None
+
+    def test_raise_on_rate_limit_propaga(self):
+        with patch("weinstein.data.yf.download", return_value=pd.DataFrame()):
+            with patch("weinstein.data.time.sleep"):
+                with patch("weinstein.data.download_weekly_tiingo",
+                           side_effect=TiingoRateLimitError("limitado")):
+                    with pytest.raises(TiingoRateLimitError):
+                        download_weekly("DELISTED", max_retries=1, raise_on_rate_limit=True)
+
+    def test_use_tiingo_false_no_llama_a_tiingo(self):
+        with patch("weinstein.data.yf.download", return_value=pd.DataFrame()):
+            with patch("weinstein.data.time.sleep"):
+                with patch("weinstein.data.download_weekly_tiingo") as mock_tiingo:
+                    assert download_weekly("DELISTED", max_retries=1, use_tiingo=False) is None
+        mock_tiingo.assert_not_called()
