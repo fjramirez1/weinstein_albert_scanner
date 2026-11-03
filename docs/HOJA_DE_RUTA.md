@@ -156,8 +156,7 @@ ampliar el catálogo y hacerlo cómodo de usar.
 - **Fase 1:** ✅ código corregido y con tests (229 passed). Sin verificar
   todavía con datos reales: se verá en D1/D2.
 - **D1:** ✅ caché completa (10y, universo histórico, 97,6 % con datos).
-- **Siguiente paso:** cuando termine D1, D2 (cobertura del universo) y O1
-  (baseline con el motor corregido). V1 sigue pendiente del vídeo.
-- **Pendiente del usuario:** contenido del vídeo (V1); permiso para la
-  descarga masiva de datos (D1).
+- **Siguiente paso:** D2 (revisar los 17 sin datos y los sectores "Unknown")
+  y O1 (baseline con el motor corregido sobre la caché de 10 años).
+- **Pendiente del usuario:** contenido del vídeo (V1).
 - **Caché:** repoblada el 2026-11-03 (`backtest/.cache/`, periodo `10y`).
