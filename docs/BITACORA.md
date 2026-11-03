@@ -71,3 +71,56 @@ commitear (un test) quedó superado por `_first_true_idx` en `main` (PR #1).
 Se pueden borrar → tarea R4, pendiente de OK del usuario.
 
 **Siguiente paso.** Fase 1, B1.
+
+---
+
+## 2026-11-03 (2) — Fase 1: corrección del backtest
+
+**Organización.** Petición del usuario: commits solo con su autoría (sin
+`Co-Authored-By`), y nada de carpetas extra. Eliminados los dos worktrees de
+`../weinstein_albert_scanner.worktrees/`, la carpeta vacía y las tres ramas
+locales `agents/*` (todas fusionadas en `main`). Regla añadida a `CLAUDE.md`.
+Los commits `d2a3e89`, `7b21c4f` y `0d2ea9c` (ya subidos) aún llevan la
+línea de coautoría; reescribirlos requiere `push --force` → pendiente de
+decisión del usuario.
+
+**Commits de la fase** (`python -m pytest`: 202 → 229 passed):
+
+| Commit | Tareas | Qué cambia |
+|---|---|---|
+| `4b77170` | B5 | `backtest/conditions.py` lee umbrales/periodos de `weinstein/config.py` |
+| `435a25c` | B1, B3 | `normalize_weekly_bars()`: velas en viernes para yfinance y Tiingo, sin la semana en curso (cierre: viernes 16:30 Nueva York). En descarga y en caché |
+| `c04ef2c` | B2, B4, B6, B7, B8 | Motor: ejecución `next_open` por defecto, cierre `SIN_DATOS` al acabar los datos, costes por lado (0,10 %), profit factor en $, CAGR por fechas, % P&L top-5, benchmark SPY, `--start/--end`. CLI de `portfolio-backtest` definido una sola vez |
+| `0b54a03` | B10 | Caché de tickers vigentes se refresca al cerrar una semana nueva |
+| `9e3f45d` | B9 | Sectores GICS corregidos (BWA, NWL, MTCH, WU, DXC, VNT, HRB, INFO, FLT; fuera KEYS) |
+
+**Decisiones de diseño.**
+- Convención de fecha: viernes de la semana de negociación. Se eligió el
+  viernes (y no el lunes) porque es el día en que la vela está completa.
+- Ejecución por defecto `next_open`: el escáner corre en fin de semana y la
+  orden entra el lunes. `close` se conserva solo para medir cuánto inflaba
+  el modelo antiguo.
+- Coste por defecto 0,10 % por lado (broker barato + deslizamiento en
+  acciones líquidas del S&P 500). Configurable con `--coste`.
+- Benchmark SPY y no ^GSPC: ^GSPC no incluye dividendos (~1,5 %/año) y las
+  acciones sí (precios ajustados), así que comparar contra ^GSPC
+  favorecía a la estrategia.
+- Arranque por defecto de la simulación en la semana 57 (cuando existe VPM5,
+  el indicador con la ventana más larga) para que el CAGR no incluya un año
+  forzosamente en efectivo.
+- `Retorno %` de cada operación pasa a ser neto de costes.
+
+**Verificación.** Tests nuevos: `tests/test_weekly_bars.py` (convención,
+semana en curso, zonas horarias, regresión RSC con fuentes mezcladas),
+`tests/test_portfolio_execution.py` (apertura vs cierre, costes exactos,
+delisting, reutilización del hueco, ventana, benchmark, PF en $, top-5) y
+caducidad en `tests/test_data_cache.py`. Prueba de humo del CLI completo con
+datos sintéticos y descargas sustituidas: informe con benchmark y CSV
+exportado correctos. **No se ha ejecutado con datos reales** (la caché está
+vacía y requiere permiso de red, D1).
+
+**Limitación aceptada.** XLC empieza en jun-2018: con la SMA de 52 semanas,
+Communication Services no puede pasar F1 hasta ~jun-2019.
+
+**Siguiente paso.** V1 (contenido del vídeo) cuando el usuario lo facilite;
+mientras, R1 sin red.

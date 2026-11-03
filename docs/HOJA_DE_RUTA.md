@@ -24,11 +24,11 @@ de optimización es fiable (incluidas las de `OPTIMIZACION_BACKTEST.md`).
 - [x] Arreglar test que borraba la caché real (`tests/test_data_cache.py`,
       `tests/test_sp500_historical.py`).
 
-## Fase 1 — Corregir el backtest (bloqueante)
+## Fase 1 — Corregir el backtest ✅ (código; falta verificar con datos reales en D1)
 
 Bugs encontrados en la revisión del 2026-11-03, ordenados por impacto:
 
-- [ ] **B1. Fechas Tiingo desalineadas.** yfinance etiqueta la vela semanal
+- [x] **B1** `435a25c` — **Fechas Tiingo desalineadas.** yfinance etiqueta la vela semanal
       en **lunes**, Tiingo en **viernes**. El motor exige coincidencia exacta
       de fecha (`fecha in ctx.close.index`) y el RSC hace *inner join* con el
       S&P 500 → los tickers recuperados vía Tiingo (precisamente los
@@ -37,35 +37,39 @@ Bugs encontrados en la revisión del 2026-11-03, ordenados por impacto:
       de supervivencia que el modo `historical` debía mitigar sigue intacto.
       Arreglo: normalizar el índice semanal de ambas fuentes a una misma
       convención (p. ej. viernes de cierre de semana) en `weinstein/data.py`.
-- [ ] **B2. Posiciones "zombi" en tickers que dejan de cotizar.** Si un
+- [x] **B2** `c04ef2c` — **Posiciones "zombi" en tickers que dejan de cotizar.** Si un
       ticker deja de tener datos estando en cartera, la salida no se evalúa
       nunca y la equity lo valora a **coste** para siempre (ni pérdida ni
       ganancia) y ocupa un hueco. Arreglo: cerrar al último precio conocido
-      (motivo `DELISTED`) y valorar huecos con el último precio (ffill).
-- [ ] **B3. Vela de la semana en curso.** Si se descarga a mitad de semana,
+      (motivo `SIN_DATOS`) y valorar huecos con el último precio (ffill).
+- [x] **B3** `435a25c` — **Vela de la semana en curso.** Si se descarga a mitad de semana,
       la última vela es parcial (la caché de julio terminaba en una semana
       incompleta). Afecta a producción y backtest. Arreglo: descartar la vela
       de la semana no cerrada.
-- [ ] **B4. Ejecución en el mismo cierre que genera la señal.** Optimista:
+- [x] **B4** `c04ef2c` — **Ejecución en el mismo cierre que genera la señal.** Optimista:
       el escáner se ejecuta en fin de semana y la orden real entra el lunes.
       Arreglo: ejecutar en la apertura de la semana siguiente (configurable).
-- [ ] **B5. Umbrales duplicados.** `backtest/conditions.py` tiene
+- [x] **B5** `4b77170` — **Umbrales duplicados** `backtest/conditions.py` tiene
       `0.10 / 8.0 / -0.5 / lookback 4` escritos a mano en vez de leerlos de
       `weinstein/config.py`. Arreglo: una única fuente de verdad.
-- [ ] **B6. Sin costes.** Añadir comisión + slippage configurables
+- [x] **B6** `c04ef2c` — **Sin costes.** Añadir comisión + slippage configurables
       (p. ej. 0,1 % por lado por defecto).
-- [ ] **B7. Métricas.** Profit factor sobre % en vez de $; CAGR incluye el
+- [x] **B7** `c04ef2c` — **Métricas.** Profit factor sobre % en vez de $; CAGR incluye el
       periodo de calentamiento (~1 año sin poder operar); no hay benchmark.
       Arreglo: corregir y añadir *buy & hold* del S&P 500 en el mismo periodo.
-- [ ] **B8. Validación fuera de muestra falsa.** `--period 6y` vs `8y`: el
+- [x] **B8** `c04ef2c` — **Validación fuera de muestra falsa** `--period 6y` vs `8y`: el
       de 8y *contiene* al de 6y y los 2 años extra son los **más antiguos**,
       no los más recientes como dice el estudio anterior. Arreglo: `--start`
-      / `--end` explícitos y esquema walk-forward (calibrar en un tramo,
-      validar en otro disjunto).
-- [ ] **B9. Sectores dudosos** en `HISTORICAL_DELISTED_SECTORS` (BWA, NWL,
+      / `--end` explícitos (hecho). El esquema walk-forward concreto se
+      define en O1.
+- [x] **B9** `9e3f45d` — **Sectores dudosos** en `HISTORICAL_DELISTED_SECTORS` (BWA, NWL,
       MTCH, WU, HRB, DXC, FLT, KEYS — este último sigue en el índice) y
       disponibilidad de ETFs (XLC existe desde jun-2018, XLRE desde oct-2015).
-- [ ] **B10. Caché sin caducidad.** Clave `(ticker, periodo)` sin fecha:
+      Sectores corregidos. **Limitación aceptada:** con XLC desde jun-2018 y
+      una SMA de 52 semanas, los valores de Communication Services no pueden
+      pasar F1 hasta ~jun-2019; los tramos de calibración deben empezar
+      después o asumirlo.
+- [x] **B10** `0b54a03` — **Caché sin caducidad.** Clave `(ticker, periodo)` sin fecha:
       `8y` descargado en julio no se refresca nunca. Arreglo: incluir fecha
       de fin / refrescar si la última vela es antigua.
 
@@ -94,8 +98,9 @@ Bugs encontrados en la revisión del 2026-11-03, ordenados por impacto:
 - [ ] **R3.** Sustituir `launcher.py` (bucle infinito cada hora para sortear
       el límite de Tiingo) por un comando de descarga reanudable que respete el
       límite y termine.
-- [ ] **R4.** Limpiar worktrees obsoletos en `../weinstein_albert_scanner.worktrees/`
-      (ramas ya fusionadas en `main`) — requiere OK del usuario.
+- [x] **R4.** Worktrees obsoletos y sus ramas locales eliminados (2026-11-03).
+      Queda la rama remota `origin/agents/fix-test-entry-exit-same-week`
+      (ya fusionada) en GitHub.
 
 ## Fase 4 — Datos y re-optimización
 
@@ -123,12 +128,12 @@ Bugs encontrados en la revisión del 2026-11-03, ordenados por impacto:
 
 ## Estado actual
 
-- **Fase en curso:** Fase 1.
-- **Siguiente paso:** B1 — normalizar el índice semanal en
-  `weinstein/data.py::download_weekly` / `download_weekly_tiingo` + test que
-  cubra una serie Tiingo (viernes) contra el S&P 500 (lunes).
-- **Pendiente del usuario:** acceso al contenido del vídeo (V1) y OK para
-  borrar los worktrees obsoletos (R4).
+- **Fase 1:** ✅ código corregido y con tests (229 passed). Sin verificar
+  todavía con datos reales: se verá en D1/D2.
+- **Siguiente paso:** V1, en cuanto el usuario facilite la transcripción
+  o sus notas del vídeo. Mientras tanto, sin red: R1 (módulo de señales
+  único para escáner y backtest).
+- **Pendiente del usuario:** contenido del vídeo (V1); permiso para la
+  descarga masiva de datos (D1).
 - **Caché:** `backtest/.cache/` está **vacía** (borrada por el test
-  defectuoso el 2026-11-03). Se regenera en D1; hasta entonces cualquier
-  backtest descargará de red.
+  defectuoso el 2026-11-03). Se regenera en D1.

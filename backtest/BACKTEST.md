@@ -55,11 +55,27 @@ Acordado explícitamente como especificación de negocio; implementado en
 - **Capital inicial**: configurable, por defecto $10.000 (`--capital`).
 - **Máximo de posiciones simultáneas**: configurable, por defecto 10
   (`--max-positions`).
+- **Velas semanales etiquetadas en viernes** sea cual sea la fuente
+  (yfinance las fecha en lunes, Tiingo en viernes) y sin la semana en curso
+  si aún no ha cerrado — `weinstein/data.py::normalize_weekly_bars`.
+- **Ejecución** (`--execution`): las señales se calculan con el cierre de
+  la semana t. Con `next_open` (por defecto) las órdenes se ejecutan a la
+  **apertura de la semana t+1**, que es cuando se puede operar de verdad
+  tras ejecutar el escáner en fin de semana. `close` ejecuta al cierre de
+  la propia semana t (modelo antiguo, optimista; solo para comparar).
+- **Tramo simulado** (`--start` / `--end`): por defecto arranca en cuanto
+  todos los indicadores existen (semana 57 del histórico descargado). Los
+  datos previos a `--start` se usan para calentar indicadores, así que se
+  puede calibrar en un tramo y validar en otro disjunto con la misma
+  descarga.
 - **Orden semanal** (por cada fecha de calendario del S&P 500):
+  0. **Cierres forzosos**: una posición cuyo ticker ya no tiene datos
+     (fusión, quiebra, exclusión de bolsa) se cierra al último precio
+     conocido con motivo `SIN_DATOS`.
   1. **Salidas primero**: se evalúan las condiciones de salida (S1-S2, OR)
-     de las posiciones abiertas esa semana. Las que cumplen cualquier
-     condición activa se cierran al precio de cierre, liberando efectivo y
-     un hueco.
+     de las posiciones abiertas. Las que cumplen cualquier condición activa
+     se cierran (apertura siguiente o cierre, según `--execution`),
+     liberando efectivo y un hueco.
   2. **Entradas después, con los huecos YA liberados**: se evalúan las
      condiciones de entrada (F1-F5, AND) sobre todo el universo. Los
      candidatos que las cumplen se ordenan por el criterio de ranking
@@ -80,7 +96,8 @@ Acordado explícitamente como especificación de negocio; implementado en
     una posición ganadora/perdedora "infle" o "desinfle" el tamaño de la
     siguiente entrada por simple movimiento de precio no realizado.
   - Nunca se invierte más que el efectivo disponible en ese instante.
-- **Sin fricción**: sin comisiones ni slippage; precio de cierre exacto.
+- **Costes** (`--coste`): % del importe en cada compra y cada venta
+  (comisión + deslizamiento), 0,10 % por lado por defecto.
 - **Sin apalancamiento ni posiciones cortas.**
 
 Implementación de referencia: `backtest/portfolio_engine.py` (estructuras
@@ -270,10 +287,10 @@ de ~500 tickers vía yfinance. `launcher.py` está pensado para ejecutarse en
 bucle cada hora, así que repetir esa descarga sería insostenible.
 
 - **Caché de datos** (`.parquet` por `ticker+periodo`, en `backtest/.cache/`):
-  se descarga una única vez; ejecuciones posteriores con la misma ventana
-  temporal reutilizan el fichero sin tocar la red. Sin invalidación
-  automática por fecha (los datos de una semana ya cerrada no cambian);
-  usa `--clear-cache` o borra la carpeta manualmente para refrescar.
+  ejecuciones posteriores reutilizan el fichero sin tocar la red. Un ticker
+  que sigue en el índice se vuelve a descargar cuando cierra una semana que
+  el fichero no contiene; uno delistado conserva su caché para siempre.
+  `--clear-cache` la vacía entera.
 - **Caché de FALLOS** (marcador `.nodata`): solo se cachea el fallo de
   tickers que **hoy ya no pertenecen** al S&P 500 actual (su histórico es
   finito y no puede "crecer" con el tiempo). Para un ticker que sí pertenece
@@ -326,10 +343,13 @@ python backtest/run_portfolio_backtest.py --clear-cache
 python -m weinstein portfolio-backtest --period 8y --max-positions 10
 python -m weinstein portfolio-backtest --universe historical
 python -m weinstein portfolio-backtest --sweep-demo
+python -m weinstein portfolio-backtest --period 10y --start 2017-01-01 --end 2021-12-31
+python -m weinstein portfolio-backtest --execution close --coste 0   # modelo antiguo
 ```
 
-Todos los flags de `run_portfolio_backtest.py` están disponibles también
-como flags de `portfolio-backtest` (ver `weinstein/__main__.py`).
+Las opciones se definen una sola vez en
+`backtest/run_portfolio_backtest.py::add_portfolio_arguments` y las
+comparten el script y el subcomando.
 
 ### Uso programático (Python)
 
@@ -410,16 +430,26 @@ columnas de `PortfolioBacktestResult.to_trades_dataframe()`: `Ticker`,
 sobre las operaciones **cerradas**:
 
 - `capital_inicial`, `capital_final`, `rentabilidad_total_pct`
-- `cagr_pct` (anualizado, `None` si el periodo simulado es 0 semanas)
+- `cagr_pct` (anualizado sobre las fechas reales del tramo simulado)
 - `max_drawdown_pct` (sobre la curva de equity semanal, no solo trades)
 - `n_operaciones_cerradas`, `n_operaciones_abiertas_al_final`
 - `win_rate_pct`, `retorno_medio_pct`, `retorno_mediana_pct`
-- `profit_factor` (`None` si no hay pérdidas, para no dividir por cero)
+- `profit_factor` en **dólares** (ganancias / pérdidas en USD; `None` si no
+  hay pérdidas)
+- `pct_pnl_top5`: % del P&L total que aportan las 5 mejores operaciones
+  (>100 % ⇒ el resto pierde en conjunto; mide dependencia de outliers)
+- `costes_totales_usd`
 - `mejor_operacion_pct`, `peor_operacion_pct`, `semanas_medias_en_pos`
 - `sharpe_aprox` (sobre retornos semanales de la equity curve, anualizado
   con √52 — referencia orientativa para comparar configuraciones entre sí,
   no una cifra de nivel institucional)
 - `pct_semanas_invertido` (% de semanas con al menos una posición abierta)
+- Benchmark buy & hold de **SPY** (con dividendos, comparable con los precios
+  ajustados de las acciones) en las mismas fechas:
+  `benchmark_rentabilidad_pct`, `benchmark_cagr_pct`,
+  `benchmark_max_drawdown_pct`, `benchmark_sharpe_aprox` y `exceso_cagr_pct`
+
+`Retorno %` y `P&L USD` de cada operación son netos de costes.
 
 Ver `tests/test_portfolio_metrics.py` para las fórmulas verificadas con
 valores exactos conocidos.
