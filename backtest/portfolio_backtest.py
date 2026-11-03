@@ -162,6 +162,7 @@ import pandas as pd
 
 from backtest.conditions import (
     RANKING_CRITERIA,
+    market_state_series,
     TickerContext,
     build_ticker_context,
     precompute_market_series,
@@ -587,6 +588,13 @@ def run_portfolio_backtest(
     gestiona con normalidad aunque el ticker salga del índice.
     """
     t0 = time.time()
+    if not config.coppock_es_por_defecto():
+        # Otros parámetros del Coppock: F5/S2 se recalculan sobre el S&P 500
+        # (las series recibidas usan los de weinstein/config.py).
+        roc_l, roc_s, wma_p, lookback = config.coppock_params()
+        coppock_bullish, coppock_bearish = market_state_series(
+            sp500_close, recent_lookback=lookback, roc_long=roc_l, roc_short=roc_s, wma_period=wma_p,
+        )
     extra = {"coppock_bullish": coppock_bullish, "coppock_bearish": coppock_bearish}
     membership_calendar = universe_info.membership_calendar if universe_info else None
     benchmark_close = universe_info.benchmark_close if universe_info else None

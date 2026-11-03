@@ -163,8 +163,17 @@ ampliar el catálogo y hacerlo cómodo de usar.
 - **Hallazgo O1:** la estrategia de producción rinde ~12,6 pp/año menos que
   SPY con un riesgo similar. El objetivo de O2 es comprobar si alguna variante
   razonable lo corrige; si ninguna lo hace, documentarlo.
-- **Siguiente paso:** O2 en el tramo de calibración. Antes, F1 de la Fase 6
-  (Cierre > WMA30 y trailing stop como condiciones activables) y exponer
-  los parámetros del Coppock en `StrategyConfig`.
+- **Hecho para O2:** parámetros del Coppock en `StrategyConfig`
+  (`coppock_roc_long/short`, `coppock_wma`, `coppock_lookback`); si difieren
+  de `config.py` el motor recalcula F5/S2.
+- **Siguiente paso:** F1 de la Fase 6. Registrar en `backtest/conditions.py`,
+  desactivadas por defecto, la entrada `F6_cierre_sobre_wma30`
+  (dist_wma30_pct > 0) y la salida `S3_trailing_stop` (cierre < mínimo de los
+  15 cierres previos, solo con más de 15 semanas en posición: el motor debe
+  comprobar las semanas desde la entrada). Después, el estudio O2
+  (`backtest/estudios/o2_barrido.py`, ~20 configs SOLO en calibración
+  2017-12-01 → 2022-12-30).
+- **En paralelo:** un agente verifica los sectores GICS dudosos (CDAY, DAY,
+  TTD y otros) solo investigando, sin tocar código; aplicar lo que reporte.
 - **Pendiente del usuario:** contenido del vídeo (V1).
 - **Caché:** repoblada el 2026-11-03 (`backtest/.cache/`, periodo `10y`).

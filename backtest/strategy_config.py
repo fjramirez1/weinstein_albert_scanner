@@ -20,6 +20,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from backtest.conditions import ENTRY_CONDITIONS, EXIT_CONDITIONS, RANKING_CRITERIA
+from weinstein.config import (
+    COPPOCK_RECENT_LOOKBACK,
+    COPPOCK_ROC_LONG,
+    COPPOCK_ROC_SHORT,
+    COPPOCK_WMA_PERIOD,
+)
 
 EXECUTION_MODES = ("next_open", "close")
 
@@ -55,6 +61,9 @@ class StrategyConfig:
         (comportamiento antiguo, optimista; solo para comparar).
     cost_pct : coste por lado (comisión + deslizamiento) en % del importe
         operado. 0.10 = 0,10 % al comprar y otro 0,10 % al vender.
+    coppock_roc_long, coppock_roc_short, coppock_wma, coppock_lookback :
+        parámetros del Coppock del S&P 500 usado por F5 y S2. Por defecto los
+        de `weinstein/config.py`; si cambian, el motor recalcula F5/S2.
     """
     name: str = "default"
     entry_conditions: dict[str, ConditionToggle] = field(default_factory=dict)
@@ -64,6 +73,10 @@ class StrategyConfig:
     initial_capital: float = 10_000.0
     execution: str = "next_open"
     cost_pct: float = 0.10
+    coppock_roc_long: int = COPPOCK_ROC_LONG
+    coppock_roc_short: int = COPPOCK_ROC_SHORT
+    coppock_wma: int = COPPOCK_WMA_PERIOD
+    coppock_lookback: int = COPPOCK_RECENT_LOOKBACK
 
     def __post_init__(self):
         for cname in self.entry_conditions:
@@ -91,6 +104,16 @@ class StrategyConfig:
             raise ValueError(f"execution debe ser uno de {EXECUTION_MODES}, recibido: '{self.execution}'")
         if not 0 <= self.cost_pct < 100:
             raise ValueError("cost_pct debe estar en [0, 100)")
+        if min(self.coppock_roc_long, self.coppock_roc_short, self.coppock_wma, self.coppock_lookback) < 1:
+            raise ValueError("los parámetros del Coppock deben ser >= 1")
+
+    def coppock_params(self) -> tuple[int, int, int, int]:
+        """(roc_long, roc_short, wma, lookback) del Coppock de esta config."""
+        return (self.coppock_roc_long, self.coppock_roc_short, self.coppock_wma, self.coppock_lookback)
+
+    def coppock_es_por_defecto(self) -> bool:
+        return self.coppock_params() == (COPPOCK_ROC_LONG, COPPOCK_ROC_SHORT,
+                                         COPPOCK_WMA_PERIOD, COPPOCK_RECENT_LOOKBACK)
 
     def active_entry_conditions(self) -> dict[str, dict]:
         """Devuelve {nombre: params_efectivos} de las condiciones de entrada activas."""
@@ -120,7 +143,8 @@ class StrategyConfig:
             f"[{self.name}] max_pos={self.max_positions} "
             f"capital_inicial=${self.initial_capital:,.0f} "
             f"ranking={self.ranking_criterion} "
-            f"ejecucion={self.execution} coste={self.cost_pct}%/lado | "
+            f"ejecucion={self.execution} coste={self.cost_pct}%/lado "
+            f"coppock=ROC{self.coppock_roc_long}+{self.coppock_roc_short}/WMA{self.coppock_wma} | "
             f"Entrada: {entradas} | Salida: {salidas}"
         )
 

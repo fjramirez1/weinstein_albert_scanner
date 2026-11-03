@@ -28,6 +28,9 @@ import pandas as pd
 
 from weinstein.config import (
     COPPOCK_RECENT_LOOKBACK,
+    COPPOCK_ROC_LONG,
+    COPPOCK_ROC_SHORT,
+    COPPOCK_WMA_PERIOD,
     MAX_DISTANCIA_WMA30,
     RSC_EXIT_THRESHOLD,
     RSC_SMA_PERIOD,
@@ -187,13 +190,17 @@ def entry_conditions_at(ctx: TickerContext, i: int = -1) -> dict[str, bool]:
 def market_state_series(
     sp500_close: pd.Series,
     recent_lookback: int = COPPOCK_RECENT_LOOKBACK,
+    roc_long: int = COPPOCK_ROC_LONG,
+    roc_short: int = COPPOCK_ROC_SHORT,
+    wma_period: int = COPPOCK_WMA_PERIOD,
 ) -> tuple[pd.Series, pd.Series]:
     """
     F5 (`sp500_alcista`) y S2 (`sp500_bajista`) semana a semana, sin
     look-ahead: en la semana i solo se usa `coppock.iloc[:i+1]`. El valor
-    de la última semana es exactamente lo que ve el escáner hoy.
+    de la última semana es exactamente lo que ve el escáner hoy. Los
+    parámetros del Coppock son configurables para el backtest (O2).
     """
-    copk = coppock_curve(sp500_close)
+    copk = coppock_curve(sp500_close, roc_long=roc_long, roc_short=roc_short, wma_period=wma_period)
     n = len(copk)
     bullish = np.zeros(n, dtype=bool)
     bearish = np.zeros(n, dtype=bool)

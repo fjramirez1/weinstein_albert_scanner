@@ -67,3 +67,39 @@ class TestActiveConditions:
         cfg = StrategyConfig(name="mi_config")
         texto = cfg.describe()
         assert "mi_config" in texto
+
+
+class TestParametrosCoppock:
+
+    def test_por_defecto_son_los_de_config(self):
+        from weinstein.config import COPPOCK_ROC_LONG, COPPOCK_ROC_SHORT, COPPOCK_WMA_PERIOD
+        cfg = StrategyConfig()
+        assert cfg.coppock_es_por_defecto()
+        assert cfg.coppock_params()[:3] == (COPPOCK_ROC_LONG, COPPOCK_ROC_SHORT, COPPOCK_WMA_PERIOD)
+
+    def test_parametros_invalidos(self):
+        import pytest
+        with pytest.raises(ValueError):
+            StrategyConfig(coppock_roc_long=0)
+
+    def test_otros_parametros_recalculan_f5_s2(self, monkeypatch):
+        import numpy as np
+        import pandas as pd
+        from backtest import portfolio_backtest as pbt
+
+        idx = pd.date_range("2020-01-03", periods=80, freq="W-FRI")
+        sp500 = pd.Series(np.linspace(100, 150, 80), index=idx)
+        llamadas = []
+        original = pbt.market_state_series
+
+        def espia(close, **kw):
+            llamadas.append(kw)
+            return original(close, **kw)
+
+        monkeypatch.setattr(pbt, "market_state_series", espia)
+        vacio = pd.Series(False, index=idx)
+        pbt.run_portfolio_backtest(StrategyConfig(), sp500, vacio, vacio, {}, verbose=False)
+        assert llamadas == []  # por defecto se usan las series recibidas
+        pbt.run_portfolio_backtest(StrategyConfig(coppock_roc_long=14, coppock_roc_short=11),
+                                   sp500, vacio, vacio, {}, verbose=False)
+        assert llamadas and llamadas[0]["roc_long"] == 14 and llamadas[0]["roc_short"] == 11
