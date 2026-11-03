@@ -245,3 +245,28 @@ Tiingo devuelve su error de límite, que bloquea esa clave y pasa a la
 siguiente; con todas limitadas se reintenta a los 10 minutos
 (`TIINGO_LIMIT_RETRY_S`) en vez de esperar a la hora en punto.
 `--tiingo-budget` queda como tope opcional. 276 tests.
+
+## 2026-11-03 (7) — D1 completada: cobertura final del universo de 10 años
+
+`python -m backtest.download_data --period 10y --universe historical --wait`
+terminó a las 11:05 (salida 0). El límite real de Tiingo cortó la clave 1
+(en SIVB) y la clave 2 (en TSS); tras 10 minutos se reintentó y se completó.
+
+| | Tickers |
+|---|---|
+| Universo histórico 10 años (503 vigentes) | 699 |
+| Datos vía yfinance | 588 |
+| Datos vía Tiingo | 94 |
+| Sin datos en ninguna fuente | 17 |
+| Pendientes | 0 |
+| Series auxiliares (^GSPC, SPY, 11 ETFs) | 13/13 |
+
+Cobertura: 682/699 = 97,6 %. Tiingo: 120 peticiones hoy, 111/500 símbolos
+del mes.
+
+Sin datos (17): APC BBBY CDAY CSRA ENDP FDXF FRC FTR HAR HONA LLTC MNK NFX
+Q SOLS SPLS VYLR. Para D2: FDXF, HONA, Q, SOLS y VYLR parecen altas
+recientes con pocas velas (se reintentan solas cada semana); CDAY se
+renombró a DAY (posible alias que falta en `_KNOWN_TICKER_RENAMES`); el
+resto son delistados que ninguna fuente sirve (quiebras como FRC, BBBY,
+ENDP, MNK, o absorciones antiguas).

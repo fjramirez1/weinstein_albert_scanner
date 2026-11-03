@@ -109,7 +109,8 @@ Bugs encontrados en la revisión del 2026-11-03, ordenados por impacto:
 
 ## Fase 4 — Datos y re-optimización
 
-- [ ] **D1.** Re-descargar la caché (con permiso: red, Tiingo con límite).
+- [x] **D1.** Caché del universo histórico de 10 años: 682/699 tickers con datos
+      (588 yfinance, 94 Tiingo, 17 sin fuente). Ver bitácora 2026-11-03 (7).
 - [ ] **D2.** Diagnóstico de cobertura del universo histórico (cuántos
       tickers sin precio / sin sector) — antigua "Fase 8".
 - [ ] **O1.** Baseline fiel al vídeo + benchmark, en tramo de calibración.
@@ -154,13 +155,9 @@ ampliar el catálogo y hacerlo cómodo de usar.
 
 - **Fase 1:** ✅ código corregido y con tests (229 passed). Sin verificar
   todavía con datos reales: se verá en D1/D2.
-- **En curso:** D1, la descarga del universo histórico de 10 años, en marcha con
-  `python -m backtest.download_data --period 10y --universe historical
-  --wait` (dos claves de Tiingo; se para solo con el límite real de Tiingo).
-  R3 hecho.
+- **D1:** ✅ caché completa (10y, universo histórico, 97,6 % con datos).
 - **Siguiente paso:** cuando termine D1, D2 (cobertura del universo) y O1
   (baseline con el motor corregido). V1 sigue pendiente del vídeo.
 - **Pendiente del usuario:** contenido del vídeo (V1); permiso para la
   descarga masiva de datos (D1).
-- **Caché:** `backtest/.cache/` está **vacía** (borrada por el test
-  defectuoso el 2026-11-03). Se regenera en D1.
+- **Caché:** repoblada el 2026-11-03 (`backtest/.cache/`, periodo `10y`).
