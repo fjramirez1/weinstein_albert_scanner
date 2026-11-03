@@ -119,3 +119,54 @@ class TestDescargadorConVariasClaves:
                                            clock=reloj, sleep=reloj.sleep)
         assert len(fake.calls) == 4  # 2 por clave
         assert stats["parada"] == "presupuesto"
+
+
+class TestSinTopePropio:
+    """Por defecto manda la respuesta de límite de Tiingo, no nuestro contador."""
+
+    def _estado(self, tickers):
+        state = download_data.load_state()
+        download_data._period_state(state, "10y")["pendientes_tiingo"] = sorted(tickers)
+        return state
+
+    def test_sin_limite_de_tiingo_descarga_todo_aunque_pase_de_45(self, monkeypatch):
+        monkeypatch.setenv("TIINGO_API_KEY", "clave-a")
+        fake = FakeTiingo()
+        monkeypatch.setattr(wdata, "download_weekly_tiingo", fake)
+        reloj = Reloj()
+        tickers = [f"T{i:02d}" for i in range(60)]
+        stats = download_data.phase_tiingo(tickers, set(), "10y", self._estado(tickers),
+                                           clock=reloj, sleep=reloj.sleep)
+        assert len(fake.calls) == 60
+        assert stats["parada"] == "completado"
+
+    def test_para_solo_con_el_limite_real_y_reintenta_a_los_minutos(self, monkeypatch):
+        monkeypatch.setenv("TIINGO_API_KEY", "clave-a")
+        reloj = Reloj(t0=1_800_000_000.0 + 120)  # 2 min después de una hora en punto
+        llamadas = []
+
+        def fake(ticker, raise_on_error=False, **_kw):
+            llamadas.append((ticker, reloj()))
+            if len(llamadas) == 3:  # Tiingo limita la tercera petición
+                raise TiingoRateLimitError("límite", motivo="hora",
+                                           bloqueado_hasta=reloj() + wdata.TIINGO_LIMIT_RETRY_S)
+            from tests.test_download_data import _df, VIEJO
+            return _df(end=VIEJO)
+
+        monkeypatch.setattr(wdata, "download_weekly_tiingo", fake)
+        tickers = [f"T{i}" for i in range(5)]
+        stats = download_data.phase_tiingo(tickers, set(), "10y", self._estado(tickers),
+                                           wait=True, clock=reloj, sleep=reloj.sleep)
+        assert stats["parada"] == "completado"
+        espera = llamadas[3][1] - llamadas[2][1]
+        assert espera == pytest.approx(wdata.TIINGO_LIMIT_RETRY_S, abs=1)  # no hasta la hora en punto
+        assert data_cache.cache_stats()["n_fallos_cacheados"] == 0
+
+    def test_limite_horario_real_bloquea_la_clave_unos_minutos(self, monkeypatch):
+        monkeypatch.setenv("TIINGO_API_KEY", "clave-a")
+        t0 = 1_800_000_000.0 + 120
+        monkeypatch.setattr(wdata.time, "time", lambda: t0)
+        with patch("weinstein.data.requests.get", return_value=_limite()):
+            with pytest.raises(TiingoRateLimitError) as exc:
+                wdata.download_weekly_tiingo("A")
+        assert exc.value.bloqueado_hasta == pytest.approx(t0 + wdata.TIINGO_LIMIT_RETRY_S)

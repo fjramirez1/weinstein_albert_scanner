@@ -11,7 +11,7 @@ Uso
 ---
     python -m backtest.download_data --period 10y --universe historical
     python -m backtest.download_data --period 10y --universe historical --wait
-    python -m backtest.download_data --tiingo-budget 45 --tiingo-daily-budget 950
+    python -m backtest.download_data --tiingo-budget 40   # tope propio opcional por clave y hora
 
 Fases
 -----
@@ -21,12 +21,15 @@ Fases
    insuficiente) queda "pendiente de Tiingo" en el fichero de estado; en
    ejecuciones posteriores no se vuelve a pedir a yfinance.
 2. **Tiingo** (plan gratuito: ~50 peticiones/hora, ~1000/día, 500 símbolos
-   distintos/mes): como mucho ``--tiingo-budget`` peticiones por hora de
-   reloj (y ``--tiingo-daily-budget`` por día UTC), contando los reintentos
-   con alias. Al agotar el presupuesto o recibir un límite de Tiingo
-   (`weinstein.data.TiingoRateLimitError`): sin ``--wait`` se para con un
-   resumen y el comando para reanudar; con ``--wait`` duerme hasta la
-   siguiente ventana y continúa hasta que no quede nada pendiente.
+   distintos/mes por cuenta). Por defecto NO hay presupuesto propio: se pide
+   hasta que Tiingo responde con su error de límite, que bloquea esa clave y
+   pasa a la siguiente (`weinstein/data.py`); solo se para cuando todas están
+   limitadas. Nuestro contador no coincide con el de Tiingo, así que la
+   respuesta de Tiingo es la única fuente de verdad. ``--tiingo-budget`` /
+   ``--tiingo-daily-budget`` fijan un tope propio opcional (por clave). Al
+   pararse: sin ``--wait`` se imprime un resumen y el comando para reanudar;
+   con ``--wait`` duerme (unos minutos tras un límite horario) y continúa
+   hasta que no quede nada pendiente.
 
 Un ticker limitado NUNCA se marca como `.nodata`; solo se marca cuando Tiingo
 responde de verdad sin datos (y el ticker ya no es constituyente). Los
@@ -75,8 +78,9 @@ from weinstein.data import (  # noqa: E402
 )
 
 DEFAULT_PERIOD = "10y"
-DEFAULT_TIINGO_BUDGET = 45          # margen bajo las 50/hora del plan gratuito
-DEFAULT_TIINGO_DAILY_BUDGET = 950   # margen bajo las ~1000/día
+# Sin tope propio por defecto: manda la respuesta de límite de Tiingo.
+DEFAULT_TIINGO_BUDGET: int | None = None
+DEFAULT_TIINGO_DAILY_BUDGET: int | None = None
 YF_WORKERS = 10
 YF_RETRY_WORKERS = 3
 MAX_CONSECUTIVE_TRANSIENT = 3       # fallos de red seguidos de Tiingo antes de parar
@@ -309,8 +313,8 @@ def phase_tiingo(
     current: set[str],
     period: str,
     state: dict,
-    budget: int = DEFAULT_TIINGO_BUDGET,
-    daily_budget: int = DEFAULT_TIINGO_DAILY_BUDGET,
+    budget: int | None = DEFAULT_TIINGO_BUDGET,
+    daily_budget: int | None = DEFAULT_TIINGO_DAILY_BUDGET,
     wait: bool = False,
     sleep=time.sleep,
     clock=time.time,
@@ -342,9 +346,10 @@ def phase_tiingo(
     # Presupuestos por clave: con N API keys el total de la ventana es N veces
     # mayor (cada clave tiene su propio límite en Tiingo).
     n_keys = max(1, wdata.tiingo_key_count())
-    budget, daily_budget = budget * n_keys, daily_budget * n_keys
-    if n_keys > 1:
-        print(f"  → {n_keys} API keys de Tiingo: hasta {budget} peticiones/hora en total")
+    budget = budget * n_keys if budget is not None else None
+    daily_budget = daily_budget * n_keys if daily_budget is not None else None
+    print(f"  → {n_keys} API key(s) de Tiingo | tope propio: "
+          + (f"{budget}/hora" if budget is not None else "ninguno (manda el límite de Tiingo)"))
 
     while pending:
         now = clock()
@@ -356,11 +361,11 @@ def phase_tiingo(
         if blocked_until is not None and now < blocked_until:
             resume_at = blocked_until
             motivo = t_state.get("motivo")
-            stats["parada"] = motivo if motivo in ("mes", "presupuesto") else "limite"
-        elif used_d >= daily_budget:
+            stats["parada"] = motivo if motivo in ("mes", "presupuesto", "reintento") else "limite"
+        elif daily_budget is not None and used_d >= daily_budget:
             resume_at = wdata.next_day_window(now)
             stats["parada"] = "presupuesto"
-        elif used_h >= budget:
+        elif budget is not None and used_h >= budget:
             resume_at = wdata.next_hour_window(now)
             stats["parada"] = "presupuesto"
 
@@ -369,24 +374,28 @@ def phase_tiingo(
             save_state(state)
             if not wait or stats["parada"] == "mes" or resume_at == float("inf"):
                 break
-            print(f"  ⏸ Tiingo: {stats['parada']} ({used_h}/{budget} esta hora, {used_d}/{daily_budget} hoy). "
+            print(f"  ⏸ Tiingo: {stats['parada']} ({used_h} peticiones esta hora, {used_d} hoy). "
                   f"Esperando hasta {_fmt_epoch(resume_at)} | pendientes: {len(pending)}")
             sleep(max(1.0, resume_at - clock()))
             continue
 
         t_state.pop("bloqueado_hasta", None)
         t_state.pop("motivo", None)
-        window_budget = min(budget - used_h, daily_budget - used_d)
+        restantes = [b - u for b, u in ((budget, used_h), (daily_budget, used_d)) if b is not None]
+        window_budget = min(restantes) if restantes else None
         wdata.reset_tiingo_state()
         wdata.set_tiingo_budget(window_budget)
-        print(f"  → Tiingo: ventana con {window_budget} peticiones disponibles | pendientes: {len(pending)}")
+        print("  → Tiingo: ventana con "
+              + (f"{window_budget} peticiones disponibles" if window_budget is not None else "sin tope propio")
+              + f" | pendientes: {len(pending)}")
 
         stop_reason = None
         for t in list(pending):
-            if wdata.tiingo_requests_made() >= window_budget:
-                break
-            if wdata.tiingo_requests_made() + _requests_needed(t) > window_budget:
-                continue  # no cabe con su alias: se intenta en la siguiente ventana
+            if window_budget is not None:
+                if wdata.tiingo_requests_made() >= window_budget:
+                    break
+                if wdata.tiingo_requests_made() + _requests_needed(t) > window_budget:
+                    continue  # no cabe con su alias: se intenta en la siguiente ventana
             before = wdata.tiingo_requests_made()
             try:
                 df = wdata.download_weekly_tiingo(t, raise_on_error=True)
@@ -445,11 +454,15 @@ def phase_tiingo(
             stats["parada"] = stop_reason
             break
         if stop_reason is None and pending:
-            # Ventana gastada (o lo que queda no cabe / falló por red): no
-            # se reintenta hasta la siguiente hora aunque sobre alguna
-            # petición, para no entrar en un bucle sin progreso.
-            t_state["bloqueado_hasta"] = wdata.next_hour_window(clock())
-            t_state["motivo"] = "presupuesto"
+            # Ventana gastada (tope propio) o quedan tickers con fallos
+            # transitorios: no se reintenta enseguida, para no entrar en un
+            # bucle sin progreso.
+            if window_budget is not None:
+                t_state["bloqueado_hasta"] = wdata.next_hour_window(clock())
+                t_state["motivo"] = "presupuesto"
+            else:
+                t_state["bloqueado_hasta"] = clock() + wdata.TIINGO_LIMIT_RETRY_S
+                t_state["motivo"] = "reintento"
         # La siguiente vuelta del while calcula la ventana de reanudación
         # (y espera si --wait).
 
@@ -479,9 +492,11 @@ def coverage(tickers: list[str], current: set[str], period: str, state: dict) ->
     return rep
 
 
-def resume_command(period: str, universe: str, budget: int, daily_budget: int, wait: bool) -> str:
-    cmd = f"python -m backtest.download_data --period {period} --universe {universe} --tiingo-budget {budget}"
-    if daily_budget != DEFAULT_TIINGO_DAILY_BUDGET:
+def resume_command(period: str, universe: str, budget: int | None, daily_budget: int | None, wait: bool) -> str:
+    cmd = f"python -m backtest.download_data --period {period} --universe {universe}"
+    if budget is not None:
+        cmd += f" --tiingo-budget {budget}"
+    if daily_budget is not None:
         cmd += f" --tiingo-daily-budget {daily_budget}"
     if wait:
         cmd += " --wait"
@@ -496,8 +511,8 @@ def print_report(
     universe: str,
     state: dict,
     tiingo_stats: dict,
-    budget: int,
-    daily_budget: int,
+    budget: int | None,
+    daily_budget: int | None,
 ) -> dict:
     rep = coverage(universe_tickers, current, period, state)
     rep_extra = coverage(extras, set(extras), period, state)
@@ -516,7 +531,7 @@ def print_report(
     print(f"  Series auxiliares (^GSPC, SPY, ETFs): {len(extras) - len(faltan_extra)}/{len(extras)}"
           + (f"  FALTAN: {', '.join(faltan_extra)}" if faltan_extra else ""))
     print(f"  Peticiones Tiingo en esta ejecución: {tiingo_stats.get('peticiones', 0)} | "
-          f"hora actual: {used_h}/{budget} | hoy: {used_d}/{daily_budget} | "
+          f"hora actual: {used_h} | hoy: {used_d} | "
           f"símbolos distintos este mes: {len(t_state.get('simbolos_mes', []))}/500")
     if rep["sin_datos"]:
         print(f"\n  Sin datos ({len(rep['sin_datos'])}): {' '.join(rep['sin_datos'])}")
@@ -553,8 +568,8 @@ def print_report(
 def run(
     period: str = DEFAULT_PERIOD,
     universe: str = "historical",
-    budget: int = DEFAULT_TIINGO_BUDGET,
-    daily_budget: int = DEFAULT_TIINGO_DAILY_BUDGET,
+    budget: int | None = DEFAULT_TIINGO_BUDGET,
+    daily_budget: int | None = DEFAULT_TIINGO_DAILY_BUDGET,
     wait: bool = False,
     workers: int = YF_WORKERS,
     skip_tiingo: bool = False,
@@ -576,7 +591,7 @@ def run(
         print("\n[3/3] Tiingo omitido (--skip-tiingo).")
         tiingo_stats = {"peticiones": 0, "parada": "omitido", "reanudar_en": None}
     else:
-        print(f"\n[3/3] Tiingo (máx. {budget}/hora, {daily_budget}/día{', esperando entre ventanas' if wait else ''})...")
+        print(f"\n[3/3] Tiingo{' (esperando entre ventanas)' if wait else ''}...")
         try:
             tiingo_stats = phase_tiingo(all_tickers, all_current, period, state,
                                         budget=budget, daily_budget=daily_budget, wait=wait)
@@ -604,11 +619,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--period", default=DEFAULT_PERIOD, help=f"Periodo yfinance (clave de caché). Por defecto {DEFAULT_PERIOD}.")
     parser.add_argument("--universe", choices=["historical", "current"], default="historical")
     parser.add_argument("--tiingo-budget", type=int, default=DEFAULT_TIINGO_BUDGET,
-                        help=f"Máx. peticiones a Tiingo por hora de reloj (por defecto {DEFAULT_TIINGO_BUDGET}; el plan gratuito permite 50).")
+                        help="Tope propio opcional de peticiones a Tiingo por clave y hora de reloj. "
+                             "Por defecto ninguno: se para cuando Tiingo responde con su límite.")
     parser.add_argument("--tiingo-daily-budget", type=int, default=DEFAULT_TIINGO_DAILY_BUDGET,
-                        help=f"Máx. peticiones a Tiingo por día UTC (por defecto {DEFAULT_TIINGO_DAILY_BUDGET}).")
+                        help="Tope propio opcional por clave y día UTC (por defecto ninguno).")
     parser.add_argument("--wait", action="store_true",
-                        help="Al agotar el cupo, dormir hasta la siguiente ventana y seguir hasta terminar.")
+                        help="Si Tiingo limita todas las claves, dormir y reintentar hasta terminar.")
     parser.add_argument("--workers", type=int, default=YF_WORKERS, help=f"Hilos para yfinance (por defecto {YF_WORKERS}).")
     parser.add_argument("--skip-tiingo", action="store_true", help="Solo fase yfinance.")
     args = parser.parse_args(argv)

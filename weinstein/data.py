@@ -254,6 +254,12 @@ _tiingo_key_blocks: dict[int, TiingoRateLimitError] = {}
 # Margen tras el inicio de la siguiente ventana antes de reintentar.
 _TIINGO_WINDOW_MARGIN_S = 60
 
+# Tras un límite HORARIO real de Tiingo se vuelve a probar a los N segundos en
+# vez de esperar a la hora en punto: Tiingo no cuenta en horas de reloj (en la
+# práctica su contador no coincide con el nuestro). Probar cuesta una
+# petición rechazada; si sigue limitado, se espera otro intervalo.
+TIINGO_LIMIT_RETRY_S = 600
+
 
 def next_hour_window(now: float | None = None) -> float:
     """Epoch del inicio de la siguiente hora de reloj (más un margen)."""
@@ -370,7 +376,7 @@ def _block_tiingo_key(idx: int, ticker: str, motivo: str, detalle: str) -> None:
     elif motivo == "dia":
         hasta = next_day_window()
     else:
-        hasta = next_hour_window()
+        hasta = time.time() + TIINGO_LIMIT_RETRY_S
     exc = TiingoRateLimitError(
         f"[{ticker}] Tiingo: límite de peticiones alcanzado ({motivo}, clave {idx + 1}): {detalle}",
         motivo=motivo, bloqueado_hasta=hasta,
