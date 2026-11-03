@@ -78,3 +78,19 @@ def make_ohlcv(close: np.ndarray | pd.Series, volume: np.ndarray | pd.Series, in
         {"Open": close, "High": close, "Low": close, "Close": close, "Volume": volume},
         index=index,
     )
+
+
+# ── Aislamiento de credenciales ────────────────────────────────────────
+
+@pytest.fixture(autouse=True)
+def _sin_claves_tiingo_reales(monkeypatch):
+    """
+    `.env` se carga al importar `weinstein.data`, así que sin esto los tests
+    verían las API keys reales de Tiingo (p.ej. `TIINGO_API_KEY_2`). Cada test
+    parte sin ninguna y define las que necesite con `monkeypatch.setenv`.
+    """
+    import os
+
+    for var in list(os.environ):
+        if var == "TIINGO_API_KEYS" or var.startswith("TIINGO_API_KEY"):
+            monkeypatch.delenv(var, raising=False)

@@ -135,12 +135,37 @@ def normalize_weekly_bars(
 _tiingo_missing_key_warned = False
 
 
+def _tiingo_api_keys() -> list[str]:
+    """
+    API keys de Tiingo configuradas, en orden y sin duplicados. Se leen de
+    `TIINGO_API_KEYS` (separadas por comas) y de `TIINGO_API_KEY`,
+    `TIINGO_API_KEY_2`, `TIINGO_API_KEY_3`... Con varias claves, cada una
+    tiene su propio contador y bloqueo (ver "Límite de peticiones").
+    Nunca se imprimen: en los mensajes se identifican como "clave 1", "clave 2"...
+    """
+    raw = [k for k in os.environ.get("TIINGO_API_KEYS", "").split(",")]
+    raw.append(os.environ.get("TIINGO_API_KEY", ""))
+    n = 2
+    while os.environ.get(f"TIINGO_API_KEY_{n}"):
+        raw.append(os.environ[f"TIINGO_API_KEY_{n}"])
+        n += 1
+    keys: list[str] = []
+    for k in raw:
+        k = k.strip()
+        if k and k not in keys:
+            keys.append(k)
+    return keys
+
+
 def _tiingo_api_key() -> str | None:
-    """
-    Lee la API key de Tiingo desde la variable de entorno TIINGO_API_KEY.
-    ...
-    """
-    return os.environ.get("TIINGO_API_KEY")
+    """Primera API key de Tiingo configurada (o ``None``). Ver `_tiingo_api_keys`."""
+    keys = _tiingo_api_keys()
+    return keys[0] if keys else None
+
+
+def tiingo_key_count() -> int:
+    """Nº de API keys de Tiingo configuradas."""
+    return len(_tiingo_api_keys())
 
 
 # Alias de tickers que cambiaron de símbolo sin deslistarse realmente
@@ -179,6 +204,13 @@ _KNOWN_TICKER_RENAMES: dict[str, str] = {
 # presupuesto por proceso (`set_tiingo_budget`): al agotarlo se lanza
 # `TiingoBudgetExhaustedError` ANTES de hacer la petición. Lo usa el
 # descargador reanudable `backtest/download_data.py`.
+#
+# Varias API keys (`_tiingo_api_keys`): cada petición usa la clave no
+# bloqueada con menos peticiones en este proceso. Si Tiingo limita una
+# clave, se bloquea SOLO esa y la misma descarga se reintenta con otra; el
+# proceso solo queda bloqueado (`TiingoRateLimitError`) cuando lo están
+# todas. El presupuesto de `set_tiingo_budget` es el total del proceso
+# (el descargador lo multiplica por el nº de claves).
 
 
 class TiingoRateLimitError(RuntimeError):
@@ -216,7 +248,8 @@ class TiingoUnavailableError(RuntimeError):
 _tiingo_lock = threading.Lock()
 _tiingo_requests = 0
 _tiingo_budget: int | None = None
-_tiingo_block: TiingoRateLimitError | None = None
+_tiingo_key_requests: dict[int, int] = {}
+_tiingo_key_blocks: dict[int, TiingoRateLimitError] = {}
 
 # Margen tras el inicio de la siguiente ventana antes de reintentar.
 _TIINGO_WINDOW_MARGIN_S = 60
@@ -239,6 +272,11 @@ def tiingo_requests_made() -> int:
     return _tiingo_requests
 
 
+def tiingo_requests_by_key() -> dict[int, int]:
+    """Peticiones hechas por cada clave (1, 2, ...) desde el último reset."""
+    return {i + 1: n for i, n in sorted(_tiingo_key_requests.items())}
+
+
 def set_tiingo_budget(budget: int | None) -> None:
     """Fija el máximo de peticiones a Tiingo permitidas (``None`` = sin límite propio)."""
     global _tiingo_budget
@@ -247,45 +285,66 @@ def set_tiingo_budget(budget: int | None) -> None:
 
 
 def reset_tiingo_state() -> None:
-    """Pone a cero el contador, quita el presupuesto y el bloqueo (inicio de ventana nueva / tests)."""
-    global _tiingo_requests, _tiingo_budget, _tiingo_block
+    """Pone a cero contadores, quita el presupuesto y los bloqueos (inicio de ventana nueva / tests)."""
+    global _tiingo_requests, _tiingo_budget
     with _tiingo_lock:
         _tiingo_requests = 0
         _tiingo_budget = None
-        _tiingo_block = None
+        _tiingo_key_requests.clear()
+        _tiingo_key_blocks.clear()
+
+
+def _active_blocks_locked(n_keys: int) -> dict[int, TiingoRateLimitError]:
+    """Bloqueos vigentes (caduca los vencidos). Requiere `_tiingo_lock`."""
+    now = time.time()
+    for i, blk in list(_tiingo_key_blocks.items()):
+        if i >= n_keys or (blk.bloqueado_hasta is not None and now >= blk.bloqueado_hasta):
+            del _tiingo_key_blocks[i]
+    return dict(_tiingo_key_blocks)
+
+
+def _all_blocked_error(ticker: str, blocks: dict[int, TiingoRateLimitError]) -> TiingoRateLimitError:
+    first = min(blocks.values(), key=lambda b: b.bloqueado_hasta or float("inf"))
+    sufijo = " (todas las claves)" if len(blocks) > 1 else ""
+    return TiingoRateLimitError(
+        f"[{ticker}] Tiingo bloqueado por límite previo ({first.motivo}){sufijo}",
+        motivo=first.motivo, bloqueado_hasta=first.bloqueado_hasta,
+    )
 
 
 def tiingo_block() -> TiingoRateLimitError | None:
-    """Bloqueo activo por límite de Tiingo en este proceso (o ``None``)."""
-    blk = _tiingo_block
-    if blk is not None and blk.bloqueado_hasta is not None and time.time() >= blk.bloqueado_hasta:
-        return None
-    return blk
-
-
-def _reserve_tiingo_request(ticker: str) -> None:
-    """
-    Comprueba bloqueo y presupuesto y, si se puede, cuenta la petición
-    (atómico entre hilos). Lanza `TiingoRateLimitError` si no se puede.
-    """
-    global _tiingo_requests, _tiingo_block
+    """Bloqueo del proceso: solo si TODAS las claves están limitadas (o ``None``)."""
+    n_keys = max(1, tiingo_key_count())
     with _tiingo_lock:
-        blk = _tiingo_block
-        if blk is not None:
-            if blk.bloqueado_hasta is not None and time.time() >= blk.bloqueado_hasta:
-                _tiingo_block = None
-            else:
-                raise TiingoRateLimitError(
-                    f"[{ticker}] Tiingo bloqueado por límite previo ({blk.motivo})",
-                    motivo=blk.motivo, bloqueado_hasta=blk.bloqueado_hasta,
-                )
+        blocks = _active_blocks_locked(n_keys)
+    if len(blocks) < n_keys:
+        return None
+    return _all_blocked_error("-", blocks)
+
+
+def _reserve_tiingo_request(ticker: str) -> tuple[int, str]:
+    """
+    Elige clave (la no bloqueada con menos peticiones), comprueba el
+    presupuesto y cuenta la petición (atómico entre hilos). Devuelve
+    (índice, clave). Lanza `TiingoRateLimitError` si no se puede.
+    """
+    global _tiingo_requests
+    keys = _tiingo_api_keys()
+    with _tiingo_lock:
+        blocks = _active_blocks_locked(len(keys))
+        libres = [i for i in range(len(keys)) if i not in blocks]
+        if not libres:
+            raise _all_blocked_error(ticker, blocks)
         if _tiingo_budget is not None and _tiingo_requests >= _tiingo_budget:
             raise TiingoBudgetExhaustedError(
                 f"[{ticker}] presupuesto de peticiones a Tiingo agotado "
                 f"({_tiingo_requests}/{_tiingo_budget})",
                 motivo="presupuesto", bloqueado_hasta=next_hour_window(),
             )
+        idx = min(libres, key=lambda i: (_tiingo_key_requests.get(i, 0), i))
         _tiingo_requests += 1
+        _tiingo_key_requests[idx] = _tiingo_key_requests.get(idx, 0) + 1
+    return idx, keys[idx]
 
 
 def _tiingo_limit_reason(texto: str) -> str | None:
@@ -304,23 +363,39 @@ def _tiingo_limit_reason(texto: str) -> str | None:
     return "hora"
 
 
-def _raise_tiingo_limit(ticker: str, motivo: str, detalle: str) -> None:
-    """Registra el bloqueo del proceso y lanza `TiingoRateLimitError`."""
-    global _tiingo_block
-    if motivo == "mes":
+def _block_tiingo_key(idx: int, ticker: str, motivo: str, detalle: str) -> None:
+    """Bloquea la clave `idx` hasta su siguiente ventana y lo registra en stderr."""
+    if motivo in ("mes", "token"):
         hasta = float("inf")
     elif motivo == "dia":
         hasta = next_day_window()
     else:
         hasta = next_hour_window()
     exc = TiingoRateLimitError(
-        f"[{ticker}] Tiingo: límite de peticiones alcanzado ({motivo}): {detalle}",
+        f"[{ticker}] Tiingo: límite de peticiones alcanzado ({motivo}, clave {idx + 1}): {detalle}",
         motivo=motivo, bloqueado_hasta=hasta,
     )
     with _tiingo_lock:
-        _tiingo_block = exc
+        _tiingo_key_blocks[idx] = exc
     print(f"  ⚠ {exc}", file=sys.stderr)
-    raise exc
+
+
+def _limit_in_response(response) -> tuple[str, str] | None:
+    """
+    (motivo, detalle) si la respuesta de Tiingo es un límite de peticiones:
+    HTTP 429, o un error/HTTP 200 cuyo {"detail": ...} lo describe.
+    """
+    detalle = ""
+    try:
+        body = response.json()
+        if isinstance(body, dict):
+            detalle = str(body.get("detail", ""))
+    except Exception:
+        pass
+    if response.status_code == 429:
+        return (_tiingo_limit_reason(detalle) or "hora", detalle or "HTTP 429")
+    motivo = _tiingo_limit_reason(detalle) if detalle else None
+    return (motivo, detalle) if motivo else None
 
 
 def download_weekly_tiingo(
@@ -369,8 +444,7 @@ def download_weekly_tiingo(
 
     global _tiingo_missing_key_warned
 
-    api_key = _tiingo_api_key()
-    if not api_key:
+    if not _tiingo_api_keys():
         if not _tiingo_missing_key_warned:
             print(
                 "  ⚠ Fallback Tiingo desactivado: falta la variable de entorno "
@@ -389,26 +463,29 @@ def download_weekly_tiingo(
         "startDate": start_date,
         "format": "json",
         "resampleFreq": "weekly",
-        "token": api_key,
     }
 
-    _reserve_tiingo_request(ticker)  # puede lanzar TiingoRateLimitError
-    try:
-        response = requests.get(url, params=params, timeout=20)
-    except Exception as exc:
-        fallo(f"error de red: {exc}", "red")
-        return None
-
-    if response.status_code == 429:
-        detalle = ""
+    # Con varias claves, un límite (o un token inválido) en una se reintenta
+    # con otra; `_reserve_tiingo_request` lanza TiingoRateLimitError cuando
+    # ya no queda ninguna disponible.
+    while True:
+        key_idx, token = _reserve_tiingo_request(ticker)
         try:
-            body = response.json()
-            if isinstance(body, dict):
-                detalle = str(body.get("detail", ""))
-        except Exception:
-            pass
-        motivo = _tiingo_limit_reason(detalle) or "hora"
-        _raise_tiingo_limit(ticker, motivo, detalle or "HTTP 429")
+            response = requests.get(url, params={**params, "token": token}, timeout=20)
+        except Exception as exc:
+            fallo(f"error de red: {exc}", "red")
+            return None
+        limite = _limit_in_response(response)
+        if limite:
+            _block_tiingo_key(key_idx, ticker, *limite)
+            continue
+        if response.status_code == 401 and tiingo_key_count() > 1:
+            _block_tiingo_key(key_idx, ticker, "token", "HTTP 401: token inválido o sin permisos")
+            with _tiingo_lock:
+                quedan = len(_active_blocks_locked(tiingo_key_count())) < tiingo_key_count()
+            if quedan:
+                continue
+        break
 
     if response.status_code == 404:
         # Ticker no reconocido por Tiingo -- puede ser un cambio de
@@ -426,14 +503,6 @@ def download_weekly_tiingo(
     try:
         response.raise_for_status()
     except Exception as exc:
-        try:
-            body = response.json()
-            detalle = str(body.get("detail", "")) if isinstance(body, dict) else ""
-        except Exception:
-            detalle = ""
-        motivo = _tiingo_limit_reason(detalle) if detalle else None
-        if motivo:
-            _raise_tiingo_limit(ticker, motivo, detalle)
         fallo(f"HTTP {response.status_code}: {exc}", "http")
         return None
 
@@ -445,12 +514,9 @@ def download_weekly_tiingo(
 
     if isinstance(payload, dict):
         # Tiingo responde a veces HTTP 200 con {"detail": "..."} en vez de la
-        # lista de velas: puede ser un límite de peticiones (no es "sin
-        # datos") o un error del ticker.
+        # lista de velas. Los límites ya se trataron arriba
+        # (`_limit_in_response`); aquí solo queda un error del ticker.
         detalle = str(payload.get("detail", payload))
-        motivo = _tiingo_limit_reason(detalle)
-        if motivo:
-            _raise_tiingo_limit(ticker, motivo, detalle)
         print(f"  ⚠ [{ticker}] Tiingo: respuesta inesperada: {detalle[:200]}", file=sys.stderr)
         payload = []
 

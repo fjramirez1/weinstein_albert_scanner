@@ -339,6 +339,13 @@ def phase_tiingo(
     lcf = str(last_closed_friday().date())
     consecutive_transient = 0
 
+    # Presupuestos por clave: con N API keys el total de la ventana es N veces
+    # mayor (cada clave tiene su propio límite en Tiingo).
+    n_keys = max(1, wdata.tiingo_key_count())
+    budget, daily_budget = budget * n_keys, daily_budget * n_keys
+    if n_keys > 1:
+        print(f"  → {n_keys} API keys de Tiingo: hasta {budget} peticiones/hora en total")
+
     while pending:
         now = clock()
         t_state = state["tiingo"]
