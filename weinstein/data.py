@@ -153,7 +153,8 @@ _KNOWN_TICKER_RENAMES: dict[str, str] = {
     "FBHS": "FBIN",  # Fortune Brands Home & Security -> Fortune Brands Innovations
     "HFC":  "DINO",  # HollyFrontier -> HF Sinclair
     "RE":   "EG",    # Everest Re -> Everest Group
-    "GPS":  "GAP",   # si de verdad cambió de ticker (verificar)
+    "GPS":  "GAP",   # Gap Inc. cambió de símbolo en 2024
+    "FLT":  "CPAY",  # FLEETCOR -> Corpay (2024)
 }
 
 

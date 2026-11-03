@@ -214,7 +214,6 @@ HISTORICAL_DELISTED_SECTORS: dict[str, str] = {
     "COG":  "Energy",                   # Cabot Oil & Gas -> fusión -> Coterra (CTRA)
     "VAR":  "Health Care",              # Varian Medical Systems -> adquirida por Siemens Healthineers 2021
     "KSU":  "Industrials",              # Kansas City Southern -> adquirida por Canadian Pacific 2021
-    "KEYS": "Information Technology",   # Keysight Technologies (por si aparece con símbolo alternativo)
     "DISCK": "Communication Services",  # Discovery clase C -> fusión -> WBD
     "PEAK": "Real Estate",              # Healthpeak Properties (símbolo antiguo)
     "FLIR": "Information Technology",   # FLIR Systems -> adquirida por Teledyne 2021
@@ -241,6 +240,8 @@ HISTORICAL_DELISTED_SECTORS: dict[str, str] = {
     "UAA":  "Consumer Discretionary",   # Under Armour clase A -> excluida del índice
     "VFC":  "Consumer Discretionary",   # VF Corporation -> excluida del índice
     "WHR":  "Consumer Discretionary",   # Whirlpool -> excluida del índice 2024
+    "BWA":  "Consumer Discretionary",   # BorgWarner (Auto Components) -> excluida del índice
+    "NWL":  "Consumer Discretionary",   # Newell Brands (Household Durables) -> excluida del índice
 
     # Consumer Staples
     "CAG":  "Consumer Staples",         # Conagra Brands -> excluida del índice 2025
@@ -281,22 +282,21 @@ HISTORICAL_DELISTED_SECTORS: dict[str, str] = {
     "AAL":  "Industrials",              # American Airlines Group -> excluida del índice
     "ALK":  "Industrials",              # Alaska Air Group -> excluida del índice
     "AMTM": "Industrials",              # Amentum Holdings -> spin-off de Jacobs Engineering
-    "DXC":  "Industrials",              # DXC Technology -> excluida del índice
+    "DXC":  "Information Technology",   # DXC Technology (IT Services) -> excluida del índice
     "FLS":  "Industrials",              # Flowserve -> excluida del índice
-    "HRB":  "Industrials",              # H&R Block -> excluida del índice
+    "HRB":  "Consumer Discretionary",   # H&R Block (Diversified Consumer Services) -> excluida del índice
     "RHI":  "Industrials",              # Robert Half -> excluida del índice
-    "VNT":  "Industrials",              # Vontier -> spin-off de Fortive, excluida del índice
+    "VNT":  "Information Technology",   # Vontier (Electronic Equipment) -> spin-off de Fortive, excluida del índice
 
     # Information Technology (ampliación)
     "ANSS": "Information Technology",   # ANSYS -> adquirida por Synopsys 2024
-    "BWA":  "Information Technology",   # BorgWarner
     "EPAM": "Information Technology",   # EPAM Systems -> excluida del índice
     "ENPH": "Information Technology",   # Enphase Energy -> excluida del índice
-    "FLT":  "Information Technology",   # Corpay (antes FLEETCOR) -> excluida del índice
-    "INFO": "Information Technology",   # IHS Markit -> fusión con S&P Global 2022
+    "FLT":  "Financials",               # FLEETCOR -> renombrada a Corpay (CPAY); Financials desde la reforma GICS de 2023
+    "INFO": "Industrials",              # IHS Markit (Research & Consulting) -> fusión con S&P Global 2022
     "IPGP": "Information Technology",   # IPG Photonics -> excluida del índice
     "JNPR": "Information Technology",   # Juniper Networks -> adquirida por HPE 2025
-    "MTCH": "Information Technology",   # Match Group -> excluida del índice
+    "MTCH": "Communication Services",   # Match Group (Interactive Media) -> excluida del índice
     "PAYC": "Information Technology",   # Paycom Software -> excluida del índice
     "QRVO": "Information Technology",   # Qorvo -> excluida del índice
     "SEDG": "Information Technology",   # SolarEdge Technologies -> excluida del índice
@@ -305,14 +305,13 @@ HISTORICAL_DELISTED_SECTORS: dict[str, str] = {
     "CE":   "Materials",                # Celanese -> excluida del índice
     "EMN":  "Materials",                # Eastman Chemical -> excluida del índice
     "FMC":  "Materials",                # FMC Corporation -> excluida del índice
-    "NWL":  "Materials",                # Newell Brands
     "SEE":  "Materials",                # Sealed Air -> excluida del índice
 
     # Communication Services (ampliación)
     "DISH": "Communication Services",   # DISH Network -> fusión con EchoStar 2023
     "IPG":  "Communication Services",   # Interpublic Group -> adquirida por Omnicom 2025
     "LUMN": "Communication Services",   # Lumen Technologies -> excluida del índice
-    "WU":   "Communication Services",   # Western Union -> excluida del índice
+    "WU":   "Information Technology",   # Western Union (Data Processing, GICS previo a 2023) -> excluida del índice
 
     # Real Estate (ampliación)
     "AIV":  "Real Estate",              # Apartment Investment and Management (Aimco) -> excluida del índice
