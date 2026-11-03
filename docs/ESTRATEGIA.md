@@ -136,6 +136,7 @@ La columna `S2 Coppock Bajista` refleja directamente el resultado de `sp500_baji
 ## 8. Referencias de implementación (para quien edite el código)
 
 - Cálculos y utilidades: [`weinstein/indicators.py`](../weinstein/indicators.py) — funciones importantes: `rsc_mansfield()`, `vpm5()`, `wma()`, `coppock_curve()`, `sp500_alcista()`, `sp500_bajista()`, `momentum_vs_wma()`, `distancia_wma_pct()`.
+- Reglas F1-F5 / S1-S2 y contexto de indicadores por ticker: [`weinstein/signals.py`](../weinstein/signals.py) — **única definición**, compartida por los escáneres y el backtest (`build_ticker_context()`, `market_state_series()`, `f1_sector_fuerte()` … `s1_rsc_debil()`). [`tests/test_signals_paridad.py`](../tests/test_signals_paridad.py) comprueba semana a semana que escáner y backtest dan el mismo veredicto.
 - Acceso a datos: [`weinstein/data.py`](../weinstein/data.py) — `download_weekly()` (con reintentos y backoff), `load_sp500_tickers()`, `load_positions()`.
 - Parámetros y umbrales: [`weinstein/config.py`](../weinstein/config.py) — única fuente de verdad para constantes de la estrategia.
 - Puntos de filtrado de entrada: [`weinstein/scanner_entry.py`](../weinstein/scanner_entry.py) — búsqueda de candidatos y aplicación de filtros F1-F5.

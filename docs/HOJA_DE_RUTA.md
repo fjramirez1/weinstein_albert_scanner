@@ -92,10 +92,11 @@ Bugs encontrados en la revisión del 2026-11-03, ordenados por impacto:
 
 ## Fase 3 — Reestructuración (lo necesario, sin reescribir por reescribir)
 
-- [ ] **R1.** Un único módulo de señales vectorizado usado por escáner Y
-      backtest (hoy el escáner calcula escalares y el backtest series; pueden
-      divergir). Test: el escáner sobre la última semana == máscara del
-      backtest en esa semana.
+- [x] **R1** `6221ec5` — Módulo de señales único `weinstein/signals.py`
+      usado por escáner y backtest. `tests/test_signals_paridad.py` recorta
+      los datos a cada semana, ejecuta el escáner y lo compara con la máscara
+      del backtest: coinciden en todas (y el test falla si se cambia un
+      umbral solo en el escáner).
 - [ ] **R2.** Decidir qué hacer con `strategy_backtest.py` y
       `backtest_lookback.py` (duplican lógica del motor de cartera):
       eliminar o reducir a funciones sobre el motor común.
@@ -153,9 +154,10 @@ ampliar el catálogo y hacerlo cómodo de usar.
 
 - **Fase 1:** ✅ código corregido y con tests (229 passed). Sin verificar
   todavía con datos reales: se verá en D1/D2.
-- **Siguiente paso:** V1, en cuanto el usuario facilite la transcripción
-  o sus notas del vídeo. Mientras tanto, sin red: R1 (módulo de señales
-  único para escáner y backtest).
+- **En curso:** D1 + R3 (descarga reanudable que respeta el límite de
+  Tiingo de 50 peticiones/hora), delegado a un agente en paralelo.
+- **Siguiente paso:** cuando termine D1, D2 (cobertura del universo) y O1
+  (baseline con el motor corregido). V1 sigue pendiente del vídeo.
 - **Pendiente del usuario:** contenido del vídeo (V1); permiso para la
   descarga masiva de datos (D1).
 - **Caché:** `backtest/.cache/` está **vacía** (borrada por el test

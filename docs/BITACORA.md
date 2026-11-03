@@ -162,3 +162,33 @@ editables) en la hoja de ruta.
 12 + 6 pudo deberse a un backtest que lo daba más rentable, pero ese backtest
 no era fiable. Ninguno de los dos valores cuenta como validado; se comparan en
 O2. V2b cerrada como tarea de vídeo.
+
+## 2026-11-03 (5) — R1: señales únicas para escáner y backtest
+
+Petición del usuario: usar agentes en paralelo siempre que sea útil. Se
+delega D1 + R3 (descarga de datos con el límite de Tiingo de 50
+peticiones/hora del plan gratuito) a un agente que trabaja solo en
+`weinstein/data.py`, `backtest/data_cache.py`, un módulo de descarga nuevo y
+sus tests. Fallo detectado antes de lanzar la descarga: una respuesta de
+"límite alcanzado" de Tiingo devolvía `None` y `get_cached_weekly` marcaba al
+ticker delistado como `.nodata` **para siempre**; el agente lo corrige antes
+de descargar.
+
+R1 (`6221ec5`): `weinstein/signals.py` reúne `TickerContext`,
+`build_ticker_context`, `market_state_series` y las reglas F1-F4/S1
+(comparaciones válidas para escalar o serie). Los dos escáneres y
+`backtest/conditions.py` las usan. Formato de los CSV sin cambios.
+
+Verificación: `tests/test_signals_paridad.py` — 6 tickers sintéticos, 180
+semanas; en cada semana se recortan todos los datos hasta esa fecha, se
+ejecutan `_evaluate_ticker` y `_evaluate_exit` y se comparan con las máscaras
+de entrada, S1 y S2 del backtest. Coinciden en todas las semanas, con al
+menos 8 casos verdaderos y 8 falsos de entrada y de S1. Prueba de mutación:
+cambiar F4 a 9 % solo en el escáner hace fallar el test (entrada T1
+2023-07-07). Tests de los módulos afectados: 157 passed. (La suite completa
+tenía fallos en ese momento solo en los tests de Tiingo, por el trabajo en
+curso del agente.)
+
+Herramienta: se instaló `pyflakes` en el venv para revisar importaciones
+(no está en `requirements.txt`). Quitada una importación sobrante en
+`backtest/portfolio_engine.py`.
