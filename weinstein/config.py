@@ -318,6 +318,103 @@ HISTORICAL_DELISTED_SECTORS: dict[str, str] = {
     "DRE":  "Real Estate",              # Duke Realty -> adquirida por Prologis 2022
     "SLG":  "Real Estate",              # SL Green Realty -> excluida del índice
     "VNO":  "Real Estate",              # Vornado Realty Trust -> excluida del índice
+
+    # ── Ampliación 2026-11-03 (universo histórico de 10 años, tarea D2) ──
+    # Tickers que ya tienen precio (yfinance o Tiingo tras el arreglo de
+    # fechas B1) pero no estaban mapeados. Sector GICS que tenían MIENTRAS
+    # estaban en el índice: los de medios que salieron antes de la reforma
+    # GICS de sept-2018 (SNI, TWX) figuran en Consumer Discretionary, que es
+    # donde estaban y cuyo ETF (XLY) sí existía entonces.
+    # Communication Services
+    "EA":    "Communication Services",  # Electronic Arts -> privatizada 2026
+    "LVLT":  "Communication Services",  # Level 3 (Telecom Services) -> adquirida por CenturyLink 2017
+    "TFCF":  "Communication Services",  # 21st Century Fox clase A -> adquirida por Disney 2019
+    "TFCFA": "Communication Services",  # 21st Century Fox -> adquirida por Disney 2019
+    "TGNA":  "Communication Services",  # Tegna -> excluida del índice
+    "TRIP":  "Communication Services",  # TripAdvisor (Interactive Media) -> excluida del índice
+    "VIAB":  "Communication Services",  # Viacom -> fusión con CBS 2019
+    "WBD":   "Communication Services",  # Warner Bros. Discovery -> excluida del índice
+    # Consumer Discretionary
+    "AN":    "Consumer Discretionary",  # AutoNation -> excluida del índice
+    "CPRI":  "Consumer Discretionary",  # Capri Holdings -> excluida del índice
+    "FL":    "Consumer Discretionary",  # Foot Locker -> excluida del índice
+    "GT":    "Consumer Discretionary",  # Goodyear -> excluida del índice
+    "HOG":   "Consumer Discretionary",  # Harley-Davidson -> excluida del índice
+    "JWN":   "Consumer Discretionary",  # Nordstrom -> excluida del índice
+    "LEG":   "Consumer Discretionary",  # Leggett & Platt -> excluida del índice
+    "M":     "Consumer Discretionary",  # Macy's -> excluida del índice
+    "MAT":   "Consumer Discretionary",  # Mattel -> excluida del índice
+    "POOL":  "Consumer Discretionary",  # Pool Corp -> excluida del índice
+    "SIG":   "Consumer Discretionary",  # Signet Jewelers -> excluida del índice
+    "SNI":   "Consumer Discretionary",  # Scripps Networks (Media, pre-2018) -> adquirida por Discovery 2018
+    "TWX":   "Consumer Discretionary",  # Time Warner (Media, pre-2018) -> adquirida por AT&T 2018
+    "URBN":  "Consumer Discretionary",  # Urban Outfitters -> excluida del índice
+    "WYN":   "Consumer Discretionary",  # Wyndham Worldwide -> escindida 2018
+    # Consumer Staples
+    "DPS":   "Consumer Staples",        # Dr Pepper Snapple -> fusión con Keurig 2018
+    "MJN":   "Consumer Staples",        # Mead Johnson -> adquirida por Reckitt 2017
+    "RAI":   "Consumer Staples",        # Reynolds American -> adquirida por BAT 2017
+    "TAP":   "Consumer Staples",        # Molson Coors -> excluida del índice
+    "WBA":   "Consumer Staples",        # Walgreens Boots Alliance -> privatizada 2025
+    "WFM":   "Consumer Staples",        # Whole Foods -> adquirida por Amazon 2017
+    # Energy
+    "ANDV":  "Energy",                  # Andeavor -> adquirida por Marathon Petroleum 2018
+    "BHI":   "Energy",                  # Baker Hughes Inc -> fusión con GE Oil & Gas 2017
+    "CHK":   "Energy",                  # Chesapeake Energy -> quiebra 2020
+    "HP":    "Energy",                  # Helmerich & Payne -> excluida del índice
+    "MUR":   "Energy",                  # Murphy Oil -> excluida del índice
+    "RIG":   "Energy",                  # Transocean -> excluida del índice
+    "RRC":   "Energy",                  # Range Resources -> excluida del índice
+    "SE":    "Energy",                  # Spectra Energy -> fusión con Enbridge 2017
+    "SWN":   "Energy",                  # Southwestern Energy -> excluida del índice
+    # Financials
+    "AMG":   "Financials",              # Affiliated Managers Group -> excluida del índice
+    "BHF":   "Financials",              # Brighthouse Financial -> excluida del índice
+    "JEF":   "Financials",              # Jefferies -> excluida del índice
+    "LM":    "Financials",              # Legg Mason -> adquirida por Franklin Templeton 2020
+    "NAVI":  "Financials",              # Navient -> excluida del índice
+    "STI":   "Financials",              # SunTrust -> fusión con BB&T (Truist) 2019
+    "XL":    "Financials",              # XL Group -> adquirida por AXA 2018
+    # Health Care
+    "AET":   "Health Care",             # Aetna -> adquirida por CVS 2018
+    "AGN":   "Health Care",             # Allergan -> adquirida por AbbVie 2020
+    "BCR":   "Health Care",             # C. R. Bard -> adquirida por Becton Dickinson 2017
+    "ESRX":  "Health Care",             # Express Scripts -> adquirida por Cigna 2018
+    "EVHC":  "Health Care",             # Envision Healthcare -> privatizada 2018
+    "NKTR":  "Health Care",             # Nektar Therapeutics -> excluida del índice
+    "PDCO":  "Health Care",             # Patterson Companies -> excluida del índice
+    "STJ":   "Health Care",             # St. Jude Medical -> adquirida por Abbott 2017
+    # Industrials
+    "ARNC":  "Industrials",             # Arconic -> escindida 2020
+    "AYI":   "Industrials",             # Acuity Brands -> excluida del índice
+    "BLDR":  "Industrials",             # Builders FirstSource -> excluida del índice
+    "COL":   "Industrials",             # Rockwell Collins -> adquirida por United Technologies 2018
+    "DNB":   "Industrials",             # Dun & Bradstreet (Research & Consulting) -> privatizada 2019
+    "FLR":   "Industrials",             # Fluor -> excluida del índice
+    "LLL":   "Industrials",             # L3 Technologies -> fusión con Harris 2019
+    "MBC":   "Industrials",             # MasterBrand (Building Products) -> excluida del índice
+    "PBI":   "Industrials",             # Pitney Bowes -> excluida del índice
+    "R":     "Industrials",             # Ryder System -> excluida del índice
+    "SRCL":  "Industrials",             # Stericycle -> excluida del índice
+    # Information Technology
+    "CA":    "Information Technology",  # CA Inc -> adquirida por Broadcom 2018
+    "RHT":   "Information Technology",  # Red Hat -> adquirida por IBM 2019
+    "TDC":   "Information Technology",  # Teradata -> excluida del índice
+    "TSS":   "Information Technology",  # Total System Services -> adquirida por Global Payments 2019
+    "TTD":   "Information Technology",  # The Trade Desk (Application Software; verificar) -> excluida del índice
+    "YHOO":  "Information Technology",  # Yahoo -> Altaba 2017
+    # Materials
+    "BMS":   "Materials",               # Bemis -> adquirida por Amcor 2019
+    "CTVA":  "Materials",               # Corteva -> excluida del índice
+    "DWDP":  "Materials",               # DowDuPont -> escindida 2019
+    "MON":   "Materials",               # Monsanto -> adquirida por Bayer 2018
+    "OI":    "Materials",               # Owens-Illinois -> excluida del índice
+    # Real Estate
+    "AVB":   "Real Estate",             # AvalonBay Communities -> excluida del índice
+    "GGP":   "Real Estate",             # GGP Inc. -> adquirida por Brookfield 2018
+    "MAC":   "Real Estate",             # Macerich -> excluida del índice
+    # Utilities
+    "SCG":   "Utilities",               # SCANA -> adquirida por Dominion 2019
 }
 
 

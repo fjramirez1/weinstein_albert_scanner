@@ -181,6 +181,7 @@ _KNOWN_TICKER_RENAMES: dict[str, str] = {
     "RE":   "EG",    # Everest Re -> Everest Group
     "GPS":  "GAP",   # Gap Inc. cambió de símbolo en 2024
     "FLT":  "CPAY",  # FLEETCOR -> Corpay (2024)
+    "CDAY": "DAY",   # Ceridian -> Dayforce (2024)
 }
 
 
