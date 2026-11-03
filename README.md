@@ -17,7 +17,6 @@ weinstein/                       ← paquete principal
 │   exporter.py                  ← exportación CSV con historial
 │
 posiciones.csv                   ← tus posiciones abiertas
-launcher.py                      ← ejecución periódica del backtest de cartera (ver backtest/BACKTEST.md)
 requirements.txt
 pytest.ini                       ← configuración de tests
 │
@@ -235,13 +234,13 @@ python -m weinstein portfolio-backtest --period 8y --max-positions 10
 
 El backtest de cartera es el más extenso y activo del proyecto (universo
 histórico reconstruido, caché de datos, sweep de configuraciones,
-ejecución periódica vía `launcher.py`). Su documentación técnica completa
+descarga reanudable de datos con `python -m backtest.download_data`). Su documentación técnica completa
 vive en un documento aparte, igual que la estrategia en producción tiene la
 suya:
 
 📄 **[backtest/BACKTEST.md](backtest/BACKTEST.md)** — modelo de cartera,
 condiciones configurables, universo actual vs. histórico, caché de datos,
-CLI completo, sweep, `launcher.py` y métricas reportadas.
+CLI completo, sweep, descargador reanudable y métricas reportadas.
 
 📄 **[backtest/README.md](backtest/README.md)** — quickstart de instalación
 y comandos mínimos.

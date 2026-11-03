@@ -4,7 +4,7 @@ Simula la estrategia como una **cartera real**: capital inicial, un número
 máximo de posiciones simultáneas, y reglas de entrada/salida configurables.
 
 > Documentación técnica completa (modelo de cartera, condiciones
-> configurables, universo histórico, caché, CLI, sweep, `launcher.py`,
+> configurables, universo histórico, caché, CLI, sweep, descargador reanudable,
 > métricas): **[BACKTEST.md](BACKTEST.md)**.
 
 ## Instalación
@@ -39,9 +39,10 @@ También disponible como subcomando del CLI unificado:
 python -m weinstein portfolio-backtest --period 8y --max-positions 10
 ```
 
-Para ejecutarlo en bucle (cada hora, universo histórico), ver
-[`launcher.py`](../launcher.py) — detallado en
-[BACKTEST.md § 8](BACKTEST.md#8-ejecución-periódica-launcherpy).
+Para poblar antes la caché del universo histórico respetando el límite
+horario de Tiingo, usa el descargador reanudable
+`python -m backtest.download_data --period 10y --universe historical [--wait]`
+— detallado en [BACKTEST.md § 8](BACKTEST.md#8-ejecución-periódica-launcherpy).
 
 ## ⚠️ Limitación conocida: sesgo de supervivencia
 

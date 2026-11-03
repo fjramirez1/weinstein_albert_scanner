@@ -200,6 +200,19 @@ class TiingoBudgetExhaustedError(TiingoRateLimitError):
     """Se agotó el presupuesto de peticiones fijado con `set_tiingo_budget` (no se llegó a llamar a la API)."""
 
 
+class TiingoUnavailableError(RuntimeError):
+    """
+    Fallo de Tiingo que NO demuestra que el ticker carezca de datos (error
+    de red, HTTP 5xx, JSON inválido, token inválido). Solo se lanza con
+    ``download_weekly_tiingo(..., raise_on_error=True)``; sin ese flag se
+    devuelve ``None`` como siempre. ``motivo``: "red", "http" o "token".
+    """
+
+    def __init__(self, mensaje: str, motivo: str = "red"):
+        super().__init__(mensaje)
+        self.motivo = motivo
+
+
 _tiingo_lock = threading.Lock()
 _tiingo_requests = 0
 _tiingo_budget: int | None = None
@@ -281,7 +294,8 @@ def _tiingo_limit_reason(texto: str) -> str | None:
     devuelve su ventana ("hora", "dia", "mes"); si no, ``None``.
     """
     low = texto.lower()
-    if not any(k in low for k in ("allocation", "run over", "rate limit", "limit", "upgrade")):
+    claves = ("allocation", "run over", "rate limit", "too many requests", "request limit")
+    if not any(k in low for k in claves):
         return None
     if "month" in low:
         return "mes"
@@ -313,6 +327,7 @@ def download_weekly_tiingo(
     ticker: str,
     period_years: int = 15,
     min_bars: int = MIN_BARS,
+    raise_on_error: bool = False,
 ) -> pd.DataFrame | None:
     """
     Descarga histórico semanal desde Tiingo como fuente de RESPALDO,
@@ -339,7 +354,19 @@ def download_weekly_tiingo(
     responde con límite de peticiones, si el proceso ya estaba bloqueado por
     un límite previo o si se agotó el presupuesto de `set_tiingo_budget`:
     "limitado" no es "sin datos" (ver sección "Límite de peticiones").
+
+    Con ``raise_on_error=True`` los fallos que no prueban ausencia de datos
+    (red, HTTP 5xx, JSON inválido, token 401) lanzan
+    ``TiingoUnavailableError`` en vez de devolver ``None``; lo usa el
+    descargador `backtest/download_data.py` para no marcar `.nodata` por un
+    fallo transitorio.
     """
+
+    def fallo(mensaje: str, motivo: str) -> None:
+        print(f"  ⚠ [{ticker}] Tiingo: {mensaje}", file=sys.stderr)
+        if raise_on_error:
+            raise TiingoUnavailableError(f"[{ticker}] Tiingo: {mensaje}", motivo=motivo)
+
     global _tiingo_missing_key_warned
 
     api_key = _tiingo_api_key()
@@ -369,7 +396,7 @@ def download_weekly_tiingo(
     try:
         response = requests.get(url, params=params, timeout=20)
     except Exception as exc:
-        print(f"  ⚠ [{ticker}] Tiingo: error de red: {exc}", file=sys.stderr)
+        fallo(f"error de red: {exc}", "red")
         return None
 
     if response.status_code == 429:
@@ -390,14 +417,11 @@ def download_weekly_tiingo(
         alias = _KNOWN_TICKER_RENAMES.get(ticker.strip().upper())
         if alias:
             print(f"  → [{ticker}] probando alias conocido de símbolo: {alias}", file=sys.stderr)
-            return download_weekly_tiingo(alias, period_years=period_years, min_bars=min_bars)
+            return download_weekly_tiingo(alias, period_years=period_years, min_bars=min_bars,
+                                          raise_on_error=raise_on_error)
         return None
     if response.status_code == 401:
-        print(
-            f"  ✗ [{ticker}] Tiingo: token inválido o sin permisos (HTTP 401). "
-            "Revisa TIINGO_API_KEY.",
-            file=sys.stderr,
-        )
+        fallo("token inválido o sin permisos (HTTP 401). Revisa TIINGO_API_KEY.", "token")
         return None
     try:
         response.raise_for_status()
@@ -410,13 +434,13 @@ def download_weekly_tiingo(
         motivo = _tiingo_limit_reason(detalle) if detalle else None
         if motivo:
             _raise_tiingo_limit(ticker, motivo, detalle)
-        print(f"  ⚠ [{ticker}] Tiingo: HTTP {response.status_code}: {exc}", file=sys.stderr)
+        fallo(f"HTTP {response.status_code}: {exc}", "http")
         return None
 
     try:
         payload = response.json()
     except Exception as exc:
-        print(f"  ⚠ [{ticker}] Tiingo: respuesta no es JSON válido: {exc}", file=sys.stderr)
+        fallo(f"respuesta no es JSON válido: {exc}", "http")
         return None
 
     if isinstance(payload, dict):
@@ -434,7 +458,8 @@ def download_weekly_tiingo(
         alias = _KNOWN_TICKER_RENAMES.get(ticker.strip().upper())
         if alias:
             print(f"  → [{ticker}] probando alias conocido de símbolo: {alias}", file=sys.stderr)
-            return download_weekly_tiingo(alias, period_years=period_years, min_bars=min_bars)
+            return download_weekly_tiingo(alias, period_years=period_years, min_bars=min_bars,
+                                          raise_on_error=raise_on_error)
         return None
 
     raw = pd.DataFrame(payload)
@@ -471,7 +496,8 @@ def download_weekly_tiingo(
     alias = _KNOWN_TICKER_RENAMES.get(ticker.strip().upper())
     if alias:
         print(f"  → [{ticker}] probando alias conocido de símbolo: {alias}", file=sys.stderr)
-        return download_weekly_tiingo(alias, period_years=period_years, min_bars=min_bars)
+        return download_weekly_tiingo(alias, period_years=period_years, min_bars=min_bars,
+                                          raise_on_error=raise_on_error)
 
     return None
 

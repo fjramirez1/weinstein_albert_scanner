@@ -283,8 +283,9 @@ pequeño** frente al universo total evaluado esa ejecución.
 
 Implementada en `backtest/data_cache.py`. Motivación: la parte lenta de cada
 ejecución no es la simulación (CPU-bound, rápida), es la **descarga por red**
-de ~500 tickers vía yfinance. `launcher.py` está pensado para ejecutarse en
-bucle cada hora, así que repetir esa descarga sería insostenible.
+de ~500-800 tickers vía yfinance (y Tiingo para los delistados). La caché se
+puebla una vez con el descargador reanudable (sección 8) y después cada
+backtest/sweep la reutiliza sin tocar la red.
 
 - **Caché de datos** (`.parquet` por `ticker+periodo`, en `backtest/.cache/`):
   ejecuciones posteriores reutilizan el fichero sin tocar la red. Un ticker
@@ -317,6 +318,20 @@ adquisición, exclusión de bolsa). Requiere `TIINGO_API_KEY` en el entorno
 (`.env`); si no está definida, el fallback se desactiva con un único aviso.
 Ver `tests/test_data_tiingo.py` para el comportamiento cubierto (alias de
 tickers renombrados, códigos HTTP 401/404/429, etc.).
+
+**Límite de peticiones (plan gratuito: ~50/hora, ~1000/día, 500 símbolos
+distintos/mes).** "Limitado" no es "sin datos": Tiingo lo señala con HTTP
+429 o con HTTP 200 y un JSON `{"detail": "Error: You have run over your
+hourly request allocation..."}` en vez de la lista de velas. Ambos casos
+lanzan `TiingoRateLimitError` (con `motivo` hora/día/mes y `bloqueado_hasta`);
+a partir de ahí el proceso deja de llamar a Tiingo hasta la siguiente
+ventana. `get_cached_weekly` **no** escribe `.nodata` en ese caso (el ticker
+queda pendiente para otra ejecución). Todas las peticiones (incluidos los
+reintentos con alias) se cuentan (`tiingo_requests_made()`) y se puede fijar
+un presupuesto por proceso (`set_tiingo_budget`, `TiingoBudgetExhaustedError`).
+Con `raise_on_error=True` (solo el descargador) los fallos de red / HTTP 5xx /
+token lanzan `TiingoUnavailableError` en vez de devolver `None`, para no
+marcar `.nodata` por un fallo transitorio.
 
 ## 6. CLI y uso programático
 
@@ -393,36 +408,49 @@ sección 6) en vez de escribir el bucle a mano.
 
 ## 8. Ejecución periódica (`launcher.py`)
 
-`launcher.py` (raíz del proyecto) ejecuta el backtest de cartera en bucle,
-una vez por hora, con universo histórico y exportando el detalle de
-operaciones:
+> `launcher.py` (que relanzaba el backtest completo cada 61 minutos solo
+> para sortear el límite horario de Tiingo) se eliminó: lo sustituye el
+> descargador reanudable `backtest/download_data.py` (tarea R3).
+
+Puebla `backtest/.cache/` con la misma clave (ticker, periodo) que
+`get_cached_weekly`, así que después
+`prepare_universe(period="10y", universe="historical")` (o
+`python -m weinstein portfolio-backtest --universe historical --period 10y`)
+lee todo de la caché:
 
 ```bash
-python launcher.py
+# Una ventana: fase yfinance completa + hasta 45 peticiones a Tiingo, y para
+python -m backtest.download_data --period 10y --universe historical
+
+# Hasta terminar: duerme entre ventanas horarias y sigue solo
+python -m backtest.download_data --period 10y --universe historical --tiingo-budget 45 --wait
 ```
 
-Equivale a lanzar repetidamente:
+1. **Fase yfinance** (sin límite horario, 10 hilos + segunda pasada suave):
+   ^GSPC, SPY, los 11 ETFs sectoriales y todos los tickers del universo.
+   Lo que yfinance no sirve queda "pendiente de Tiingo" (los delistados no
+   se vuelven a pedir a yfinance en ejecuciones posteriores).
+2. **Fase Tiingo**: como mucho `--tiingo-budget` peticiones por hora de reloj
+   (por defecto 45, margen bajo las 50 del plan gratuito) y
+   `--tiingo-daily-budget` por día UTC (por defecto 950), contando los
+   reintentos con alias. Al agotar el cupo o recibir un límite de Tiingo:
+   sin `--wait` para e imprime el comando para reanudar; con `--wait` duerme
+   hasta la siguiente ventana. El límite mensual de símbolos para siempre.
+   - Datos → parquet en caché. Sin datos y ya fuera del índice → `.nodata`
+     permanente. Sin datos pero vigente → no se marca; se reintenta la
+     semana siguiente. Límite o fallo de red → sigue pendiente.
 
-```bash
-python -m weinstein portfolio-backtest --universe historical \
-    --export historial/backtests/detalle_operaciones.csv
-```
+El progreso vive en la propia caché (parquet + `.nodata`) y en
+`backtest/.cache/descarga_estado.json`: peticiones usadas en la hora/día
+actuales (compartidas entre ejecuciones del descargador), bloqueo vigente y,
+por periodo, pendientes de Tiingo, obtenidos vía Tiingo y vigentes sin datos.
+Ctrl+C guarda el estado; relanzar el mismo comando reanuda. Peticiones hechas
+por otros procesos (el fallback dentro de un backtest) no se cuentan ahí,
+pero si agotan el cupo Tiingo responde con límite y se detecta igual.
 
-con una espera de 3660 segundos (1h 1min) entre ejecuciones. Gracias a la
-caché de datos (sección 5), solo la primera ejecución del día es lenta por
-descarga; las siguientes reutilizan los datos ya cacheados salvo que haya
-datos nuevos de mercado que descargar (nuevas velas semanales) o tickers
-sin caché de fallo aún resuelto.
-
-El CSV exportado (`historial/backtests/detalle_operaciones.csv`) usa las
-columnas de `PortfolioBacktestResult.to_trades_dataframe()`: `Ticker`,
-`Sector`, `Fecha Entrada`, `Precio Entrada`, `Nº Acciones`,
-`Capital Invertido`, `Fecha Salida`, `Precio Salida`, `Motivo Salida`,
-`Semanas en Pos.`, `Retorno %`, `P&L USD`.
-
-> `launcher.py` no tiene mecanismo de apagado limpio más allá de
-> interrumpir el proceso (Ctrl+C / kill); no persiste estado entre
-> reinicios más allá de lo que ya cachea `backtest/.cache/`.
+Al final imprime la cobertura: tickers del universo, con datos vía yfinance,
+vía Tiingo, sin datos (con la lista de símbolos) y pendientes, más las
+peticiones usadas. Código de salida 0 si no queda nada pendiente, 2 si sí.
 
 ## 9. Métricas reportadas
 
