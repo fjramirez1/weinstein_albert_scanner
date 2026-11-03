@@ -124,8 +124,10 @@ Bugs encontrados en la revisión del 2026-11-03, ordenados por impacto:
       (14 + 11 vs 12 + 6; hoy fijos en `config.py`, habrá que exponerlos en
       `StrategyConfig`). Mirar siempre nº operaciones,
       Sharpe, drawdown, profit factor, % PnL en top-5 y vs benchmark.
-- [ ] **O3.** Validar la ganadora en el tramo fuera de muestra (disjunto).
+- [x] **O3.** Validar la ganadora en el tramo fuera de muestra (disjunto).
       Candidato e hipótesis pre-registrados: bitácora 2026-11-03 (14).
+      Resultado (15): H1 falla (el candidato no pasa); H2 se cumple (VPM5
+      robusto en los dos tramos).
 - [ ] **O4.** Decisión final documentada.
 
 ## Fase 5 — Producción y documentación final
@@ -172,10 +174,12 @@ ampliar el catálogo y hacerlo cómodo de usar.
 - **Hecho:** O2. El filtro de mercado del Coppock es lo que más resta; MOM
   es peor que un ranking aleatorio; VPM5 es el más consistente. Ninguna
   variante bate a SPY de forma robusta en calibración.
-- **Siguiente paso:** O3, una sola vez:
-  `python -m backtest.estudios.o3_validacion`. Anotar en la bitácora el
-  resultado de H1-H3 y aplicar la regla de decisión pre-registrada
-  (bitácora 2026-11-03 (14)) en O4.
+- **Hecho:** O3 (bitácora (15)). Reglas F1-F5 / S1-S2 se mantienen; el
+  cambio de ranking MOM → VPM5 es lo único robusto en los dos tramos.
+- **Siguiente paso:** O4, decisión del usuario: ¿cambiar el ranking del
+  escáner de entrada (`weinstein/scanner_entry.py`, hoy ordena por MOM) a
+  VPM5? Si sí: P1 (aplicarlo, `SCANNER_LOGIC_VERSION` +1, ranking por
+  defecto de `StrategyConfig` a `vpm5`) y después P2/P3.
 - **Sectores GICS de delistados:** verificados (bitácora 2026-11-03 (9)).
 - **Pendiente del usuario:** contenido del vídeo (V1).
 - **Caché:** repoblada el 2026-11-03 (`backtest/.cache/`, periodo `10y`).

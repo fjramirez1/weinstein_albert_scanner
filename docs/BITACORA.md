@@ -549,3 +549,53 @@ Escrito y commiteado **antes** de ejecutar nada en validación
   cumplen H1 y H3, y se documenta su diferencia con SPY sea cual sea. Si
   H1 falla, se mantiene producción y se documenta que el estudio no
   encontró mejoras robustas.
+
+## 2026-11-03 (15) — O3: validación fuera de muestra (una sola ejecución)
+
+Comando: `python -m backtest.estudios.o3_validacion`
+(`historial/backtests/o3_validacion.csv` y `o3_validacion_resumen.csv`).
+Tramo 2023-01-06 → 2026-10-30, el mismo modelo que O2 y lo pre-registrado
+en (14), sin cambios.
+
+| Reglas | Azar p10 | Azar mediana | Azar p90 | Sharpe mediano | MOM (pct) | RSC (pct) | VPM5 (pct) |
+|---|---|---|---|---|---|---|---|
+| producción (F5 + S2) | 7,47 % | **9,89 %** | 11,80 % | 0,65 | 6,41 % (0) | 12,07 % (90) | 14,68 % (95) |
+| F5b + S2 | 6,77 % | 8,73 % | 14,49 % | 0,60 | 11,19 % (70) | 13,32 % (85) | 19,67 % (100) |
+| sin F5 (con S2) | 0,71 % | 6,42 % | 9,43 % | 0,44 | 4,98 % (35) | 13,78 % (95) | 16,49 % (100) |
+| sin F5 ni S2 | 4,74 % | 8,68 % | 14,48 % | 0,57 | 16,29 % (100) | 10,96 % (60) | 16,61 % (100) |
+
+| Config | CAGR | Máx. DD | Sharpe | Ops | PF ($) | % top-5 | 2023 | 2024 | 2025 | 2026* |
+|---|---|---|---|---|---|---|---|---|---|---|
+| producción + MOM (baseline actual) | 6,41 % | −19,2 % | 0,46 | 75 | 1,48 | 124 % | 14,1 | 22,0 | −1,0 | −8,0 |
+| producción + VPM5 | 14,68 % | −13,4 % | 0,93 | 76 | 2,25 | 81 % | 16,2 | 19,4 | 20,7 | 0,7 |
+| F5b + VPM5 | 19,67 % | −13,8 % | 1,13 | 89 | 2,59 | 78 % | 15,9 | 26,3 | 34,4 | 0,8 |
+| **candidato: sin F5 ni S2 + VPM5** | 16,61 % | −21,1 % | 0,95 | 69 | 2,50 | 119 % | 18,0 | 46,1 | 8,1 | −3,6 |
+| *SPY* | *20,58 %* | *−16,9 %* | *1,41* | | | | *24,3* | *26,8* | *17,4* | *10,3* |
+
+(*2026 hasta el 30 de octubre.)
+
+**Hipótesis pre-registradas.**
+- **H1: NO se cumple.** En validación, quitar el filtro de mercado no mejora
+  la mediana con ranking aleatorio: producción 9,89 % frente a 6,42 % (sin
+  F5) y 8,68 % (sin F5 ni S2). El efecto de O2 dependía del régimen de
+  calibración (el rebote en V de 2020).
+- **H2: SÍ.** VPM5 supera la mediana del azar en 4/4 conjuntos (percentiles
+  95, 100, 100 y 100); MOM solo en 2/4 (0, 70, 35 y 100). Contando
+  calibración y validación, VPM5 queda por encima de la mediana en 9 de 10
+  comparaciones y MOM en 4 de 10.
+- **H3: SÍ.** Candidato 16,61 % / Sharpe 0,95 frente a 6,41 % / 0,46.
+
+**Aplicación de la regla de decisión (14):** requería H1 **y** H3. H1 falla,
+así que **el candidato "sin F5 ni S2" no pasa a producción**: las reglas
+F1-F5 / S1-S2 se mantienen.
+
+**Lo que sí es robusto en los dos tramos:** cambiar el ranking de MOM a
+VPM5. Con las reglas de producción, VPM5 mejora en calibración (3,16 %
+frente a −1,92 %, percentil 90) y en validación (14,68 % frente a 6,41 %,
+Sharpe 0,93 frente a 0,46, DD −13,4 % frente a −19,2 %, top-5 81 %). H2
+estaba pre-registrada, pero el cambio de ranking por sí solo no era el
+candidato. Como decisión de O4 se propone al usuario, que decide.
+
+**En ningún tramo la estrategia bate a SPY de forma robusta.** La mejor
+config de validación (F5b + VPM5, 19,67 %) se queda a 0,9 pp, y el tramo
+de validación ya está usado, así que elegirla ahora sería sobreajustar.
