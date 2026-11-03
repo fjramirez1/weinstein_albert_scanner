@@ -111,9 +111,13 @@ Bugs encontrados en la revisión del 2026-11-03, ordenados por impacto:
 
 - [x] **D1.** Caché del universo histórico de 10 años: 682/699 tickers con datos
       (588 yfinance, 94 Tiingo, 17 sin fuente). Ver bitácora 2026-11-03 (7).
-- [ ] **D2.** Diagnóstico de cobertura del universo histórico (cuántos
-      tickers sin precio / sin sector) — antigua "Fase 8".
-- [ ] **O1.** Baseline fiel al vídeo + benchmark, en tramo de calibración.
+- [x] **D2.** 79 sin sector mapeados + alias CDAY→DAY: 683/699 con datos,
+      0 sin sector (bitácora 2026-11-03 (8)).
+- [x] **O1.** Baseline de producción con el motor corregido
+      (`python -m backtest.estudios.o1_baseline`): CAGR 1,63 % frente a 14,26 %
+      de SPY en 2017-12 → 2026-10. Tramos fijados: calibración 2017-12-01 →
+      2022-12-30, validación 2023-01-06 → 2026-10-30. Cuando se resuelva V1,
+      repetir con la versión fiel al vídeo.
 - [ ] **O2.** Rehacer el barrido con presupuesto acotado (~20 configs):
       ranking, umbral S1, F1/F4, nº posiciones, parámetros del Coppock
       (14 + 11 vs 12 + 6; hoy fijos en `config.py`, habrá que exponerlos en
@@ -156,7 +160,11 @@ ampliar el catálogo y hacerlo cómodo de usar.
 - **Fase 1:** ✅ código corregido y con tests (229 passed). Sin verificar
   todavía con datos reales: se verá en D1/D2.
 - **D1:** ✅ caché completa (10y, universo histórico, 97,6 % con datos).
-- **Siguiente paso:** D2 (revisar los 17 sin datos y los sectores "Unknown")
-  y O1 (baseline con el motor corregido sobre la caché de 10 años).
+- **Hallazgo O1:** la estrategia de producción rinde ~12,6 pp/año menos que
+  SPY con un riesgo similar. El objetivo de O2 es comprobar si alguna variante
+  razonable lo corrige; si ninguna lo hace, documentarlo.
+- **Siguiente paso:** O2 en el tramo de calibración. Antes, F1 de la Fase 6
+  (Cierre > WMA30 y trailing stop como condiciones activables) y exponer
+  los parámetros del Coppock en `StrategyConfig`.
 - **Pendiente del usuario:** contenido del vídeo (V1).
 - **Caché:** repoblada el 2026-11-03 (`backtest/.cache/`, periodo `10y`).

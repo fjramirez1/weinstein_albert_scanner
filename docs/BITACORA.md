@@ -270,3 +270,69 @@ recientes con pocas velas (se reintentan solas cada semana); CDAY se
 renombró a DAY (posible alias que falta en `_KNOWN_TICKER_RENAMES`); el
 resto son delistados que ninguna fuente sirve (quiebras como FRC, BBBY,
 ENDP, MNK, o absorciones antiguas).
+
+## 2026-11-03 (8) — D2 y O1: universo limpio y baseline con el motor corregido
+
+**D2** (`eba1c8a` y siguiente commit). `prepare_universe(period="10y",
+universe="historical")` desde la caché (34 s):
+- 79 tickers con precio pero sector "Unknown" (11,6 % del universo, nunca
+  podían pasar F1): sobre todo absorciones de 2016-2019 que ahora sí tienen
+  precio gracias a B1. Añadidos a `HISTORICAL_DELISTED_SECTORS` sin tocar el
+  bloque existente (sin duplicados; CELG/TWTR/XLNX/ETFC/WLTW siguen). SNI y
+  TWX van en Consumer Discretionary (salieron antes de la reforma GICS de
+  2018). CDAY y DAY pasan a Industrials (DAY estaba como Consumer
+  Discretionary; marcados "verificar").
+- Alias CDAY→DAY: recuperado vía Tiingo (407 velas).
+- Resultado: **683/699 con datos, 0 sin sector**. Sin datos (16): APC BBBY
+  CSRA ENDP FDXF FRC FTR HAR HONA LLTC MNK NFX Q SOLS SPLS VYLR (5 altas
+  recientes con < 70 velas; el resto, delistados sin fuente).
+
+**Tramos de evaluación (decisión metodológica).** Datos 2016-11-04 →
+2026-10-30; los indicadores existen desde la semana 57.
+- Calibración: 2017-12-01 → 2022-12-30 (incluye la caída de 2020 y el
+  mercado bajista de 2022). Aquí se comparan variantes en O2.
+- Validación fuera de muestra, disjunta: 2023-01-06 → 2026-10-30. Se mira
+  una sola vez, al final (O3).
+- Limitación: Communication Services no puede pasar F1 hasta ~jun-2019 (XLC).
+
+**O1** — `python -m backtest.estudios.o1_baseline` (reglas de producción:
+F1-F5, S1 -0,5, S2, ranking `momentum`, 10 posiciones, $10.000). Operaciones
+en `historial/backtests/o1_baseline_<tramo>.csv`.
+
+| Modelo | Tramo | Rent. | CAGR | Máx. DD | Sharpe | Ops | Win | PF ($) | % P&L top-5 | SPY CAGR | SPY DD | SPY Sharpe |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| corregido | calibración | −9,40 % | −1,92 % | −30,96 % | −0,06 | 132 | 41,7 % | 0,93 | — (P&L < 0) | 9,47 % | −31,83 % | 0,55 |
+| corregido | validación | +26,75 % | 6,41 % | −19,18 % | 0,46 | 75 | 46,7 % | 1,48 | 123,6 % | 20,58 % | −16,88 % | 1,41 |
+| corregido | completo | +15,47 % | 1,63 % | −30,96 % | 0,18 | 207 | 42,0 % | 1,08 | 285,3 % | 14,26 % | −31,83 % | 0,83 |
+| antiguo | calibración | +2,89 % | 0,56 % | −23,75 % | 0,11 | 133 | 39,8 % | 1,16 | 218,3 % | | | |
+| antiguo | validación | +33,66 % | 7,90 % | −16,61 % | 0,55 | 75 | 48,0 % | 1,65 | 98,9 % | | | |
+| antiguo | completo | +37,55 % | 3,64 % | −24,54 % | 0,32 | 208 | 41,3 % | 1,29 | 93,9 % | | | |
+
+("corregido" = apertura de la semana siguiente + 0,10 % por lado;
+"antiguo" = al cierre de la señal y sin costes.)
+
+**Conclusiones de O1.**
+1. **La estrategia de producción rinde mucho menos que SPY en todos los
+   tramos**: −12,6 pp de CAGR al año en el periodo completo, con Sharpe 0,18
+   frente a 0,83 y un drawdown similar. No compensa ni en rentabilidad ni en
+   riesgo.
+2. El modelo antiguo inflaba el resultado: el CAGR del periodo completo
+   pasaba de 1,63 % a 3,64 % (ejecución al cierre + costes 0). Aun así
+   perdía contra SPY.
+3. Las cifras de `OPTIMIZACION_BACKTEST.md` (p. ej. baseline 8y +26 %,
+   combo2 +120 %) no son comparables: otro universo (sin delistados
+   operables, 79 sin sector), otra ejecución y sin costes.
+
+**Diagnóstico para O2** (periodo completo, modelo corregido):
+- Mercado (desde 2017-12): F5 alcista el 41,6 % de las semanas, S2 bajista
+  el 11,8 %, neutro el 46,6 %. S2 se activa 12 veces y cada vez cierra toda
+  la cartera: 98 salidas, P&L +1.213 $ (retorno medio 1,5 %, 13,7 semanas).
+- S1 (RSC < −0,5): 105 salidas con retorno medio 0,0 % y P&L −418 $; sale
+  de operaciones casi en tablas tras ~20 semanas.
+- Operación mediana −2,48 %; 17,2 semanas de media en posición.
+- Mejores operaciones: TSCO +62,6 %, MPWR +54,6 %, HLT +54,4 %, APH +45,4 %,
+  SEE +41,2 %.
+
+Hipótesis a probar en O2 (en calibración): ranking (MOM elige las acciones
+más extendidas), umbral de S1, Cierre > WMA30 y trailing stop del vídeo
+(Fase 6, F1), parámetros del Coppock (14+11 vs 12+6), nº de posiciones.

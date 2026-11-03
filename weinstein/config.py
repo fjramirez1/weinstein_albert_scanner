@@ -227,7 +227,6 @@ HISTORICAL_DELISTED_SECTORS: dict[str, str] = {
     "AAP":  "Consumer Discretionary",   # Advance Auto Parts -> excluida del índice 2023
     "BBWI": "Consumer Discretionary",   # Bath & Body Works -> excluida del índice
     "CZR":  "Consumer Discretionary",   # Caesars Entertainment -> excluida del índice
-    "DAY":  "Consumer Discretionary",   # Dayforce (antes Ceridian) -> excluida del índice
     "ETSY": "Consumer Discretionary",   # Etsy -> excluida del índice 2023
     "HBI":  "Consumer Discretionary",   # Hanesbrands -> excluida del índice
     "KMX":  "Consumer Discretionary",   # CarMax -> excluida del índice 2024
@@ -396,6 +395,8 @@ HISTORICAL_DELISTED_SECTORS: dict[str, str] = {
     "PBI":   "Industrials",             # Pitney Bowes -> excluida del índice
     "R":     "Industrials",             # Ryder System -> excluida del índice
     "SRCL":  "Industrials",             # Stericycle -> excluida del índice
+    "CDAY":  "Industrials",             # Ceridian HCM -> renombrada a Dayforce (DAY) 2024 (HR software; verificar)
+    "DAY":   "Industrials",             # Dayforce (antes Ceridian) -> excluida del índice (verificar)
     # Information Technology
     "CA":    "Information Technology",  # CA Inc -> adquirida por Broadcom 2018
     "RHT":   "Information Technology",  # Red Hat -> adquirida por IBM 2019
