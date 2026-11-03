@@ -82,9 +82,10 @@ Bugs encontrados en la revisión del 2026-11-03, ordenados por impacto:
       del RSC Mansfield (×10 vs ×100, condiciona los umbrales 0,10 y -0,5),
       parámetros del Coppock (ROC 12+6, WMA10 — el Coppock clásico es 14+11
       mensual), definición de VPM5, regla de desempate, tamaño de cartera.
-- [ ] **V2b.** Coppock: el código original usaba **ROC 14 + 11** y cambió a
-      12 + 6 sin justificar en la refactorización `9155c85` (2026-06-28).
-      Confirmar con el vídeo cuál es el correcto (ver `docs/ESTRATEGIA.md` §10).
+- [x] **V2b.** Coppock ROC 14 + 11 (original) vs 12 + 6 (desde `9155c85`).
+      Según el usuario, probablemente se cambió porque un backtest lo daba
+      más rentable, pero aquel backtest tenía los bugs de la Fase 1. Decisión
+      (2026-11-03): no se resuelve con el vídeo, se mide en **O2**.
 - [ ] **V3.** Corregir las discrepancias que el usuario confirme (con
       `SCANNER_LOGIC_VERSION` → v4). Esta versión fiel es el **baseline** de
       la Fase 4.
@@ -112,7 +113,9 @@ Bugs encontrados en la revisión del 2026-11-03, ordenados por impacto:
       tickers sin precio / sin sector) — antigua "Fase 8".
 - [ ] **O1.** Baseline fiel al vídeo + benchmark, en tramo de calibración.
 - [ ] **O2.** Rehacer el barrido con presupuesto acotado (~20 configs):
-      ranking, umbral S1, F1/F4, nº posiciones. Mirar siempre nº operaciones,
+      ranking, umbral S1, F1/F4, nº posiciones, parámetros del Coppock
+      (14 + 11 vs 12 + 6; hoy fijos en `config.py`, habrá que exponerlos en
+      `StrategyConfig`). Mirar siempre nº operaciones,
       Sharpe, drawdown, profit factor, % PnL en top-5 y vs benchmark.
 - [ ] **O3.** Validar la ganadora en el tramo fuera de muestra (disjunto).
 - [ ] **O4.** Decisión final documentada.
@@ -153,7 +156,7 @@ ampliar el catálogo y hacerlo cómodo de usar.
 - **Siguiente paso:** V1, en cuanto el usuario facilite la transcripción
   o sus notas del vídeo. Mientras tanto, sin red: R1 (módulo de señales
   único para escáner y backtest).
-- **Pendiente del usuario:** contenido del vídeo (V1, incluida la duda del
-  Coppock V2b); permiso para la descarga masiva de datos (D1).
+- **Pendiente del usuario:** contenido del vídeo (V1); permiso para la
+  descarga masiva de datos (D1).
 - **Caché:** `backtest/.cache/` está **vacía** (borrada por el test
   defectuoso el 2026-11-03). Se regenera en D1.

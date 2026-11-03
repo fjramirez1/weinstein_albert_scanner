@@ -179,4 +179,8 @@ Los scripts originales (mayo-junio 2026) calculaban `Coppock = WMA10(ROC14 +
 ROC11)`, los parámetros clásicos de Coppock. En la refactorización al paquete
 `weinstein/` (`9155c85`, 2026-06-28) pasaron a `ROC12 + ROC6` sin que ningún
 commit ni documento lo justifique. Los CSV de `historial/` anteriores a esa
-fecha se generaron con 14 + 11. Pendiente de confirmar con el vídeo (tarea V2).
+fecha se generaron con 14 + 11. Según el usuario, el cambio probablemente
+vino de un backtest que daba 12 + 6 como más rentable; como aquel backtest
+tenía errores (ver `docs/BITACORA.md`, 2026-11-03), ninguno de los dos valores
+está validado. Se compararán en la re-optimización (tarea O2 de la hoja de
+ruta).

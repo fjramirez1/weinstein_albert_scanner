@@ -157,3 +157,8 @@ se quitaron por restar rentabilidad. Revisado el historial de git:
 
 Documentado en `docs/ESTRATEGIA.md` §10 y como Fase 6 (condiciones
 editables) en la hoja de ruta.
+
+**Decisión del usuario (mismo día) sobre el Coppock:** el cambio 14 + 11 →
+12 + 6 pudo deberse a un backtest que lo daba más rentable, pero ese backtest
+no era fiable. Ninguno de los dos valores cuenta como validado; se comparan en
+O2. V2b cerrada como tarea de vídeo.
