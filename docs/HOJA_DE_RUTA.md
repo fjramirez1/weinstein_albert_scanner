@@ -173,7 +173,6 @@ ampliar el catálogo y hacerlo cómodo de usar.
   comprobar las semanas desde la entrada). Después, el estudio O2
   (`backtest/estudios/o2_barrido.py`, ~20 configs SOLO en calibración
   2017-12-01 → 2022-12-30).
-- **En paralelo:** un agente verifica los sectores GICS dudosos (CDAY, DAY,
-  TTD y otros) solo investigando, sin tocar código; aplicar lo que reporte.
+- **Sectores GICS de delistados:** verificados (bitácora 2026-11-03 (9)).
 - **Pendiente del usuario:** contenido del vídeo (V1).
 - **Caché:** repoblada el 2026-11-03 (`backtest/.cache/`, periodo `10y`).

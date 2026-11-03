@@ -336,3 +336,27 @@ en `historial/backtests/o1_baseline_<tramo>.csv`.
 Hipótesis a probar en O2 (en calibración): ranking (MOM elige las acciones
 más extendidas), umbral de S1, Cierre > WMA30 y trailing stop del vídeo
 (Fase 6, F1), parámetros del Coppock (14+11 vs 12+6), nº de posiciones.
+
+## 2026-11-03 (9) — Verificación de sectores GICS de delistados
+
+Un agente revisó, solo investigando, los sectores dudosos de
+`HISTORICAL_DELISTED_SECTORS` con revisiones históricas de Wikipedia y
+comunicados de S&P Dow Jones Indices. Criterio: el sector GICS **vigente
+mientras el ticker estuvo en el índice** (el último, si cambió de sector).
+
+Cambios aplicados en `weinstein/config.py`:
+- **TTD**: Information Technology → **Communication Services** (Advertising
+  desde la reforma GICS de marzo de 2023; salió del índice en 2026-09).
+- **PAYC**: Information Technology → **Industrials** (Human Resource
+  Services desde la reforma de 2023; salió en 2026-03).
+- **TGNA**: Communication Services → **Consumer Discretionary** (salió en
+  junio de 2017, antes de que la reforma de 2018 moviera Media a
+  Communication Services).
+- **DNB**: solo el comentario; salió del índice en abril de 2017, no en 2019.
+- **CDAY / DAY**: confirmados Industrials (confianza alta); se quitan las
+  marcas "verificar".
+
+MBC y LVLT quedan como estaban (confianza media, sin evidencia en contra).
+TTD y PAYC estuvieron en el índice en el tramo de validación, así que las
+cifras de O1 pueden moverse algo; el baseline se recalcula dentro de O2.
+`python -m pytest`: 279 passed.

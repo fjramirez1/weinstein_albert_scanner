@@ -296,7 +296,7 @@ HISTORICAL_DELISTED_SECTORS: dict[str, str] = {
     "IPGP": "Information Technology",   # IPG Photonics -> excluida del índice
     "JNPR": "Information Technology",   # Juniper Networks -> adquirida por HPE 2025
     "MTCH": "Communication Services",   # Match Group (Interactive Media) -> excluida del índice
-    "PAYC": "Information Technology",   # Paycom Software -> excluida del índice
+    "PAYC": "Industrials",             # Paycom Software (Human Resource Services desde la reforma GICS de 2023) -> excluida del índice 2026-03
     "QRVO": "Information Technology",   # Qorvo -> excluida del índice
     "SEDG": "Information Technology",   # SolarEdge Technologies -> excluida del índice
 
@@ -329,7 +329,7 @@ HISTORICAL_DELISTED_SECTORS: dict[str, str] = {
     "LVLT":  "Communication Services",  # Level 3 (Telecom Services) -> adquirida por CenturyLink 2017
     "TFCF":  "Communication Services",  # 21st Century Fox clase A -> adquirida por Disney 2019
     "TFCFA": "Communication Services",  # 21st Century Fox -> adquirida por Disney 2019
-    "TGNA":  "Communication Services",  # Tegna -> excluida del índice
+    "TGNA":  "Consumer Discretionary",  # Tegna (Media, salió en 2017, antes de la reforma GICS de 2018) -> excluida del índice
     "TRIP":  "Communication Services",  # TripAdvisor (Interactive Media) -> excluida del índice
     "VIAB":  "Communication Services",  # Viacom -> fusión con CBS 2019
     "WBD":   "Communication Services",  # Warner Bros. Discovery -> excluida del índice
@@ -388,21 +388,21 @@ HISTORICAL_DELISTED_SECTORS: dict[str, str] = {
     "AYI":   "Industrials",             # Acuity Brands -> excluida del índice
     "BLDR":  "Industrials",             # Builders FirstSource -> excluida del índice
     "COL":   "Industrials",             # Rockwell Collins -> adquirida por United Technologies 2018
-    "DNB":   "Industrials",             # Dun & Bradstreet (Research & Consulting) -> privatizada 2019
+    "DNB":   "Industrials",             # Dun & Bradstreet (Research & Consulting) -> excluida del índice en abril de 2017
     "FLR":   "Industrials",             # Fluor -> excluida del índice
     "LLL":   "Industrials",             # L3 Technologies -> fusión con Harris 2019
     "MBC":   "Industrials",             # MasterBrand (Building Products) -> excluida del índice
     "PBI":   "Industrials",             # Pitney Bowes -> excluida del índice
     "R":     "Industrials",             # Ryder System -> excluida del índice
     "SRCL":  "Industrials",             # Stericycle -> excluida del índice
-    "CDAY":  "Industrials",             # Ceridian HCM -> renombrada a Dayforce (DAY) 2024 (HR software; verificar)
-    "DAY":   "Industrials",             # Dayforce (antes Ceridian) -> excluida del índice (verificar)
+    "CDAY":  "Industrials",             # Ceridian HCM -> renombrada a Dayforce (DAY) 2024 (Human Resource Services)
+    "DAY":   "Industrials",             # Dayforce (antes Ceridian) -> excluida del índice
     # Information Technology
     "CA":    "Information Technology",  # CA Inc -> adquirida por Broadcom 2018
     "RHT":   "Information Technology",  # Red Hat -> adquirida por IBM 2019
     "TDC":   "Information Technology",  # Teradata -> excluida del índice
     "TSS":   "Information Technology",  # Total System Services -> adquirida por Global Payments 2019
-    "TTD":   "Information Technology",  # The Trade Desk (Application Software; verificar) -> excluida del índice
+    "TTD":   "Communication Services",  # The Trade Desk (Advertising desde la reforma GICS de 2023) -> excluida del índice 2026-09
     "YHOO":  "Information Technology",  # Yahoo -> Altaba 2017
     # Materials
     "BMS":   "Materials",               # Bemis -> adquirida por Amcor 2019
