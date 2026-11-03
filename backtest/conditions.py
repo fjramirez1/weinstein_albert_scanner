@@ -47,6 +47,15 @@ from typing import Callable
 import numpy as np
 import pandas as pd
 
+from weinstein.config import (
+    COPPOCK_RECENT_LOOKBACK,
+    MAX_DISTANCIA_WMA30,
+    RSC_EXIT_THRESHOLD,
+    SECTOR_RSC_MIN,
+    VPM_BASE_PERIOD,
+    VPM_SMOOTHING,
+    WMA30_PERIOD,
+)
 from weinstein.indicators import (
     coppock_curve,
     distancia_wma_pct,
@@ -115,8 +124,8 @@ def build_ticker_context(
     if len(close) < 60:
         return None
 
-    wma30 = wma(close, 30)
-    vpm5_series = vpm5(data, 52, 5)
+    wma30 = wma(close, WMA30_PERIOD)
+    vpm5_series = vpm5(data, VPM_BASE_PERIOD, VPM_SMOOTHING)
 
     close_a, sp500_a = close.align(sp500_close, join="inner")
     rsc_activo_full = rsc_mansfield(close_a, sp500_a)
@@ -148,7 +157,10 @@ def build_ticker_context(
     )
 
 
-def precompute_market_series(sp500_close: pd.Series, recent_lookback: int = 4) -> tuple[pd.Series, pd.Series]:
+def precompute_market_series(
+    sp500_close: pd.Series,
+    recent_lookback: int = COPPOCK_RECENT_LOOKBACK,
+) -> tuple[pd.Series, pd.Series]:
     """
     Calcula F5 (Sp500alcista) y S2 (Sp500bajista) semana a semana sobre
     TODO el histórico del S&P 500, sin look-ahead: en la semana `i` solo
@@ -194,7 +206,7 @@ class ConditionSpec:
 
 # ── Condiciones de ENTRADA (F1-F5), combinadas con AND ─────────────────
 
-def _f1_sector_fuerte(ctx: TickerContext, umbral: float = 0.10) -> pd.Series:
+def _f1_sector_fuerte(ctx: TickerContext, umbral: float = SECTOR_RSC_MIN) -> pd.Series:
     """F1: RSC Mansfield del sector >= umbral."""
     return (ctx.rsc_sector >= umbral).fillna(False)
 
@@ -209,7 +221,7 @@ def _f3_rsc_activo_positivo(ctx: TickerContext, umbral: float = 0.0) -> pd.Serie
     return (ctx.rsc_activo > umbral).fillna(False)
 
 
-def _f4_distancia_wma30(ctx: TickerContext, max_distancia: float = 8.0) -> pd.Series:
+def _f4_distancia_wma30(ctx: TickerContext, max_distancia: float = MAX_DISTANCIA_WMA30) -> pd.Series:
     """F4: distancia % al WMA30 por debajo del máximo permitido (sin cota inferior)."""
     return (ctx.dist_wma30_pct < max_distancia).fillna(False)
 
@@ -226,7 +238,7 @@ ENTRY_CONDITIONS: dict[str, ConditionSpec] = {
         name="F1_sector_fuerte",
         label="F1: RSC sector",
         func=_f1_sector_fuerte,
-        default_params={"umbral": 0.10},
+        default_params={"umbral": SECTOR_RSC_MIN},
     ),
     "F2_volumen_positivo": ConditionSpec(
         name="F2_volumen_positivo",
@@ -244,7 +256,7 @@ ENTRY_CONDITIONS: dict[str, ConditionSpec] = {
         name="F4_distancia_wma30",
         label="F4: Distancia WMA30",
         func=_f4_distancia_wma30,
-        default_params={"max_distancia": 8.0},
+        default_params={"max_distancia": MAX_DISTANCIA_WMA30},
     ),
     "F5_mercado_alcista": ConditionSpec(
         name="F5_mercado_alcista",
@@ -257,7 +269,7 @@ ENTRY_CONDITIONS: dict[str, ConditionSpec] = {
 
 # ── Condiciones de SALIDA (S1-S2), combinadas con OR ────────────────────
 
-def _s1_rsc_debil(ctx: TickerContext, umbral: float = -0.5) -> pd.Series:
+def _s1_rsc_debil(ctx: TickerContext, umbral: float = RSC_EXIT_THRESHOLD) -> pd.Series:
     """S1: RSC Mansfield del activo < umbral."""
     return (ctx.rsc_activo < umbral).fillna(False)
 
@@ -274,7 +286,7 @@ EXIT_CONDITIONS: dict[str, ConditionSpec] = {
         name="S1_rsc_debil",
         label="S1: RSC",
         func=_s1_rsc_debil,
-        default_params={"umbral": -0.5},
+        default_params={"umbral": RSC_EXIT_THRESHOLD},
     ),
     "S2_mercado_bajista": ConditionSpec(
         name="S2_mercado_bajista",

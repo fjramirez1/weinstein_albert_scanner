@@ -72,5 +72,9 @@ python -m weinstein portfolio-backtest --universe historical --period 8y   # (re
   historial ordenado (un commit por bloque lógico: fix, refactor, docs...,
   mensajes en español). Autor **solo** con la config local del repo
   (`user.name=fjramirez1`, `user.email=fj.ramirezlopez@um.es`, ya fijada con
-  `git config --local`); nunca tocar la config global. Antes de commitear,
-  `python -m pytest` debe pasar.
+  `git config --local`); nunca tocar la config global. **Sin** líneas
+  `Co-Authored-By` ni otra atribución a la IA en commits o PRs: el único
+  autor visible debe ser `fjramirez1`. Antes de commitear, `python -m pytest`
+  debe pasar.
+- **Sin carpetas extra**: no crear worktrees ni copias del repo; trabajar
+  siempre en esta carpeta.
