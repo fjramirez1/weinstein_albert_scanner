@@ -176,10 +176,14 @@ ampliar el catálogo y hacerlo cómodo de usar.
   variante bate a SPY de forma robusta en calibración.
 - **Hecho:** O3 (bitácora (15)). Reglas F1-F5 / S1-S2 se mantienen; el
   cambio de ranking MOM → VPM5 es lo único robusto en los dos tramos.
-- **Siguiente paso:** O4, decisión del usuario: ¿cambiar el ranking del
-  escáner de entrada (`weinstein/scanner_entry.py`, hoy ordena por MOM) a
-  VPM5? Si sí: P1 (aplicarlo, `SCANNER_LOGIC_VERSION` +1, ranking por
-  defecto de `StrategyConfig` a `vpm5`) y después P2/P3.
+- **Acordado con el usuario (2026-11-04):** el sistema de producción no se
+  toca hasta terminar todo el estudio del backtest; O4 queda aplazada.
+- **Siguiente paso:** ampliar el rango del backtest (Fase 4b). La tabla de
+  cambios de Wikipedia está incompleta antes de ~2011 (11, 8, 13 y 11
+  cambios en 2007-2010, casi nada antes de 2006, cuando lo normal son
+  20-30 al año), así que hace falta otra fuente de membresía histórica
+  para cubrir 2008. Pendiente de que el usuario elija rango y autorice las
+  descargas (~165 delistados nuevos vía Tiingo, ~3 h con dos claves).
 - **Sectores GICS de delistados:** verificados (bitácora 2026-11-03 (9)).
 - **Pendiente del usuario:** contenido del vídeo (V1).
 - **Caché:** repoblada el 2026-11-03 (`backtest/.cache/`, periodo `10y`).
