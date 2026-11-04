@@ -179,6 +179,7 @@ from backtest.portfolio_engine import (
 from backtest.sp500_historical import build_membership_calendar_cached, universe_union
 from backtest.strategy_config import StrategyConfig
 from weinstein.config import (
+    SECTOR_ETF_PROXIES,
     SECTOR_TO_ETF,
     SP500_INDEX,
     VPM_BASE_PERIOD,
@@ -229,6 +230,25 @@ class UniverseInfo:
 
 # ── Descarga + precálculo de contexto (una vez, se reutiliza entre configs) ──
 
+def splice_sector_proxy(etf: pd.Series | None, proxy: pd.Series | None) -> pd.Series | None:
+    """
+    Alarga hacia atrás la serie de un ETF sectorial con la de su sustituto
+    (`SECTOR_ETF_PROXIES`): antes del primer día común se usa el sustituto
+    reescalado para que ambas series coincidan ese día. Sin días comunes, o
+    sin alguna de las dos, devuelve la que haya.
+    """
+    if proxy is None or proxy.empty:
+        return etf
+    if etf is None or etf.empty:
+        return proxy
+    comunes = etf.index.intersection(proxy.index)
+    if comunes.empty:
+        return etf
+    empalme = comunes[0]
+    antes = proxy[proxy.index < empalme] * (float(etf.loc[empalme]) / float(proxy.loc[empalme]))
+    return pd.concat([antes, etf[etf.index >= empalme]])
+
+
 def _download_sector_etfs(period: str) -> dict[str, pd.Series]:
     """
     Descarga (con caché) los ETFs sectoriales usados en F1/S1 (RSC
@@ -238,7 +258,7 @@ def _download_sector_etfs(period: str) -> dict[str, pd.Series]:
     en la llamada a `get_cached_weekly`), para no arriesgarse a dejar un
     ETF "congelado" como sin datos por un fallo puntual de red.
     """
-    unique_etfs = sorted(set(SECTOR_TO_ETF.values()))
+    unique_etfs = sorted(set(SECTOR_TO_ETF.values()) | set(SECTOR_ETF_PROXIES.values()))
     result: dict[str, pd.Series] = {}
     print(f"  → Descargando/cacheando {len(unique_etfs)} ETFs sectoriales...")
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
@@ -254,6 +274,11 @@ def _download_sector_etfs(period: str) -> dict[str, pd.Series]:
                 print(f"    ✓ {etf}")
             else:
                 print(f"    ✗ {etf}: sin datos")
+    for etf, proxy in SECTOR_ETF_PROXIES.items():
+        empalmada = splice_sector_proxy(result.get(etf), result.pop(proxy, None))
+        if empalmada is not None:
+            result[etf] = empalmada
+            print(f"    ↳ {etf} empalmado con {proxy} desde {empalmada.index[0].date()}")
     return result
 
 

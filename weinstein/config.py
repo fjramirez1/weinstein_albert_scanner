@@ -115,6 +115,22 @@ SECTOR_TO_ETF: dict[str, str] = {
     "Utilities":                "XLU",
 }
 
+# ETFs que sustituyen a un sectorial SPDR en el backtest antes de su
+# lanzamiento (XLRE: octubre de 2015; XLC: junio de 2018). Sin ellos, F1
+# nunca se cumple en esos sectores antes de esas fechas. La serie del
+# sustituto se reescala para empalmar con la del ETF el primer día común
+# (el RSC Mansfield no depende de la escala). Solo los usa el backtest:
+# el escáner de producción mira el presente, donde todos los SPDR existen.
+#   IYR (iShares U.S. Real Estate, 2000): inmobiliario/REIT, equivalente
+#       directo de XLRE.
+#   VOX (Vanguard Communication Services, 2004): antes de 2018 era sobre
+#       todo telecos, mientras que XLC incluye Alphabet, Meta o Netflix;
+#       es la mejor aproximación disponible, no un equivalente exacto.
+SECTOR_ETF_PROXIES: dict[str, str] = {
+    "XLRE": "IYR",
+    "XLC": "VOX",
+}
+
 # Alias por si alguna fuente usa nombres GICS antiguos o alternativos en
 # vez de los canónicos de arriba. Clave = variante alternativa,
 # valor = nombre canónico presente en SECTOR_TO_ETF. Se resuelve con

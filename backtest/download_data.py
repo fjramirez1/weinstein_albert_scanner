@@ -69,7 +69,7 @@ load_dotenv()
 
 from backtest import data_cache  # noqa: E402
 from weinstein import data as wdata  # noqa: E402
-from weinstein.config import SECTOR_TO_ETF, SP500_INDEX  # noqa: E402
+from weinstein.config import SECTOR_ETF_PROXIES, SECTOR_TO_ETF, SP500_INDEX  # noqa: E402
 from weinstein.data import (  # noqa: E402
     TiingoBudgetExhaustedError,
     TiingoRateLimitError,
@@ -180,8 +180,8 @@ def _fmt_epoch(ts: float) -> str:
 # ── Universo ──────────────────────────────────────────────────────────
 
 def extra_tickers() -> list[str]:
-    """Series auxiliares siempre necesarias: índice, benchmark y ETFs sectoriales."""
-    return [SP500_INDEX, BENCHMARK_TICKER] + sorted(set(SECTOR_TO_ETF.values()))
+    """Series auxiliares siempre necesarias: índice, benchmark, ETFs sectoriales y sus sustitutos."""
+    return [SP500_INDEX, BENCHMARK_TICKER] + sorted(set(SECTOR_TO_ETF.values()) | set(SECTOR_ETF_PROXIES.values()))
 
 
 def build_universe(period: str, universe: str, desde: str | None = None) -> tuple[list[str], set[str]]:
