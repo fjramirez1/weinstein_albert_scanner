@@ -296,6 +296,7 @@ def _build_context_worker(
 def _build_historical_universe_rows(
     period: str,
     sp500_close: pd.Series,
+    desde: str | pd.Timestamp | None = None,
 ) -> tuple[pd.DataFrame, dict[pd.Timestamp, set[str]], list[str]]:
     """
     Construye el calendario de membresía histórica y el DataFrame de
@@ -330,7 +331,10 @@ def _build_historical_universe_rows(
     (solo entre los que además tengan precio evaluable, filtrado más
     abajo en `prepare_universe`).
     """
-    dates = list(sp500_close.index)
+    # Con period="max" el ^GSPC llega a 1927: la membresía solo se
+    # reconstruye desde `desde` (primera semana que se puede simular).
+    index = sp500_close.index if desde is None else sp500_close.index[sp500_close.index >= pd.Timestamp(desde)]
+    dates = list(index)
     print("  → Reconstruyendo membresía histórica del S&P 500 (Wikipedia, con caché)...")
     calendar = build_membership_calendar_cached(dates)
     union = universe_union(calendar)
@@ -356,6 +360,7 @@ def prepare_universe(
     tickers: list[str] | None = None,
     max_tickers: int | None = None,
     universe: str = "current",
+    desde: str | pd.Timestamp | None = None,
 ) -> tuple[pd.Series, pd.Series, pd.Series, dict[str, TickerContext], UniverseInfo]:
     """
     Descarga (con caché) y precalcula TODO lo necesario para simular:
@@ -378,6 +383,11 @@ def prepare_universe(
         todos los tickers que pertenecieron al índice en algún momento
         del periodo — el motor de simulación filtra por membresía real
         semana a semana en `run_portfolio_backtest`.
+    desde : solo con "historical": primera semana cuya membresía cuenta para
+        el universo. Imprescindible con period="max" (el ^GSPC empieza en
+        1927); los indicadores se calculan igualmente sobre todo el
+        histórico de cada ticker, así que no hace falta restar el
+        calentamiento.
 
     Returns
     -------
@@ -405,7 +415,9 @@ def prepare_universe(
         if universe == "historical":
             print("  ⚠ universe='historical' se ignora cuando se pasa una lista explícita de --tickers.")
     elif universe == "historical":
-        sp500_df, membership_calendar, unknown_sector_candidates = _build_historical_universe_rows(period, sp500_close)
+        sp500_df, membership_calendar, unknown_sector_candidates = _build_historical_universe_rows(
+            period, sp500_close, desde=desde,
+        )
     else:
         sp500_df = load_sp500_tickers()
 

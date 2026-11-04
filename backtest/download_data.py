@@ -127,7 +127,16 @@ def save_state(state: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
-    os.replace(tmp, path)
+    # En Windows el reemplazo falla con PermissionError si otro proceso (el
+    # antivirus, un lector) tiene abierto el destino en ese instante.
+    for intento in range(10):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if intento == 9:
+                raise
+            time.sleep(0.05 * (intento + 1))
 
 
 def _period_state(state: dict, period: str) -> dict:
@@ -175,7 +184,7 @@ def extra_tickers() -> list[str]:
     return [SP500_INDEX, BENCHMARK_TICKER] + sorted(set(SECTOR_TO_ETF.values()))
 
 
-def build_universe(period: str, universe: str) -> tuple[list[str], set[str]]:
+def build_universe(period: str, universe: str, desde: str | None = None) -> tuple[list[str], set[str]]:
     """
     Devuelve (símbolos del universo, constituyentes actuales). Para
     "historical" reutiliza `_build_historical_universe_rows` de
@@ -194,7 +203,7 @@ def build_universe(period: str, universe: str) -> tuple[list[str], set[str]]:
     if sp500 is None:
         print("  ✗ No se pudo obtener ^GSPC (necesario para el calendario histórico).")
         sys.exit(1)
-    rows, _calendar, _unknown = _build_historical_universe_rows(period, sp500["Close"].squeeze())
+    rows, _calendar, _unknown = _build_historical_universe_rows(period, sp500["Close"].squeeze(), desde=desde)
     return sorted(rows["Symbol"]), current
 
 
@@ -492,8 +501,11 @@ def coverage(tickers: list[str], current: set[str], period: str, state: dict) ->
     return rep
 
 
-def resume_command(period: str, universe: str, budget: int | None, daily_budget: int | None, wait: bool) -> str:
+def resume_command(period: str, universe: str, budget: int | None, daily_budget: int | None, wait: bool,
+                   desde: str | None = None) -> str:
     cmd = f"python -m backtest.download_data --period {period} --universe {universe}"
+    if desde is not None:
+        cmd += f" --desde {desde}"
     if budget is not None:
         cmd += f" --tiingo-budget {budget}"
     if daily_budget is not None:
@@ -513,6 +525,7 @@ def print_report(
     tiingo_stats: dict,
     budget: int | None,
     daily_budget: int | None,
+    desde: str | None = None,
 ) -> dict:
     rep = coverage(universe_tickers, current, period, state)
     rep_extra = coverage(extras, set(extras), period, state)
@@ -554,9 +567,9 @@ def print_report(
             print(f"  ⏸ Cupo de Tiingo agotado ({parada}); la siguiente ventana abre "
                   f"{_fmt_epoch(tiingo_stats['reanudar_en'])}.")
         print("  Para reanudar (una ventana):")
-        print(f"    {resume_command(period, universe, budget, daily_budget, False)}")
+        print(f"    {resume_command(period, universe, budget, daily_budget, False, desde)}")
         print("  Para seguir solo hasta terminar (duerme entre ventanas):")
-        print(f"    {resume_command(period, universe, budget, daily_budget, True)}")
+        print(f"    {resume_command(period, universe, budget, daily_budget, True, desde)}")
     else:
         print("\n  ✓ No queda nada pendiente: la caché está completa para este universo.")
     print("=" * 70)
@@ -573,6 +586,7 @@ def run(
     wait: bool = False,
     workers: int = YF_WORKERS,
     skip_tiingo: bool = False,
+    desde: str | None = None,
 ) -> dict:
     state = load_state()
     extras = extra_tickers()
@@ -581,7 +595,7 @@ def run(
     phase_yfinance(extras, set(extras), period, state, workers=workers)
 
     print(f"\n[2/3] Universo '{universe}' y descarga con yfinance...")
-    universe_tickers, current = build_universe(period, universe)
+    universe_tickers, current = build_universe(period, universe, desde=desde)
     print(f"  ✓ {len(universe_tickers)} tickers en el universo ({len(current)} constituyentes actuales)")
     phase_yfinance(universe_tickers, current, period, state, workers=workers)
 
@@ -601,7 +615,7 @@ def run(
             tiingo_stats = {"peticiones": 0, "parada": "interrumpido", "reanudar_en": None}
 
     return print_report(universe_tickers, extras, current, period, universe, state,
-                        tiingo_stats, budget, daily_budget)
+                        tiingo_stats, budget, daily_budget, desde=desde)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -627,11 +641,14 @@ def main(argv: list[str] | None = None) -> int:
                         help="Si Tiingo limita todas las claves, dormir y reintentar hasta terminar.")
     parser.add_argument("--workers", type=int, default=YF_WORKERS, help=f"Hilos para yfinance (por defecto {YF_WORKERS}).")
     parser.add_argument("--skip-tiingo", action="store_true", help="Solo fase yfinance.")
+    parser.add_argument("--desde", default=None, metavar="AAAA-MM-DD",
+                        help="Universo histórico: solo tickers que estuvieron en el índice desde esta fecha "
+                             "(necesario con --period max).")
     args = parser.parse_args(argv)
 
     rep = run(period=args.period, universe=args.universe, budget=args.tiingo_budget,
               daily_budget=args.tiingo_daily_budget, wait=args.wait, workers=args.workers,
-              skip_tiingo=args.skip_tiingo)
+              skip_tiingo=args.skip_tiingo, desde=args.desde)
     return 0 if not rep["pendientes"] else 2
 
 

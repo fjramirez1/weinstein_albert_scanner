@@ -156,6 +156,9 @@ def add_portfolio_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--sweep-demo", action="store_true",
                         help="Ignora el resto de flags de condiciones y compara un set de configuraciones de ejemplo")
     parser.add_argument("--clear-cache", action="store_true", help="Vacía la caché de datos en disco antes de ejecutar")
+    parser.add_argument("--desde", default=None, metavar="AAAA-MM-DD",
+                        help="Universo histórico: membresía desde esta fecha (necesario con --period max). "
+                             "Si no se da --start, la simulación empieza aquí.")
     parser.add_argument("--universe", default="current", choices=["current", "historical"],
                         help="'current' (default): constituyentes ACTUALES del S&P 500 para todo el periodo "
                              "(sesgo de supervivencia). 'historical': reconstruye altas/bajas reales por fecha "
@@ -190,12 +193,13 @@ def run_from_args(args: argparse.Namespace) -> None:
 
     sp500_close, coppock_bullish, coppock_bearish, contexts, universe_info = prepare_universe(
         period=args.period, tickers=tickers, max_tickers=args.max_tickers, universe=args.universe,
+        desde=args.desde,
     )
 
     result = run_portfolio_backtest(
         config, sp500_close, coppock_bullish, coppock_bearish, contexts,
         universe_info=universe_info,
-        start=args.start or default_simulation_start(sp500_close),
+        start=args.start or args.desde or default_simulation_start(sp500_close),
         end=args.end,
     )
     print_report(result, universe_info=universe_info)

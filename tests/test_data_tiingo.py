@@ -13,12 +13,15 @@ import pandas as pd
 import pytest
 
 import weinstein.data as data_mod
+from weinstein.config import DOWNLOAD_PERIOD_ENTRY
 from weinstein.data import (
+    TIINGO_MAX_YEARS,
     TiingoBudgetExhaustedError,
     TiingoRateLimitError,
     _try_tiingo_fallback,
     download_weekly,
     download_weekly_tiingo,
+    period_to_years,
     reset_tiingo_state,
     set_tiingo_budget,
     tiingo_block,
@@ -156,7 +159,7 @@ class TestTryTiingoFallback:
         with patch("weinstein.config.TIINGO_FALLBACK_ENABLED", True):
             with patch("weinstein.data.download_weekly_tiingo", return_value=fake_df) as mock_dl:
                 resultado = _try_tiingo_fallback("TST")
-        mock_dl.assert_called_once_with("TST", raise_on_error=False)
+        mock_dl.assert_called_once_with("TST", period_years=15, raise_on_error=False)
         assert resultado is fake_df
 
 
@@ -172,9 +175,18 @@ class TestDownloadWeeklyConFallback:
                 with patch("weinstein.data.download_weekly_tiingo", return_value=fake_tiingo_df) as mock_tiingo:
                     resultado = download_weekly("DELISTED", max_retries=1)
 
-        mock_tiingo.assert_called_once_with("DELISTED", raise_on_error=False)
+        mock_tiingo.assert_called_once_with(
+            "DELISTED", period_years=period_to_years(DOWNLOAD_PERIOD_ENTRY), raise_on_error=False,
+        )
         assert resultado is not None
         assert len(resultado) == 100
+
+    def test_period_max_pide_todo_el_historico_a_tiingo(self):
+        with patch("weinstein.data.yf.download", return_value=pd.DataFrame()):
+            with patch("weinstein.data.time.sleep"):
+                with patch("weinstein.data.download_weekly_tiingo", return_value=None) as mock_tiingo:
+                    download_weekly("DELISTED", period="max", max_retries=1)
+        assert mock_tiingo.call_args.kwargs["period_years"] == TIINGO_MAX_YEARS
 
     def test_yfinance_y_tiingo_fallan_devuelve_none(self):
         with patch("weinstein.data.yf.download", return_value=pd.DataFrame()):
@@ -337,3 +349,10 @@ class TestDownloadWeeklyConLimite:
                 with patch("weinstein.data.download_weekly_tiingo") as mock_tiingo:
                     assert download_weekly("DELISTED", max_retries=1, use_tiingo=False) is None
         mock_tiingo.assert_not_called()
+
+
+class TestPeriodToYears:
+
+    @pytest.mark.parametrize("period,esperado", [("10y", 11), ("8Y", 9), ("max", TIINGO_MAX_YEARS), ("6mo", 15)])
+    def test_conversion(self, period, esperado):
+        assert period_to_years(period) == esperado

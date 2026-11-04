@@ -575,7 +575,28 @@ def download_weekly_tiingo(
     return None
 
 
-def _try_tiingo_fallback(ticker: str, raise_on_error: bool = False) -> pd.DataFrame | None:
+# Años que se piden a Tiingo con period="max" (su histórico gratuito llega
+# a varias décadas; pedir de más no cuesta peticiones extra).
+TIINGO_MAX_YEARS = 60
+
+
+def period_to_years(period: str) -> int:
+    """
+    Años hacia atrás que se piden a Tiingo para un periodo de yfinance:
+    "10y" → 11 (un año de margen), "max" → TIINGO_MAX_YEARS. Cualquier otro
+    formato ("6mo", "ytd"...) → 15, el valor histórico por defecto.
+    """
+    p = period.strip().lower()
+    if p == "max":
+        return TIINGO_MAX_YEARS
+    if p.endswith("y") and p[:-1].isdigit():
+        return int(p[:-1]) + 1
+    return 15
+
+
+def _try_tiingo_fallback(
+    ticker: str, raise_on_error: bool = False, period_years: int = 15,
+) -> pd.DataFrame | None:
     """
     Punto único de entrada al fallback de Tiingo desde ``download_weekly``.
 
@@ -591,7 +612,7 @@ def _try_tiingo_fallback(ticker: str, raise_on_error: bool = False) -> pd.DataFr
         return None
 
     print(f"  → [{ticker}] yfinance sin datos, probando fallback Tiingo...", file=sys.stderr)
-    return download_weekly_tiingo(ticker, raise_on_error=raise_on_error)
+    return download_weekly_tiingo(ticker, period_years=period_years, raise_on_error=raise_on_error)
 
 
 # ── Descarga OHLCV semanal ────────────────────────────────────────────
@@ -638,7 +659,8 @@ def download_weekly(
         if not use_tiingo:
             return None
         try:
-            return _try_tiingo_fallback(ticker, raise_on_error=raise_on_tiingo_error)
+            return _try_tiingo_fallback(ticker, raise_on_error=raise_on_tiingo_error,
+                                        period_years=period_to_years(period))
         except TiingoRateLimitError:
             if raise_on_rate_limit:
                 raise
