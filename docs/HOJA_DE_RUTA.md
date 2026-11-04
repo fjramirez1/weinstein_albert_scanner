@@ -138,9 +138,10 @@ Investigación externa en [INVESTIGACION.md](INVESTIGACION.md).
 - [x] **T1.** Tramo 2011-2016 (Wikipedia + Tiingo + dataset externo):
       cobertura de precio del 96,7 % (2011) al 99,9 % (bitácora 2026-11-04 (6)).
 - [x] **T1b.** Tiingo por permaTicker funciona gratis (bitácora 2026-11-04 (5)).
-- [ ] **T2.** Tramo 2006-2010 (crisis de 2008): membresía de fja05680
-      (fichero original con sufijos), mapa de alias de 2019 → actual,
-      deslistados en Tiingo.
+- [x] **T2.** Tramo 2006-2010 (crisis de 2008): membresía externa
+      (Johnbrick123, 1970-hoy) y deslistados vía importador + Tiingo.
+      Evaluable: 80,0 % (2006) → 96,3 % (2010); falta lo que solo existe en
+      CRSP sin volumen (bitácora 2026-11-04 (8)).
 - [ ] **T3.** Tramo 2000-2005 y anteriores mientras haya precios gratis
       (Tiingo tiene pocos muertos antes de 2009).
 - [ ] **R0.** Replicar el backtest del vídeo (bitácora 2026-11-04 (4)):

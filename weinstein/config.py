@@ -708,6 +708,26 @@ HISTORICAL_DELISTED_SECTORS: dict[str, str] = {
 }
 
 
+def _sectores_historicos_csv() -> dict[str, str]:
+    """
+    Amplía HISTORICAL_DELISTED_SECTORS con `backtest/datos/sectores_historicos.csv`
+    (ticker, sector, empresa, motivo_salida, confianza, tramo): deslistados de
+    los tramos antiguos de la Fase 4b, clasificados con la estructura GICS
+    actual. Lo del diccionario tiene prioridad.
+    """
+    import csv
+    from pathlib import Path
+
+    ruta = Path(__file__).resolve().parent.parent / "backtest" / "datos" / "sectores_historicos.csv"
+    if not ruta.exists():
+        return {}
+    with ruta.open(encoding="utf-8", newline="") as f:
+        return {fila["ticker"]: fila["sector"] for fila in csv.DictReader(f) if fila.get("sector")}
+
+
+HISTORICAL_DELISTED_SECTORS = {**_sectores_historicos_csv(), **HISTORICAL_DELISTED_SECTORS}
+
+
 def resolve_historical_sector(symbol: str, current_sector_map: dict[str, str]) -> str:
     """
     Resuelve el sector GICS de un ticker para el universo histórico.

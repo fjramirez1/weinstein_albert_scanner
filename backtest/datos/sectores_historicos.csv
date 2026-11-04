@@ -1,0 +1,129 @@
+ticker,sector,empresa,motivo_salida,confianza,tramo
+ABI,Health Care,Applera Corp - Applied Biosystems Group,"adquirida por Invitrogen (Life Technologies), nov-2008",alta,2006-2010
+ABKFQ,Financials,Ambac Financial Group,degradada (jun-2008); quiebra 2010,alta,2006-2010
+ABS,Consumer Staples,Albertson's Inc.,"adquirida por SuperValu / consorcio Cerberus, jun-2006",alta,2006-2010
+ACAS,Financials,American Capital Strategies,degradada (feb-2009),alta,2006-2010
+ACS-201002,Industrials,Affiliated Computer Services,"adquirida por Xerox, feb-2010",media,2006-2010
+ACV,Consumer Staples,Alberto-Culver Co.,"escisión de Sally Beauty, nov-2006 (sale la antigua ACV)",alta,2006-2010
+ADCT,Information Technology,ADC Telecommunications,degradada (jun-2007),alta,2006-2010
+AMCC,Information Technology,Applied Micro Circuits,degradada (may-2006),alta,2006-2010
+ANDW,Information Technology,Andrew Corp.,degradada (sep-2006); luego adquirida por CommScope 2007,alta,2006-2010
+APCC,Industrials,American Power Conversion,"adquirida por Schneider Electric, feb-2007",media,2006-2010
+ASH,Materials,Ashland Inc.,"degradada (nov-2008, al comprar Hercules)",alta,2006-2010
+ASN,Real Estate,Archstone-Smith Trust,"adquirida por Tishman Speyer/Lehman (LBO), oct-2007",alta,2006-2010
+ASO,Financials,AmSouth Bancorporation,"adquirida por Regions Financial, nov-2006",alta,2006-2010
+AT,Communication Services,Alltel Corp.,"privatizada (TPG/Goldman Sachs), nov-2007",alta,2006-2010
+AV,Information Technology,Avaya Inc.,"privatizada (Silver Lake/TPG), oct-2007",alta,2006-2010
+AW,Industrials,Allied Waste Industries,"adquirida por Republic Services, dic-2008",alta,2006-2010
+BC,Consumer Discretionary,Brunswick Corp.,degradada (jun-2008),alta,2006-2010
+BDK,Consumer Discretionary,Black & Decker Corp.,"adquirida por Stanley Works (Stanley Black & Decker), mar-2010",alta,2006-2010
+BJS,Energy,BJ Services Co.,"adquirida por Baker Hughes, abr-2010",alta,2006-2010
+BLS,Communication Services,BellSouth Corp.,"adquirida por AT&T, dic-2006",alta,2006-2010
+BMET,Health Care,Biomet Inc.,"privatizada (consorcio Blackstone/KKR/TPG/Goldman), jul-2007",alta,2006-2010
+BNI,Industrials,Burlington Northern Santa Fe,"adquirida por Berkshire Hathaway, feb-2010",alta,2006-2010
+BOL,Health Care,Bausch & Lomb,"privatizada (Warburg Pincus), oct-2007",alta,2006-2010
+BRL,Health Care,Barr Pharmaceuticals,"adquirida por Teva, dic-2008",alta,2006-2010
+BSC,Financials,Bear Stearns Cos.,"adquirida por JPMorgan Chase, may-2008",alta,2006-2010
+BUD,Consumer Staples,Anheuser-Busch Cos.,"adquirida por InBev, nov-2008",alta,2006-2010
+CAR,Industrials,Cendant Corp.,escisión en Realogy/Wyndham/Travelport y renombrada a Avis Budget Group; sale del índice jul-2006,media,2006-2010
+CBH,Financials,Commerce Bancorp,"adquirida por Toronto-Dominion Bank, mar-2008",alta,2006-2010
+CBSS,Financials,Compass Bancshares,"adquirida por BBVA, sep-2007",alta,2006-2010
+CCTYQ,Consumer Discretionary,Circuit City Stores,degradada (mar-2008); quiebra nov-2008,alta,2006-2010
+CCU,Communication Services,Clear Channel Communications,"privatizada (Bain Capital/THL), jul-2008",alta,2006-2010
+CFC,Financials,Countrywide Financial,"adquirida por Bank of America, jul-2008",alta,2006-2010
+CHIR,Health Care,Chiron Corp.,"adquirida por Novartis, abr-2006",alta,2006-2010
+CIN,Utilities,Cinergy Corp.,"fusionada con Duke Energy, abr-2006",alta,2006-2010
+CITGQ,Financials,CIT Group,degradada (jul-2009); quiebra nov-2009,alta,2006-2010
+CMVT,Information Technology,Comverse Technology,eliminada (ene-2007) por exclusión del Nasdaq (backdating de opciones),alta,2006-2010
+CMX,Health Care,Caremark Rx,"fusionada con CVS (CVS Caremark), mar-2007",alta,2006-2010
+CTB,Consumer Discretionary,Cooper Tire & Rubber,degradada (jul-2006),alta,2006-2010
+CTX,Consumer Discretionary,Centex Corp.,"adquirida por Pulte Homes, ago-2009",alta,2006-2010
+CVG,Industrials,Convergys Corp.,degradada (dic-2009),media,2006-2010
+DCNAQ,Consumer Discretionary,Dana Corp.,"quiebra (Chapter 11, mar-2006); sale feb-2006",alta,2006-2010
+DDR,Real Estate,Developers Diversified Realty,degradada (mar-2009),alta,2006-2010
+DDS,Consumer Discretionary,Dillard's Inc.,degradada (oct-2008),alta,2006-2010
+DJ,Communication Services,Dow Jones & Co.,"adquirida por News Corp, dic-2007",alta,2006-2010
+DYN,Utilities,Dynegy Inc.,degradada (dic-2009),alta,2006-2010
+EC,Materials,Engelhard Corp.,"adquirida por BASF, jun-2006",alta,2006-2010
+EDS-200808,Information Technology,Electronic Data Systems,"adquirida por Hewlett-Packard, ago-2008",media,2006-2010
+EKDKQ,Consumer Discretionary,Eastman Kodak,degradada (dic-2010); quiebra ene-2012,media,2006-2010
+EOP,Real Estate,Equity Office Properties Trust,"adquirida por Blackstone, feb-2007",alta,2006-2010
+EQ,Communication Services,Embarq Corp.,"adquirida por CenturyTel (CenturyLink), jul-2009",alta,2006-2010
+FDC,Financials,First Data Corp.,"privatizada (KKR), sep-2007",alta,2006-2010
+FMCC,Financials,Freddie Mac (Federal Home Loan Mortgage Corp.),"eliminada tras intervención federal (conservatorship), sep-2008",alta,2006-2010
+FNMA,Financials,Fannie Mae (Federal National Mortgage Assn.),"eliminada tras intervención federal (conservatorship), sep-2008",alta,2006-2010
+FSH,Health Care,Fisher Scientific International,"fusionada con Thermo Electron (Thermo Fisher), nov-2006",alta,2006-2010
+FSL,Information Technology,Freescale Semiconductor,"privatizada (consorcio Blackstone/Carlyle/TPG/Permira), dic-2006",alta,2006-2010
+GDT,Health Care,Guidant Corp.,"adquirida por Boston Scientific, abr-2006",alta,2006-2010
+GDW,Financials,Golden West Financial,"adquirida por Wachovia, oct-2006",alta,2006-2010
+GTW,Information Technology,Gateway Inc.,degradada (jul-2006); luego adquirida por Acer 2007,alta,2006-2010
+H-200704,Real Estate,Realogy Corp.,"privatizada (Apollo), abr-2007",alta,2006-2010
+HCR,Health Care,Manor Care Inc.,"privatizada (Carlyle), dic-2007",alta,2006-2010
+HET,Consumer Discretionary,Harrah's Entertainment,"privatizada (Apollo/TPG), ene-2008",alta,2006-2010
+HMA,Health Care,Health Management Associates,"degradada (feb-2007, tras recapitalización)",alta,2006-2010
+HPC,Materials,Hercules Inc.,"adquirida por Ashland, nov-2008",alta,2006-2010
+IAC,Communication Services,IAC/InterActiveCorp (entonces IACI),"degradada (ago-2008) tras escindir HSN, Ticketmaster, Interval y Tree.com",media,2006-2010
+JAVA,Information Technology,Sun Microsystems (antes SUNW),"adquirida por Oracle, ene-2010",alta,2006-2010
+JNY,Consumer Discretionary,Jones Apparel Group,degradada (feb-2009),alta,2006-2010
+JP,Financials,Jefferson-Pilot Corp.,"adquirida por Lincoln National, abr-2006",alta,2006-2010
+KATE,Consumer Discretionary,Liz Claiborne Inc. (entonces LIZ; luego Fifth & Pacific / Kate Spade),degradada (nov-2008),alta,2006-2010
+KBH,Consumer Discretionary,KB Home,degradada (dic-2009),alta,2006-2010
+KG,Health Care,King Pharmaceuticals,degradada (dic-2010); adquirida por Pfizer feb-2011,alta,2006-2010
+KMG,Energy,Kerr-McGee Corp.,"adquirida por Anadarko, ago-2006",alta,2006-2010
+KRI,Communication Services,Knight Ridder,"adquirida por McClatchy, jun-2006",alta,2006-2010
+KSE-200708,Utilities,KeySpan Corp.,"adquirida por National Grid, ago-2007",alta,2006-2010
+LEHMQ,Financials,Lehman Brothers Holdings,"quiebra, sep-2008",alta,2006-2010
+LPX,Materials,Louisiana-Pacific Corp.,degradada (nov-2006),alta,2006-2010
+LU,Information Technology,Lucent Technologies,"fusionada con Alcatel (Alcatel-Lucent), dic-2006",alta,2006-2010
+MBI,Financials,MBIA Inc.,degradada (dic-2009),alta,2006-2010
+MEDI,Health Care,MedImmune Inc.,"adquirida por AstraZeneca, jun-2007",alta,2006-2010
+MEL,Financials,Mellon Financial Corp.,"fusionada con Bank of New York (BNY Mellon), jul-2007",alta,2006-2010
+MER,Financials,Merrill Lynch & Co.,"adquirida por Bank of America, ene-2009",alta,2006-2010
+MIL,Health Care,Millipore Corp.,"adquirida por Merck KGaA, jul-2010",alta,2006-2010
+MTG,Financials,MGIC Investment Corp.,degradada (oct-2008),alta,2006-2010
+MTLQQ,Consumer Discretionary,"General Motors Corp. (antigua, Motors Liquidation)","quiebra, jun-2009",alta,2006-2010
+MTW,Industrials,Manitowoc Co.,degradada (ago-2009),alta,2006-2010
+MYG,Consumer Discretionary,Maytag Corp.,"adquirida por Whirlpool, mar-2006",alta,2006-2010
+NAV,Industrials,Navistar International,eliminada (dic-2006) por retraso en la presentación de estados financieros,alta,2006-2010
+NCC,Financials,National City Corp.,"adquirida por PNC, dic-2008",alta,2006-2010
+NCR,Information Technology,NCR Corp.,degradada (sep-2007) al escindir Teradata,alta,2006-2010
+NFB,Financials,North Fork Bancorporation,"adquirida por Capital One, dic-2006",alta,2006-2010
+NYT,Communication Services,New York Times Co.,degradada (dic-2010),alta,2006-2010
+ODP,Consumer Discretionary,Office Depot,degradada (dic-2010),alta,2006-2010
+OMX,Consumer Discretionary,OfficeMax Inc.,degradada (jun-2008),alta,2006-2010
+PBG,Consumer Staples,Pepsi Bottling Group,"adquirida por PepsiCo, feb-2010",alta,2006-2010
+PD,Materials,Phelps Dodge Corp.,"adquirida por Freeport-McMoRan, mar-2007",alta,2006-2010
+PGL,Utilities,Peoples Energy Corp.,"adquirida por WPS Resources (Integrys), feb-2007",alta,2006-2010
+PMCS,Information Technology,PMC-Sierra Inc.,degradada (jun-2007),alta,2006-2010
+PTV,Materials,Pactiv Corp.,"adquirida por Reynolds Group, nov-2010",alta,2006-2010
+RBK,Consumer Discretionary,Reebok International,"adquirida por Adidas, ene-2006",alta,2006-2010
+ROH,Materials,Rohm and Haas Co.,"adquirida por Dow Chemical, abr-2009",alta,2006-2010
+RX,Health Care,IMS Health Inc.,"privatizada (TPG/CPP), feb-2010",alta,2006-2010
+SAF-200809,Financials,Safeco Corp.,"adquirida por Liberty Mutual, sep-2008",alta,2006-2010
+SANM,Information Technology,Sanmina-SCI Corp.,degradada (jun-2007),alta,2006-2010
+SBL,Information Technology,Symbol Technologies,"adquirida por Motorola, ene-2007",alta,2006-2010
+SEBL,Information Technology,Siebel Systems,"adquirida por Oracle, ene-2006",alta,2006-2010
+SFA,Information Technology,Scientific-Atlanta,"adquirida por Cisco, feb-2006",alta,2006-2010
+SGP,Health Care,Schering-Plough Corp.,"fusionada con Merck & Co., nov-2009",alta,2006-2010
+SII,Energy,Smith International,"adquirida por Schlumberger, ago-2010",alta,2006-2010
+SLR,Information Technology,Solectron Corp.,"adquirida por Flextronics, oct-2007",alta,2006-2010
+SNV,Financials,Synovus Financial Corp.,degradada (dic-2007) al escindir TSYS (que entra en el índice 1-ene-2008),alta,2006-2010
+SOV-200901,Financials,Sovereign Bancorp,"adquirida por Banco Santander, ene-2009",alta,2006-2010
+SSP,Communication Services,E.W. Scripps Co.,degradada (jun-2008) al escindir Scripps Networks Interactive,alta,2006-2010
+STR,Utilities,Questar Corp.,degradada (jun-2010) al escindir QEP Resources,alta,2006-2010
+TEK,Information Technology,Tektronix Inc.,"adquirida por Danaher, nov-2007",alta,2006-2010
+TEX,Industrials,Terex Corp.,degradada (oct-2008),alta,2006-2010
+TIN,Materials,Temple-Inland Inc.,degradada (dic-2007) al escindir Guaranty Financial y Forestar,alta,2006-2010
+TRB,Communication Services,Tribune Co.,"privatizada (Sam Zell/ESOP), dic-2007",alta,2006-2010
+TSG,Consumer Discretionary,Sabre Holdings Corp.,"privatizada (Silver Lake/TPG), mar-2007",baja,2006-2010
+TXU,Utilities,TXU Corp.,"privatizada (KKR/TPG; Energy Future Holdings), oct-2007",alta,2006-2010
+UIS,Information Technology,Unisys Corp.,degradada (nov-2008),alta,2006-2010
+UST,Consumer Staples,UST Inc.,"adquirida por Altria, ene-2009",alta,2006-2010
+UVN,Communication Services,Univision Communications,"privatizada (consorcio Saban/TPG/THL), mar-2007",alta,2006-2010
+WAMUQ,Financials,Washington Mutual,"quiebra (intervención FDIC, venta a JPMorgan), sep-2008",alta,2006-2010
+WB-200812,Financials,Wachovia Corp.,"adquirida por Wells Fargo, dic-2008",alta,2006-2010
+WEN,Consumer Discretionary,Wendy's International,"fusionada con Triarc (Wendy's/Arby's Group), sep-2008",alta,2006-2010
+WFT,Energy,Weatherford International,eliminada (feb-2009) al redomiciliarse en Suiza,alta,2006-2010
+WWY,Consumer Staples,Wm. Wrigley Jr. Co.,"adquirida por Mars, oct-2008",alta,2006-2010
+WYE,Health Care,Wyeth,"adquirida por Pfizer, oct-2009",alta,2006-2010
+XTO,Energy,XTO Energy,"adquirida por ExxonMobil, jun-2010",alta,2006-2010

@@ -947,3 +947,35 @@ real.
 **Pendiente:** O1-O3 se hicieron con la membresía de Wikipedia, que tenía
 el sesgo de META y similares. Hay que rehacerlos con la nueva (H3 de la
 hoja de ruta).
+
+## 2026-11-04 (8) — Tramo 2006-2010: cobertura alcanzable con datos gratis
+
+- La membresía externa cubre el tramo con 500 miembros por semana.
+- **Precios:**
+  - `importar_externo --auto --desde 2006-01-01 --hasta 2010-12-31`:
+    42 importados de 153 candidatos. Los demás solo tienen filas de CRSP,
+    sin volumen.
+  - permaTicker de Tiingo para 62 deslistados con nombre revisado, en el
+    nuevo `backtest/datos/simbolos_tiingo.csv` que se carga encima de
+    `TIINGO_PRICE_SYMBOLS`. Solo 13 traen historia: Tiingo apenas conserva
+    empresas muertas antes de 2009.
+- **Sectores:** un agente clasificó 128, con 120 de confianza alta, 7 media
+  (ACS, CVG, EDS, APCC, CAR, EKDKQ, IAC) y 1 baja (TSG, Sabre). Están en
+  el nuevo `backtest/datos/sectores_historicos.csv`, cargado encima de
+  `HISTORICAL_DELISTED_SECTORS`.
+- **Cobertura del tramo** (`python -m backtest.estudios.cobertura --desde 2006-01-01 --hasta 2010-12-31`):
+
+  | Año | 2006 | 2007 | 2008 | 2009 | 2010 |
+  |---|---|---|---|---|---|
+  | % semanas-miembro evaluables | 80,0 | 87,1 | 91,8 | 94,2 | 96,3 |
+
+  Faltan sobre todo las quiebras de 2008 (LEHMQ, BSC, WB, CFC, WAMUQ,
+  MTLQQ, NCC, CITGQ) y adquisiciones de 2006-2007 (BLS, KMI, HCA, DG,
+  TXU...). Gratis solo hay sus cierres de CRSP, sin volumen, así que VPM5
+  no se puede calcular. **Sesgo al alza**: el backtest no puede comprar las
+  que se hundieron. El tamaño del sesgo no se conoce; aun así es el único
+  periodo disponible con una crisis larga (2008).
+- **Tramo 2000-2005** (solo medido, sin Tiingo): tras importar 33 nombres
+  más, la cobertura de precio es del 62,7 % (2000) al 75,5 % (2005). Falta
+  más de un tercio del índice. Propuesta al usuario: rango principal desde
+  2006 y 2000-2005 solo como contraste marcado.

@@ -76,3 +76,14 @@ def test_etiqueta_con_sufijo_hereda_el_sector_del_ticker_base():
     assert resolve_historical_sector("HAR-201703", {}) == resolve_historical_sector("HAR", {})
     assert resolve_historical_sector("ZZZZ-201601", {}) == "Unknown"
     assert resolve_historical_sector("BRK-B", {}) == "Unknown"     # guion de clase, no sufijo de fecha
+
+
+def test_sectores_del_csv_son_gics_validos():
+    import csv
+    from pathlib import Path
+
+    from weinstein.config import HISTORICAL_DELISTED_SECTORS, SECTOR_TO_ETF
+    ruta = Path(__file__).resolve().parent.parent / "backtest" / "datos" / "sectores_historicos.csv"
+    filas = list(csv.DictReader(ruta.open(encoding="utf-8")))
+    assert filas and all(f["sector"] in SECTOR_TO_ETF for f in filas)
+    assert all(HISTORICAL_DELISTED_SECTORS[f["ticker"]] for f in filas)
