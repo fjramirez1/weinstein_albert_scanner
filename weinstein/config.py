@@ -279,6 +279,27 @@ TIINGO_PRICE_SYMBOLS: dict[str, str] = {
     "HWM-201610":  "HWM",             # Alcoa Inc antes de separar Alcoa Corp (2016-11); Tiingo guarda su historia bajo HWM
 }
 
+
+
+def _simbolos_tiingo_csv() -> dict[str, str]:
+    """
+    Amplía TIINGO_PRICE_SYMBOLS con `backtest/datos/simbolos_tiingo.csv`
+    (ticker, simbolo_tiingo, empresa, fuente): permaTickers de deslistados de
+    los tramos antiguos, demasiados para mantenerlos aquí a mano. Lo del
+    diccionario de arriba tiene prioridad.
+    """
+    import csv
+    from pathlib import Path
+
+    ruta = Path(__file__).resolve().parent.parent / "backtest" / "datos" / "simbolos_tiingo.csv"
+    if not ruta.exists():
+        return {}
+    with ruta.open(encoding="utf-8", newline="") as f:
+        return {fila["ticker"]: fila["simbolo_tiingo"] for fila in csv.DictReader(f) if fila.get("simbolo_tiingo")}
+
+
+TIINGO_PRICE_SYMBOLS = {**_simbolos_tiingo_csv(), **TIINGO_PRICE_SYMBOLS}
+
 # Tickers ACTUALES cuya empresa anterior con el mismo símbolo también estuvo
 # en el índice. En las fechas anteriores al corte, el calendario de membresía
 # usa un ticker propio (convención de Norgate: TICKER-AAAAMM, mes de salida)
