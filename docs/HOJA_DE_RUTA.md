@@ -75,7 +75,7 @@ Bugs encontrados en la revisión del 2026-11-03, ordenados por impacto:
 
 ## Fase 2 — Fidelidad al vídeo
 
-- [ ] **V1.** Obtener el contenido del vídeo (transcripción o notas del
+- [x] **V1.** (✅ 2026-11-04, transcripción de YouTube; bitácora 2026-11-04 (4)) Obtener el contenido del vídeo (transcripción o notas del
       usuario) y listar las reglas exactas que da.
 - [ ] **V2.** Tabla regla a regla *vídeo vs código* en `docs/ESTRATEGIA.md`.
       Puntos a confirmar: WMA30 vs SMA30 (Weinstein clásico usa SMA30), escala
