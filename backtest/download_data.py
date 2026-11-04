@@ -69,7 +69,7 @@ load_dotenv()
 
 from backtest import data_cache  # noqa: E402
 from weinstein import data as wdata  # noqa: E402
-from weinstein.config import SECTOR_ETF_PROXIES, SECTOR_TO_ETF, SP500_INDEX  # noqa: E402
+from weinstein.config import SECTOR_ETF_PROXIES, SECTOR_TO_ETF, SP500_INDEX, TIINGO_PRICE_SYMBOLS  # noqa: E402
 from weinstein.data import (  # noqa: E402
     TiingoBudgetExhaustedError,
     TiingoRateLimitError,
@@ -241,6 +241,12 @@ def phase_yfinance(
         st = data_cache.cache_status(t, period, t in current)
         if st in ("ok", "nodata"):
             continue
+        if t in TIINGO_PRICE_SYMBOLS and t not in current:
+            # yfinance devolvería la empresa que reutiliza el ticker.
+            if t not in pend:
+                ps["pendientes_tiingo"].append(t)
+                pend.add(t)
+            continue
         if st == "falta" and t in pend and t not in current:
             continue  # delistado que yfinance ya no sirvió: va directo a Tiingo
         if st == "falta" and ps["vigentes_sin_datos"].get(t) == lcf:
@@ -407,7 +413,8 @@ def phase_tiingo(
                     continue  # no cabe con su alias: se intenta en la siguiente ventana
             before = wdata.tiingo_requests_made()
             try:
-                df = wdata.download_weekly_tiingo(t, period_years=wdata.period_to_years(period),
+                df = wdata.download_weekly_tiingo(TIINGO_PRICE_SYMBOLS.get(t, t),
+                                                  period_years=wdata.period_to_years(period),
                                                   raise_on_error=True)
             except TiingoBudgetExhaustedError:
                 df, stop_reason = None, "presupuesto"

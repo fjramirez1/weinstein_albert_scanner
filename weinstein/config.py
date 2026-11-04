@@ -211,6 +211,23 @@ HISTORICAL_TICKER_ALIASES: dict[str, str] = {
     "SAI":   "LDOS",   # SAIC -> Leidos (2013)
 }
 
+# Delistados cuyo ticker usa hoy OTRA empresa (yfinance y Tiingo devuelven
+# la nueva) pero que Tiingo conserva bajo un símbolo propio. Solo para el
+# backtest (`backtest/data_cache.py`, `backtest/download_data.py`): sus
+# precios se piden a Tiingo con ese símbolo y nunca a yfinance. El escáner
+# de producción no lo usa (NE, por ejemplo, es hoy otra empresa cotizada).
+# Fuente: supported_tickers.csv de Tiingo (bitácora 2026-11-04 (3)). Los
+# reciclados sin símbolo propio (S, STI, CA, EMC, DOW antigua...) solo se
+# podrían recuperar con el permaTicker de Tiingo, no disponible gratis.
+TIINGO_PRICE_SYMBOLS: dict[str, str] = {
+    "TE":   "TE1",     # TECO Energy (1993-2016); TE es hoy otra empresa
+    "DTV":  "DTV1",    # DirecTV (2003-2015)
+    "NE":   "NEBLQ",   # Noble Corp antigua (quebró en 2020); NE es la Noble actual
+    "SHLD": "SHLDQ",   # Sears Holdings (quiebra 2018)
+    "SLE":  "HSH",     # Sara Lee -> Hillshire Brands (2012)
+    "SBNY": "SBNY",    # Signature Bank, ahora en OTC; yfinance da otra serie
+}
+
 HISTORICAL_DELISTED_SECTORS: dict[str, str] = {
     # Consumer Discretionary
     "TWTR": "Communication Services",   # Twitter -> adquirida por X Corp (privada) 2022

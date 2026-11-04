@@ -229,3 +229,31 @@ class TestTiingoDesdeLaCache:
         with patch.object(data_cache, "download_weekly", side_effect=TiingoUnavailableError("HTTP 503", "http")):
             assert data_cache.get_cached_weekly("OLD", "5y", is_current_constituent=False) is None
         assert data_cache.cache_stats()["n_fallos_cacheados"] == 0
+
+
+class TestSimbolosDePrecioTiingo:
+    """Delistados con ticker reutilizado: sus precios salen de Tiingo con otro símbolo."""
+
+    def test_delistado_con_simbolo_propio_va_a_tiingo_y_no_a_yfinance(self, monkeypatch):
+        llamadas = {}
+
+        def fake_tiingo(symbol, period_years=15, raise_on_error=False, **_kw):
+            llamadas["tiingo"] = (symbol, period_years)
+            return _fake_df(end=pd.Timestamp("2016-06-24"))
+
+        def fake_yf(*_a, **_kw):
+            raise AssertionError("no debe llamar a yfinance")
+
+        monkeypatch.setattr(data_cache, "download_weekly_tiingo", fake_tiingo)
+        monkeypatch.setattr(data_cache, "download_weekly", fake_yf)
+        monkeypatch.setitem(data_cache.TIINGO_PRICE_SYMBOLS, "OLDT", "OLDT1")
+        out = data_cache.get_cached_weekly("OLDT", "max", is_current_constituent=False)
+        assert out is not None
+        assert llamadas["tiingo"] == ("OLDT1", 60)
+
+    def test_si_es_constituyente_actual_usa_yfinance(self, monkeypatch):
+        monkeypatch.setitem(data_cache.TIINGO_PRICE_SYMBOLS, "OLDT", "OLDT1")
+        monkeypatch.setattr(data_cache, "download_weekly_tiingo",
+                            lambda *a, **k: (_ for _ in ()).throw(AssertionError("no Tiingo")))
+        monkeypatch.setattr(data_cache, "download_weekly", lambda *a, **k: _fake_df())
+        assert data_cache.get_cached_weekly("OLDT", "max", is_current_constituent=True) is not None

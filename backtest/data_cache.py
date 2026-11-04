@@ -79,12 +79,15 @@ from pathlib import Path
 
 import pandas as pd
 
+from weinstein.config import TIINGO_PRICE_SYMBOLS
 from weinstein.data import (
     TiingoRateLimitError,
     TiingoUnavailableError,
     download_weekly,
+    download_weekly_tiingo,
     last_closed_friday,
     normalize_weekly_bars,
+    period_to_years,
 )
 
 CACHE_DIR = Path(__file__).parent / ".cache"
@@ -242,15 +245,22 @@ def get_cached_weekly(
             return cached
 
     try:
-        # Tiingo solo para delistados: un vigente lo sirve yfinance y, si
-        # tiene pocas velas (alta reciente), Tiingo no tendría más; así no
-        # se gasta cupo en cada ejecución del backtest.
-        data = download_weekly(
-            ticker, period=period,
-            use_tiingo=not is_current_constituent,
-            raise_on_rate_limit=True,
-            raise_on_tiingo_error=True,
-        )
+        if not is_current_constituent and ticker in TIINGO_PRICE_SYMBOLS:
+            # Ticker reutilizado por otra empresa: yfinance devolvería la
+            # nueva; Tiingo conserva la antigua con otro símbolo.
+            data = download_weekly_tiingo(
+                TIINGO_PRICE_SYMBOLS[ticker], period_years=period_to_years(period), raise_on_error=True,
+            )
+        else:
+            # Tiingo solo para delistados: un vigente lo sirve yfinance y, si
+            # tiene pocas velas (alta reciente), Tiingo no tendría más; así no
+            # se gasta cupo en cada ejecución del backtest.
+            data = download_weekly(
+                ticker, period=period,
+                use_tiingo=not is_current_constituent,
+                raise_on_rate_limit=True,
+                raise_on_tiingo_error=True,
+            )
     except (TiingoRateLimitError, TiingoUnavailableError) as exc:
         # Tiingo limitado o caído: NO es "sin datos". Sin marcador `.nodata`;
         # se reintentará en otra ejecución (ver docstring del módulo).
