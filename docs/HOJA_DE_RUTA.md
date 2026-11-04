@@ -144,6 +144,11 @@ Investigación externa en [INVESTIGACION.md](INVESTIGACION.md).
       deslistados en Tiingo.
 - [ ] **T3.** Tramo 2000-2005 y anteriores mientras haya precios gratis
       (Tiingo tiene pocos muertos antes de 2009).
+- [ ] **R0.** Replicar el backtest del vídeo (bitácora 2026-11-04 (4)):
+      comparar año a año con sus cifras (2022 −5,6 %, 2025 +3,1 %, 2008
+      +11,2 %...). Primero 2022, donde nuestro −21,9 % no cuadra. Probar
+      definición y parámetros del Coppock, MA30 simple en el ranking y el
+      índice de precios sin dividendos como benchmark.
 - [ ] **H1.** Benchmarks justos: RSP (igual peso) y carteras aleatorias
       (cientos de semillas) además de SPY.
 - [ ] **H2.** IC semanal de cada señal (VPM5, MOM, MAD, máximo de 52
@@ -209,5 +214,5 @@ ampliar el catálogo y hacerlo cómodo de usar.
   para cubrir 2008. Pendiente de que el usuario elija rango y autorice las
   descargas (~165 delistados nuevos vía Tiingo, ~3 h con dos claves).
 - **Sectores GICS de delistados:** verificados (bitácora 2026-11-03 (9)).
-- **Pendiente del usuario:** contenido del vídeo (V1).
+- **V1:** ✅ contenido del vídeo leído de la transcripción de YouTube (bitácora 2026-11-04 (4)).
 - **Caché:** repoblada el 2026-11-03 (`backtest/.cache/`, periodo `10y`).

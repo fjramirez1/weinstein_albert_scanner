@@ -716,3 +716,84 @@ Dos agentes investigaron, sin tocar el repo. Resumen completo en
   distancia a la WMA30; es al revés, MOM ordena de más a menos extendida
   dentro del tope del 8 % de F4.
 - Nuevas tareas en la hoja de ruta (Fase 4b): T1-T3, H1-H3.
+
+## 2026-11-04 (4) — V1: contenido del vídeo (transcripción de YouTube)
+
+Fuente: transcripción automática del webinario "¿Por qué el método Weinstein
+puede mejorar tus inversiones?" (canal Bolsa General, Albert Albareda con
+BBVA, ~2 h, emitido en torno al 30-10-2025), leída con el navegador
+integrado. Es transcripción automática, así que puede haber cifras o
+signos mal reconocidos.
+
+**Backtest del autor.** AmiBroker con datos de Norgate sin sesgo de
+supervivencia: 1.879 tickers incluidos los deslistados, no los 503 actuales.
+Semanal, del 1990-01-01 al 2025-10-29, 10 posiciones (10 % por señal),
+capital inicial de 50.000, "comisiones generosas" (27.414 en total). Las
+señales se miran al cierre semanal y se opera en la primera sesión de la
+semana siguiente. Dice que optimizó con 1990-2000 y comprobó 2000-2025.
+
+**Reglas que describe** (confirman las de `docs/ESTRATEGIA.md`):
+- Entrada, todas a la vez:
+  1. RSC Mansfield del SECTOR ≥ 0,10 (sector GICS de Norgate frente al S&P 500).
+  2. VPM5 > 0: z-score del volumen frente a la media y desviación de 52
+     semanas, suavizado 5 semanas.
+  3. RSC Mansfield del valor > 0.
+  4. Distancia < 8 % sobre la media PONDERADA de 30 semanas.
+  5. Cierre > media de 30 semanas.
+  6. Coppock SEMANAL del S&P 500 alcista. El indicador tiene tres
+     estados: verde (alcista, "inicio desde negativo o continuación"),
+     rojo y sin color. No da los parámetros ROC/WMA.
+- Salida, basta una:
+  1. RSC Mansfield del valor "por debajo de 0,5". La transcripción no
+     recoge el signo; lo coherente con la entrada (> 0) es −0,5.
+  2. Trailing stop: mínimo de las últimas 15 velas semanales.
+  3. Coppock bajista.
+- Desempate: MOM = (C − MA30) / MA30 con media **SIMPLE** de 30 ("no media
+  ponderada, pero sí media de 30"), de mayor a menor. Nuestro `momentum`
+  usa la WMA30: diferencia menor, pendiente de probar.
+
+**Escala del RSC confirmada ×10.** Cita AMD con Mansfield de 6,21 y el
+sector tecnológico con 0,84 en octubre de 2025. Con ×10, AMD ≈ +62 %
+sobre la media de su ratio, que encaja con su subida de 2025; con ×100
+sería un +6 %. Coincide con nuestro `rsc_mansfield`.
+
+**Resultados que muestra** (1990-2025, S&P 500 "comprar y mantener" =
+8,59 % anual, que es el índice de precios SIN dividendos; con dividendos
+≈ 10,5-11 %):
+
+| Config | CAGR | Máx. DD | Ops | Acierto | PF | Tiempo invertido |
+|---|---|---|---|---|---|---|
+| 6 entradas + 3 salidas | 13,70 % | −26,31 % | 958-961 | 46,62 % | 2,24 | 75,46 % |
+| sin sector (F1) | 12,81 % | −21,31 % | ~1.058 | | | |
+| sin volumen (F2) | 12,29 % | | 983 | | | |
+| sin RSC del valor (F3) | 13,86 % | −32,50 % | | | | |
+| sin distancia < 8 % (F4) | 12,06 % | −35,02 % | | | | |
+| sin cierre > media (F6) | 14,30 % | −20,42 % | 998 | | | |
+| sin Coppock de entrada (F5) | 10,95 % | | 3.120 | | | |
+| sin salida por RSC (S1) | 13,23 % | −28,95 % | 911 | | | |
+| sin trailing stop (S3) | 14,33 % | −21,37 % | 815 | | | |
+| sin salida Coppock (S2) | 9,87 % | −36,21 % | | | | |
+| **final: sin F6 ni S3** (= nuestra producción) | **15,32 %** | −26,84 % | 852 | 51,41 % | 2,40 | 77,94 % |
+| final con 5 posiciones | 16,37 % | −29,03 % | | | | |
+| *S&P 500 (precio)* | *8,59 %* | *−56,24 %* | | | | |
+
+Años citados de la config final: 2008 **+11,2 %**; 2000-2002 positivos;
+2022 **−5,6 %**; 2025 (hasta octubre) +3,1 %; peor drawdown en 2000,
+−22 % en el COVID y −18 % en marzo-abril de 2025 (el Coppock se puso rojo
+y vendió todo). Con las 9 reglas: 2008 +17,7 %, 2000 +40,4 %, 2022 −16,8 %,
+2025 −4,6 %.
+
+**Lectura.**
+1. Según su backtest el sistema sí bate al S&P 500 a largo plazo, con
+   menos de la mitad de drawdown. Gran parte de la ventaja viene de los
+   bajistas largos (2000-02, 2008), justo donde la literatura dice que
+   ayuda un filtro de mercado (`docs/INVESTIGACION.md`) y que nuestro
+   rango 2017-2026 no incluye.
+2. **Discrepancia a investigar:** 2022 da −5,6 % en su backtest y −21,9 %
+   en el nuestro (O2 ronda 1, baseline). Apunta a una diferencia de
+   implementación (parámetros o definición del Coppock, MA30 simple en el
+   ranking, datos) más que de reglas.
+3. Las reglas F6 y S3 se quitaron mirando el periodo completo, así que
+   esa elección es dentro de muestra.
+4. Pendiente: replicar sus cifras por año en los años comunes (2011-2025
+   con el tramo 1; 2008 y 2000-02 cuando haya datos).
