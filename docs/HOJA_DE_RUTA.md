@@ -130,6 +130,30 @@ Bugs encontrados en la revisión del 2026-11-03, ordenados por impacto:
       robusto en los dos tramos).
 - [ ] **O4.** Decisión final documentada.
 
+## Fase 4b — Ampliar el rango hacia atrás y nuevas hipótesis
+
+Acordado el 2026-11-04: el sistema no se toca hasta terminar el backtest.
+Investigación externa en [INVESTIGACION.md](INVESTIGACION.md).
+
+- [ ] **T1.** Tramo 2011-2016 (Wikipedia + Tiingo): descarga `max`,
+      sectores, alias, símbolos propios de Tiingo, cobertura ≥ 95 %.
+- [ ] **T1b.** Probar Tiingo por permaTicker (gratis, sin verificar) para
+      los tickers reutilizados (S, STI, CA, EMC, DOW, SNDK, DELL, CEG...).
+- [ ] **T2.** Tramo 2006-2010 (crisis de 2008): membresía de fja05680
+      (fichero original con sufijos), mapa de alias de 2019 → actual,
+      deslistados en Tiingo.
+- [ ] **T3.** Tramo 2000-2005 y anteriores mientras haya precios gratis
+      (Tiingo tiene pocos muertos antes de 2009).
+- [ ] **H1.** Benchmarks justos: RSP (igual peso) y carteras aleatorias
+      (cientos de semillas) además de SPY.
+- [ ] **H2.** IC semanal de cada señal (VPM5, MOM, MAD, máximo de 52
+      semanas, RSC, 12-1) sobre todo el universo.
+- [ ] **H3.** Rehacer O2/O3 con el rango largo y las hipótesis de
+      INVESTIGACION.md §3: F4/ranking, filtro de mercado lento (Coppock
+      61/48/43, media de 43 semanas, momentum de 12 meses, amplitud), N =
+      10/20/30, salidas lentas. Diseñar antes la partición en calibración y
+      validación (walk-forward) y el pre-registro.
+
 ## Fase 5 — Producción y documentación final
 
 - [ ] **P1.** Aplicar la configuración ganadora a `weinstein/config.py` y al

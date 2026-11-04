@@ -682,3 +682,37 @@ el repo):
   considera candidatos. Simplemente faltan.
 - Un agente investiga si Tiingo (o Stooq) distingue la empresa antigua de
   un ticker reutilizado, sin gastar peticiones de la API.
+
+## 2026-11-04 (3) — Investigación externa: fuentes de datos y estrategias parecidas
+
+Dos agentes investigaron, sin tocar el repo. Resumen completo en
+`docs/INVESTIGACION.md`. Lo principal:
+
+- **Tickers reutilizados:** Tiingo con la cuenta gratuita sirve solo al
+  dueño actual por ticker. Seis empresas antiguas tienen símbolo propio,
+  ya configurado en `TIINGO_PRICE_SYMBOLS` (`9fb14ce`): TE1, DTV1, NEBLQ,
+  SHLDQ, HSH y SBNY. El repo Johnbrick123/sp500-data dice obtener el resto
+  por permaTicker con el plan gratuito; la primera prueba no se pudo hacer
+  porque las 3 claves estaban agotadas por la descarga (pendiente, T1b).
+- **Sin pagar, la cobertura buena de precios llega hasta ~2009-2010.**
+  Tiingo apenas tiene empresas muertas antes de 2009. Para 1996-2009 solo
+  hay cierres de CRSP de licencia dudosa (Kaggle o Johnbrick123) o
+  QuantConnect en la nube.
+- **No existe ningún backtest público riguroso de Weinstein.** El único
+  estudio formal (Roskill 2026) concluye que la etapa 2 equivale a un
+  filtro de media y que la fuerza relativa es inerte. El análogo más
+  cercano (Minervini en el S&P 500 con membresía histórica, MarketInOut)
+  tampoco bate a SPY.
+- Puntos que cuestionan nuestras reglas:
+  - F4 excluye las acciones más extendidas, que son las que más rinden
+    según la literatura sobre MAD y el máximo de 52 semanas;
+  - nuestro Coppock es unas 4-5 veces más rápido que el original
+    mensual (≈ 61/48/43 en semanas);
+  - el timing con medias solo aporta en bajistas largos, así que no se
+    puede juzgar sin 2000-02 y 2008.
+- **Respaldo para VPM5 como ranking:** el high-volume return premium,
+  replicado en 41 países.
+- Corrección al informe del agente: decía que ordenamos por la menor
+  distancia a la WMA30; es al revés, MOM ordena de más a menos extendida
+  dentro del tope del 8 % de F4.
+- Nuevas tareas en la hoja de ruta (Fase 4b): T1-T3, H1-H3.
