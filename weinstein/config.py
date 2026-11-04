@@ -195,6 +195,22 @@ def resolve_sector_etf(sector_name: str | None) -> str | None:
 # Sector="Unknown" en una ejecución con `universe="historical"`, añadir
 # aquí su símbolo y sector GICS (con la empresa/fuente en el comentario)
 # en vez de dejarlo caer a Unknown en silencio.
+# Tickers que salieron del índice solo porque la empresa CAMBIÓ DE TICKER y
+# que hoy siguen en él con el nuevo. En el universo histórico se sustituyen
+# por el ticker actual (`sp500_historical.apply_ticker_aliases`): sus precios
+# están bajo ese símbolo y así el backtest no puede tener dos posiciones en
+# la misma empresa con nombres distintos. Solo renombres de la MISMA empresa;
+# no fusiones de dos miembros (TYC/JCI fueron miembros a la vez y no se unen).
+HISTORICAL_TICKER_ALIASES: dict[str, str] = {
+    "AA":    "HWM",    # Alcoa Inc -> Arconic (ARNC, 2016) -> Howmet (2020); el AA actual es la Alcoa escindida
+    "ARNC":  "HWM",    # Arconic Inc -> Howmet Aerospace (2020)
+    "ACE":   "CB",     # ACE Ltd compró Chubb Corp (2016) y adoptó su nombre y ticker
+    "CMCSK": "CMCSA",  # Comcast clase K convertida en clase A (2015)
+    "KFT":   "MDLZ",   # Kraft Foods Inc -> Mondelez (2012), tras escindir Kraft Foods Group
+    "PCS":   "TMUS",   # MetroPCS fue la entidad que pasó a ser T-Mobile US (2013)
+    "SAI":   "LDOS",   # SAIC -> Leidos (2013)
+}
+
 HISTORICAL_DELISTED_SECTORS: dict[str, str] = {
     # Consumer Discretionary
     "TWTR": "Communication Services",   # Twitter -> adquirida por X Corp (privada) 2022
@@ -336,16 +352,17 @@ HISTORICAL_DELISTED_SECTORS: dict[str, str] = {
 
     # ── Ampliación 2026-11-03 (universo histórico de 10 años, tarea D2) ──
     # Tickers que ya tienen precio (yfinance o Tiingo tras el arreglo de
-    # fechas B1) pero no estaban mapeados. Sector GICS que tenían MIENTRAS
-    # estaban en el índice: los de medios que salieron antes de la reforma
-    # GICS de sept-2018 (SNI, TWX) figuran en Consumer Discretionary, que es
-    # donde estaban y cuyo ETF (XLY) sí existía entonces.
+    # fechas B1) pero no estaban mapeados. Criterio (unificado el 2026-11-04,
+    # ver el bloque del tramo 2011-2016): sector con la estructura GICS
+    # ACTUAL. Los medios que salieron antes de la reforma de sept-2018 (SNI,
+    # TWX, TGNA) estaban entonces en Consumer Discretionary; se clasifican en
+    # Communication Services y su ETF anterior a 2018 es el sustituto VOX.
     # Communication Services
     "EA":    "Communication Services",  # Electronic Arts -> privatizada 2026
     "LVLT":  "Communication Services",  # Level 3 (Telecom Services) -> adquirida por CenturyLink 2017
     "TFCF":  "Communication Services",  # 21st Century Fox clase A -> adquirida por Disney 2019
     "TFCFA": "Communication Services",  # 21st Century Fox -> adquirida por Disney 2019
-    "TGNA":  "Consumer Discretionary",  # Tegna (Media, salió en 2017, antes de la reforma GICS de 2018) -> excluida del índice
+    "TGNA":  "Communication Services",  # Tegna (Media; en su época, 2017, Consumer Discretionary) -> excluida del índice
     "TRIP":  "Communication Services",  # TripAdvisor (Interactive Media) -> excluida del índice
     "VIAB":  "Communication Services",  # Viacom -> fusión con CBS 2019
     "WBD":   "Communication Services",  # Warner Bros. Discovery -> excluida del índice
@@ -361,8 +378,8 @@ HISTORICAL_DELISTED_SECTORS: dict[str, str] = {
     "MAT":   "Consumer Discretionary",  # Mattel -> excluida del índice
     "POOL":  "Consumer Discretionary",  # Pool Corp -> excluida del índice
     "SIG":   "Consumer Discretionary",  # Signet Jewelers -> excluida del índice
-    "SNI":   "Consumer Discretionary",  # Scripps Networks (Media, pre-2018) -> adquirida por Discovery 2018
-    "TWX":   "Consumer Discretionary",  # Time Warner (Media, pre-2018) -> adquirida por AT&T 2018
+    "SNI":   "Communication Services",  # Scripps Networks (Media; en su época Consumer Discretionary) -> adquirida por Discovery 2018
+    "TWX":   "Communication Services",  # Time Warner (Media; en su época Consumer Discretionary) -> adquirida por AT&T 2018
     "URBN":  "Consumer Discretionary",  # Urban Outfitters -> excluida del índice
     "WYN":   "Consumer Discretionary",  # Wyndham Worldwide -> escindida 2018
     # Consumer Staples
@@ -432,6 +449,135 @@ HISTORICAL_DELISTED_SECTORS: dict[str, str] = {
     "MAC":   "Real Estate",             # Macerich -> excluida del índice
     # Utilities
     "SCG":   "Utilities",               # SCANA -> adquirida por Dominion 2019
+    # ── Ampliación 2026-11-04 (tramo 2011-2016 de la Fase 4b) ──
+    # Salieron del índice entre 2011 y 2016 (y SOLS, 2025). Criterio: sector
+    # con la ESTRUCTURA GICS ACTUAL (REIT → Real Estate, medios → Communication
+    # Services), coherente con los constituyentes actuales, que usan su sector
+    # de hoy en todo el histórico. Fuente: revisiones históricas de "List of
+    # S&P 500 companies" (Wikipedia). "(media)" = confianza media.
+    "AA":    "Materials",                # Alcoa Inc -> renombrada a ARNC (Arconic) al escindir la nueva Alcoa Corp; Arconic Inc se renombro HWM (Howmet Aerospace) en 2020 (media)
+    "ACE":   "Financials",               # ACE Limited -> renombrada a CB (ACE compro Chubb Corp y adopto el nombre Chubb Ltd y el ticker CB)
+    "ADT":   "Industrials",              # ADT Corp -> adquirida por Apollo Global Management (media)
+    "AKS":   "Materials",                # AK Steel Holding -> degradada (cap. bursatil)
+    "ALTR":  "Information Technology",   # Altera -> adquirida por Intel (INTC)
+    "ANF":   "Consumer Discretionary",   # Abercrombie & Fitch -> degradada (cap. bursatil)
+    "ANR":   "Energy",                   # Alpha Natural Resources -> degradada (cap. bursatil)
+    "APOL":  "Consumer Discretionary",   # Apollo Group -> degradada (cap. bursatil)
+    "ARG":   "Materials",                # Airgas -> adquirida por Air Liquide
+    "ATI":   "Materials",                # Allegheny Technologies -> degradada (cap. bursatil)
+    "AVP":   "Consumer Staples",         # Avon Products -> degradada (cap. bursatil)
+    "AYE":   "Utilities",                # Allegheny Energy -> adquirida por FirstEnergy (FE)
+    "BBBY":  "Consumer Discretionary",   # Bed Bath & Beyond -> degradada (cap. bursatil)
+    "BEAM":  "Consumer Staples",         # Beam Inc (antes Fortune Brands) -> adquirida por Suntory
+    "BIG":   "Consumer Discretionary",   # Big Lots -> degradada (cap. bursatil) (media)
+    "BMC":   "Information Technology",   # BMC Software -> adquirida por Bain Capital/Golden Gate (capital riesgo)
+    "BRCM":  "Information Technology",   # Broadcom Corp -> adquirida por Avago (AVGO, renombrada Broadcom)
+    "BTU":   "Energy",                   # Peabody Energy -> degradada (cap. bursatil)
+    "BXLT":  "Health Care",              # Baxalta -> adquirida por Shire
+    "CAM":   "Energy",                   # Cameron International -> adquirida por Schlumberger (SLB)
+    "CBE":   "Industrials",              # Cooper Industries -> adquirida por Eaton (ETN)
+    "CCE":   "Consumer Staples",         # Coca-Cola Enterprises -> fusion con embotelladoras europeas -> Coca-Cola European Partners (CCEP, fuera del S&P 500)
+    "CEPH":  "Health Care",              # Cephalon -> adquirida por Teva
+    "CFN":   "Health Care",              # CareFusion -> adquirida por Becton Dickinson (BDX)
+    "CLF":   "Materials",                # Cliffs Natural Resources -> degradada (cap. bursatil)
+    "CMCSK": "Communication Services",   # Comcast Class K (acciones especiales sin voto) -> renombrada a CMCSA (clase K reclasificada en clase A)
+    "CNX":   "Energy",                   # CONSOL Energy (luego CNX Resources) -> degradada (cap. bursatil)
+    "COV":   "Health Care",              # Covidien -> adquirida por Medtronic (MDT)
+    "CPGX":  "Energy",                   # Columbia Pipeline Group -> adquirida por TransCanada (TRP)
+    "CPWR":  "Information Technology",   # Compuware -> degradada (cap. bursatil)
+    "CSC":   "Information Technology",   # Computer Sciences Corp -> degradada tras escindir CSRA (CSC se fusiono en 2017 con HPE Enterprise Services -> DXC)
+    "CSRA":  "Information Technology",   # CSRA Inc -> adquirida por General Dynamics (GD)
+    "CVC":   "Communication Services",   # Cablevision Systems -> adquirida por Altice
+    "CVH":   "Health Care",              # Coventry Health Care -> adquirida por Aetna (AET)
+    "DF":    "Consumer Staples",         # Dean Foods -> degradada (cap. tras escindir WhiteWave)
+    "DNR":   "Energy",                   # Denbury Resources -> degradada (cap. bursatil)
+    "DO":    "Energy",                   # Diamond Offshore Drilling -> degradada (cap. bursatil)
+    "DTV":   "Communication Services",   # DirecTV -> adquirida por AT&T (T)
+    "DV":    "Consumer Discretionary",   # DeVry Inc -> degradada (cap. bursatil)
+    "EMC":   "Information Technology",   # EMC Corp -> adquirida por Dell
+    "ENDP":  "Health Care",              # Endo International -> degradada (cap. bursatil)
+    "EP":    "Energy",                   # El Paso Corp -> adquirida por Kinder Morgan (KMI)
+    "ESV":   "Energy",                   # Ensco plc -> degradada (cap. bursatil)
+    "FDO":   "Consumer Staples",         # Family Dollar Stores -> adquirida por Dollar Tree (DLTR) (media)
+    "FHN":   "Financials",               # First Horizon National -> degradada (cap. bursatil)
+    "FII":   "Financials",               # Federated Investors -> degradada (cap. bursatil)
+    "FOSL":  "Consumer Discretionary",   # Fossil Group -> degradada (cap. bursatil)
+    "FRX":   "Health Care",              # Forest Laboratories -> adquirida por Actavis
+    "FTR":   "Communication Services",   # Frontier Communications -> degradada (cap. bursatil)
+    "GAS":   "Utilities",                # AGL Resources -> adquirida por Southern Co (SO)
+    "GENZ":  "Health Care",              # Genzyme -> adquirida por Sanofi
+    "GHC":   "Consumer Discretionary",   # Graham Holdings (antes Washington Post Co) -> degradada (cap. bursatil) (media)
+    "GMCR":  "Consumer Staples",         # Keurig Green Mountain -> adquirida por JAB Holding
+    "GME":   "Consumer Discretionary",   # GameStop -> degradada (cap. bursatil)
+    "GNW":   "Financials",               # Genworth Financial -> degradada (cap. bursatil)
+    "GR":    "Industrials",              # Goodrich Corp -> adquirida por United Technologies (UTX)
+    "HAR":   "Consumer Discretionary",   # Harman International -> adquirida por Samsung
+    "HCBK":  "Financials",               # Hudson City Bancorp -> adquirida por M&T Bank (MTB)
+    "HNZ":   "Consumer Staples",         # H.J. Heinz Co -> adquirida por Berkshire Hathaway y 3G Capital
+    "HOT":   "Consumer Discretionary",   # Starwood Hotels & Resorts -> adquirida por Marriott (MAR)
+    "HSP":   "Health Care",              # Hospira -> adquirida por Pfizer (PFE)
+    "IGT":   "Consumer Discretionary",   # International Game Technology -> degradada (cap. bursatil); adquirida por GTECH en 2015
+    "ITT":   "Industrials",              # ITT Corp -> degradada tras escision en Xylem y Exelis (ITT pasa al MidCap 400)
+    "JCP":   "Consumer Discretionary",   # J.C. Penney -> degradada (cap. bursatil)
+    "JDSU":  "Information Technology",   # JDS Uniphase (luego Viavi) -> degradada (cap. bursatil)
+    "JNS":   "Financials",               # Janus Capital Group -> degradada (cap. < 1.200 M$)
+    "JOY":   "Industrials",              # Joy Global -> degradada (cap. bursatil); adquirida por Komatsu en 2017
+    "KFT":   "Consumer Staples",         # Kraft Foods Inc -> renombrada a MDLZ (Mondelez International, tras escindir Kraft Foods Group)
+    "KRFT":  "Consumer Staples",         # Kraft Foods Group -> fusion con H.J. Heinz Holding -> Kraft Heinz (KHC, entidad nueva, sigue en el indice)
+    "LIFE":  "Health Care",              # Life Technologies -> adquirida por Thermo Fisher (TMO)
+    "LLTC":  "Information Technology",   # Linear Technology -> adquirida por Analog Devices (ADI)
+    "LO":    "Consumer Staples",         # Lorillard -> adquirida por Reynolds American (RAI)
+    "LSI":   "Information Technology",   # LSI Corp -> adquirida por Avago (AVGO)
+    "LXK":   "Information Technology",   # Lexmark International -> degradada (cap. bursatil)
+    "MDP":   "Communication Services",   # Meredith Corp -> degradada (cap. bursatil) (media)
+    "MEE":   "Energy",                   # Massey Energy -> adquirida por Alpha Natural Resources (ANR)
+    "MFE":   "Information Technology",   # McAfee -> adquirida por Intel (INTC)
+    "MHS":   "Health Care",              # Medco Health Solutions -> adquirida por Express Scripts (ESRX)
+    "MI":    "Financials",               # Marshall & Ilsley -> adquirida por Bank of Montreal (BMO)
+    "MMI":   "Information Technology",   # Motorola Mobility -> adquirida por Google (GOOG)
+    "MNK":   "Health Care",              # Mallinckrodt -> degradada (cap. bursatil)
+    "MOLX":  "Information Technology",   # Molex -> adquirida por Koch Industries
+    "MWW":   "Industrials",              # Monster Worldwide -> degradada (cap. bursatil) (media)
+    "NBR":   "Energy",                   # Nabors Industries -> degradada (cap. bursatil)
+    "NE":    "Energy",                   # Noble Corp -> degradada (cap. bursatil)
+    "NFX":   "Energy",                   # Newfield Exploration -> adquirida por Encana
+    "NOVL":  "Information Technology",   # Novell -> adquirida por Attachmate (capital riesgo)
+    "NSM":   "Information Technology",   # National Semiconductor -> adquirida por Texas Instruments (TXN)
+    "NVLS":  "Information Technology",   # Novellus Systems -> adquirida por Lam Research (LRCX)
+    "NYX":   "Financials",               # NYSE Euronext -> adquirida por IntercontinentalExchange (ICE)
+    "PCL":   "Real Estate",              # Plum Creek Timber -> adquirida por Weyerhaeuser (WY)
+    "PCP":   "Industrials",              # Precision Castparts -> adquirida por Berkshire Hathaway
+    "PCS":   "Communication Services",   # MetroPCS Communications -> fusion inversa con T-Mobile USA: la entidad MetroPCS se renombro T-Mobile US (TMUS); excluida por free float; TMUS reingreso en 2019
+    "PETM":  "Consumer Discretionary",   # PetSmart -> adquirida por BC Partners (capital riesgo)
+    "PGN":   "Utilities",                # Progress Energy -> adquirida por Duke Energy (DUK)
+    "PLL":   "Industrials",              # Pall Corp -> adquirida por Danaher (DHR)
+    "POM":   "Utilities",                # Pepco Holdings -> adquirida por Exelon (EXC)
+    "QEP":   "Energy",                   # QEP Resources -> degradada (cap. bursatil)
+    "RDC":   "Energy",                   # Rowan Companies -> degradada (cap. bursatil)
+    "RRD":   "Industrials",              # R.R. Donnelley & Sons -> degradada (cap. bursatil)
+    "RSH":   "Consumer Discretionary",   # RadioShack -> degradada (cap. bursatil)
+    "S":     "Communication Services",   # Sprint Nextel -> excluida: SoftBank compra ~78% y el free float cae bajo 50% (Sprint se fusiono con T-Mobile en 2020)
+    "SAI":   "Industrials",              # SAIC (Science Applications International Corp) -> degradada (cap. bursatil); en sept-2013 escindio la nueva SAIC y la entidad se renombro Leidos (LDOS), que reingreso al indice en 2019 (media)
+    "SHLD":  "Consumer Discretionary",   # Sears Holdings -> degradada (free float insuficiente)
+    "SIAL":  "Materials",                # Sigma-Aldrich -> adquirida por Merck KGaA
+    "SLE":   "Consumer Staples",         # Sara Lee Corp -> degradada tras escision (Sara Lee renombrada Hillshire Brands, HSH, fuera del indice; adquirida por Tyson en 2014)
+    "SLM":   "Financials",               # SLM Corp (Sallie Mae) -> degradada tras escindir Navient (NAVI entra en su lugar)
+    "SOLS":  "Materials",                # Solstice Advanced Materials -> degradada al SmallCap 600 (escindida de Honeywell; en el indice solo oct-dic 2025) (media)
+    "SPLS":  "Consumer Discretionary",   # Staples Inc -> adquirida por Sycamore Partners
+    "SUN":   "Energy",                   # Sunoco Inc -> adquirida por Energy Transfer Partners (ETP)
+    "SVU":   "Consumer Staples",         # Supervalu -> degradada (cap. bursatil)
+    "SWY":   "Consumer Staples",         # Safeway -> adquirida por Cerberus/Albertsons (capital riesgo)
+    "TE":    "Utilities",                # TECO Energy -> adquirida por Emera
+    "TEG":   "Utilities",                # Integrys Energy Group -> adquirida por Wisconsin Energy (WEC)
+    "THC":   "Health Care",              # Tenet Healthcare -> degradada (cap. bursatil)
+    "TIE":   "Materials",                # Titanium Metals -> adquirida por Precision Castparts (PCP)
+    "TLAB":  "Information Technology",   # Tellabs -> degradada (cap. bursatil)
+    "TWC":   "Communication Services",   # Time Warner Cable -> adquirida por Charter (CHTR)
+    "TYC":   "Industrials",              # Tyco International -> fusion inversa con Johnson Controls: la entidad Tyco se renombro Johnson Controls International plc (JCI)
+    "WFR":   "Information Technology",   # MEMC Electronic Materials (luego SunEdison) -> degradada (cap. bursatil)
+    "WIN":   "Communication Services",   # Windstream Holdings -> degradada (cap. bursatil)
+    "WPX":   "Energy",                   # WPX Energy -> degradada (cap. bursatil)
+    "X":     "Materials",                # United States Steel -> degradada (cap. bursatil)
 }
 
 

@@ -106,6 +106,7 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 
+from weinstein.config import HISTORICAL_TICKER_ALIASES
 from weinstein.data import load_sp500_tickers
 
 # La tabla de cambios (id="changes") ya no está en "List of S&P 500
@@ -432,6 +433,14 @@ def build_membership_calendar(
     return result
 
 
+def apply_ticker_aliases(
+    calendar: dict[pd.Timestamp, set[str]],
+    aliases: dict[str, str] = HISTORICAL_TICKER_ALIASES,
+) -> dict[pd.Timestamp, set[str]]:
+    """Sustituye en cada fecha los tickers renombrados por su ticker actual."""
+    return {fecha: {aliases.get(t, t) for t in tickers} for fecha, tickers in calendar.items()}
+
+
 def build_membership_calendar_cached(
     dates: list[pd.Timestamp],
     refresh: bool = False,
@@ -443,7 +452,8 @@ def build_membership_calendar_cached(
     """
     changes = fetch_changes_table(refresh=refresh)
     current = set(load_sp500_tickers()["Symbol"])
-    return build_membership_calendar(dates, changes=changes, current_constituents=current)
+    calendar = build_membership_calendar(dates, changes=changes, current_constituents=current)
+    return apply_ticker_aliases(calendar)
 
 
 def universe_union(calendar: dict[pd.Timestamp, set[str]]) -> set[str]:

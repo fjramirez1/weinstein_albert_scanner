@@ -44,10 +44,12 @@ class FakeTiingo:
         self.results = results or {}
         self.default = default
         self.calls: list[str] = []
+        self.kwargs: list[dict] = []
 
-    def __call__(self, ticker, raise_on_error=False, **_kw):
+    def __call__(self, ticker, raise_on_error=False, **kw):
         wdata._reserve_tiingo_request(ticker)  # presupuesto / bloqueo reales
         self.calls.append(ticker)
+        self.kwargs.append(kw)
         r = self.results.get(ticker, self.default)
         if isinstance(r, Exception):
             raise r
@@ -154,6 +156,15 @@ class TestFaseTiingo:
         assert state["tiingo"]["bloqueado_hasta"] == reloj.t + 600
         assert state["periodos"]["10y"]["pendientes_tiingo"] == ["T1", "T2"]
         assert data_cache.cache_stats()["n_fallos_cacheados"] == 0
+
+    def test_pide_a_tiingo_los_anios_del_periodo(self, monkeypatch):
+        fake = FakeTiingo()
+        monkeypatch.setattr(wdata, "download_weekly_tiingo", fake)
+        reloj = Reloj()
+        state = self._estado_con_pendientes(["OLD"])
+        state["periodos"]["max"] = state["periodos"].pop("10y")
+        download_data.phase_tiingo(["OLD"], set(), "max", state, clock=reloj, sleep=reloj.sleep)
+        assert fake.kwargs == [{"period_years": wdata.TIINGO_MAX_YEARS}]
 
     def test_sin_datos_marca_nodata_solo_para_delistados(self, monkeypatch):
         fake = FakeTiingo({"OLD": None, "CUR": None})

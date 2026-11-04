@@ -407,7 +407,8 @@ def phase_tiingo(
                     continue  # no cabe con su alias: se intenta en la siguiente ventana
             before = wdata.tiingo_requests_made()
             try:
-                df = wdata.download_weekly_tiingo(t, raise_on_error=True)
+                df = wdata.download_weekly_tiingo(t, period_years=wdata.period_to_years(period),
+                                                  raise_on_error=True)
             except TiingoBudgetExhaustedError:
                 df, stop_reason = None, "presupuesto"
             except TiingoRateLimitError as exc:

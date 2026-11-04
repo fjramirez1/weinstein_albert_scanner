@@ -282,3 +282,20 @@ class TestFetchChangesTableCache:
             sh.fetch_changes_table()
             sh.fetch_changes_table(refresh=True)
         assert mock_fetch.call_count == 2
+
+
+class TestAliasDeTickers:
+
+    def test_sustituye_renombres_por_el_ticker_actual(self):
+        f1, f2 = pd.Timestamp("2012-01-06"), pd.Timestamp("2016-01-08")
+        cal = {f1: {"ACE", "KFT", "AAPL"}, f2: {"CB", "MDLZ", "AAPL"}}
+        out = sh.apply_ticker_aliases(cal, {"ACE": "CB", "KFT": "MDLZ"})
+        assert out == {f1: {"CB", "MDLZ", "AAPL"}, f2: {"CB", "MDLZ", "AAPL"}}
+
+    def test_dos_clases_de_la_misma_empresa_se_unen(self):
+        f = pd.Timestamp("2014-01-03")
+        assert sh.apply_ticker_aliases({f: {"CMCSA", "CMCSK"}}, {"CMCSK": "CMCSA"}) == {f: {"CMCSA"}}
+
+    def test_alias_por_defecto_apuntan_a_tickers_distintos(self):
+        from weinstein.config import HISTORICAL_TICKER_ALIASES as A
+        assert not set(A) & set(A.values())
