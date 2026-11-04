@@ -135,10 +135,9 @@ Bugs encontrados en la revisión del 2026-11-03, ordenados por impacto:
 Acordado el 2026-11-04: el sistema no se toca hasta terminar el backtest.
 Investigación externa en [INVESTIGACION.md](INVESTIGACION.md).
 
-- [ ] **T1.** Tramo 2011-2016 (Wikipedia + Tiingo): descarga `max`,
-      sectores, alias, símbolos propios de Tiingo, cobertura ≥ 95 %.
-- [ ] **T1b.** Probar Tiingo por permaTicker (gratis, sin verificar) para
-      los tickers reutilizados (S, STI, CA, EMC, DOW, SNDK, DELL, CEG...).
+- [x] **T1.** Tramo 2011-2016 (Wikipedia + Tiingo + dataset externo):
+      cobertura de precio del 96,7 % (2011) al 99,9 % (bitácora 2026-11-04 (6)).
+- [x] **T1b.** Tiingo por permaTicker funciona gratis (bitácora 2026-11-04 (5)).
 - [ ] **T2.** Tramo 2006-2010 (crisis de 2008): membresía de fja05680
       (fichero original con sufijos), mapa de alias de 2019 → actual,
       deslistados en Tiingo.

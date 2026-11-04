@@ -68,8 +68,13 @@ python -m weinstein portfolio-backtest --universe historical --period 8y   # (re
   concentración en outliers + comparación con benchmark) y validación fuera
   de muestra real.
 - No crear tareas programadas / bucles (cron) sin confirmación. Para poblar la
-  caché: `python -m backtest.download_data --period 10y --universe historical
-  [--wait]` (respeta el límite de Tiingo; `--wait` espera entre ventanas).
+  caché (histórico completo; el universo se acota con `--desde`):
+  `python -m backtest.download_data --period max --universe historical --desde 2011-01-01 --wait`
+  (respeta el límite de Tiingo; `--wait` espera entre ventanas) y después
+  `python -m backtest.importar_externo` (deslistados que no sirven gratis
+  yfinance ni Tiingo; necesita `backtest/.cache/externo/johnbrick_sp500_prices.parquet`,
+  ver el docstring del módulo). La caché de 10 años (`--period 10y`) sigue
+  sirviendo para reproducir O1-O3.
 - **Git**: hay permiso para `commit` y `push` a `origin` para mantener un
   historial ordenado (un commit por bloque lógico: fix, refactor, docs...,
   mensajes en español). Autor **solo** con la config local del repo

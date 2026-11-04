@@ -858,3 +858,43 @@ y la config de producción desde 2017-12:
   Son +5,6 pp/año solo por poder comprar acciones antes de que entren en
   el índice, del orden de lo que mide Roskill (+6,3 %/año). Es una
   hipótesis sobre el backtest del vídeo, no algo comprobado.
+
+## 2026-11-04 (6) — Tramo 2011-2016 cerrado: importador del dataset externo
+
+- Tiingo por permaTicker recuperó 21 de los 33 configurados. Los demás
+  existen en el directorio pero sin historia útil: Broadcom Corp solo
+  desde 2016-01; Tyco, Harman, Linear, Cablevision, Molex, BMC... vacíos o
+  con menos de 70 velas.
+- **Nuevo `python -m backtest.importar_externo`.** Lee el `prices.parquet`
+  del release `snapshot-2026-11` de Johnbrick123/sp500-data, guardado en
+  `backtest/.cache/externo/` (sin versionar).
+  - Solo usa filas de fuentes reutilizables y con volumen: WIKI de Quandl
+    (dominio público), Tiingo y Yahoo. Descarta las de CRSP (sin volumen y
+    sin licencia).
+  - Ajusta por `adj_close/close` y agrega a velas semanales en viernes.
+  - Las correspondencias están en `IMPORTACIONES`. Se crea un manifiesto
+    en `backtest/.cache/externo/importados.json`.
+- **Validación frente a series que ya teníamos** (`--validar`): mediana
+  del cociente de cierres 0,999-1,000 y correlación de rentabilidades
+  semanales de 0,975 (EMC, WIKI) a 0,9998 (MON, Tiingo). AAPL, XOM, JPM y
+  KO (Yahoo) dan ≥ 0,996.
+- **Importados 31 de 33.** Entre ellos Broadcom Corp, Harman, Linear,
+  Starwood, Cablevision, Cameron, Plum Creek, Precision Castparts, IGT,
+  Apollo, Dean Foods, Big Lots, Endo, Lexmark, J. C. Penney y First
+  Republic, más los de ticker reutilizado Altera, ADT 2012, Beam, Pall,
+  Spectra, Windstream y la Dun & Bradstreet antigua. Para Dow Chemical y
+  Dell Inc se añadieron alias por fechas (`DOW-201708`, `DELL-201310`).
+  Baxalta y Columbia Pipeline no llegan a 70 velas.
+- **Cobertura de precio final del tramo** (`python -m backtest.estudios.cobertura --desde 2011-01-01`):
+
+  | Año | 2011 | 2012 | 2013 | 2014 | 2015 | 2016 | 2017-2026 |
+  |---|---|---|---|---|---|---|---|
+  | % semanas-miembro con precio | 96,7 | 98,3 | 99,1 | 99,5 | 99,4 | 99,6 | ≥ 99,6 |
+
+  Quedan 18 tickers sin datos, 6 sospechosos y 3 parciales, casi todos de
+  2011-2012 o recientes con poca historia. El sector es conocido en el
+  100 %. **Tramo 1 cerrado.**
+- Nota sobre la membresía: la reconstrucción con Wikipedia da ~506
+  miembros en 2011 en vez de 500. Son actuales cuya alta no está en la
+  tabla y que se dan por miembros hacia atrás (p. ej. Q, Qnity, figura
+  desde 2011). Se corrige al usar fja05680 en el tramo 2.

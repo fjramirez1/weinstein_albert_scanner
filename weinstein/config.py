@@ -272,9 +272,11 @@ TIINGO_PRICE_SYMBOLS: dict[str, str] = {
 # en el índice. En las fechas anteriores al corte, el calendario de membresía
 # usa un ticker propio (convención de Norgate: TICKER-AAAAMM, mes de salida)
 # para no mezclar dos empresas en una serie; sus precios salen de
-# TIINGO_PRICE_SYMBOLS. Dow Chemical (DOW) y Dell Inc (DELL) no están en el
-# directorio gratuito de Tiingo: no recuperables.
+# TIINGO_PRICE_SYMBOLS o, si Tiingo no las tiene (Dow Chemical, Dell Inc),
+# de `backtest/importar_externo.py`.
 HISTORICAL_TICKER_PERIOD_ALIASES: dict[str, list[tuple[str, str]]] = {
+    "DOW":  [("2017-09-01", "DOW-201708")],
+    "DELL": [("2013-11-01", "DELL-201310")],
     "SNDK": [("2016-06-01", "SNDK-201605")],
     "CEG":  [("2012-04-01", "CEG-201203")],
     "HWM":  [("2016-11-01", "HWM-201610")],
@@ -433,6 +435,8 @@ HISTORICAL_DELISTED_SECTORS: dict[str, str] = {
     "TFCFA": "Communication Services",  # 21st Century Fox -> adquirida por Disney 2019
     "TGNA":  "Communication Services",  # Tegna (Media; en su época, 2017, Consumer Discretionary) -> excluida del índice
     "SNDK-201605": "Information Technology",  # SanDisk Corp antigua -> comprada por Western Digital 2016
+    "DOW-201708":  "Materials",               # Dow Chemical -> fusión con DuPont (DWDP) 2017
+    "DELL-201310": "Information Technology",  # Dell Inc -> privatizada 2013
     "CEG-201203":  "Utilities",               # Constellation Energy Group antigua -> fusión con Exelon 2012
     "HWM-201610":  "Materials",               # Alcoa Inc (aluminio) antes de la separación de 2016
     "TRIP":  "Communication Services",  # TripAdvisor (Interactive Media) -> excluida del índice
