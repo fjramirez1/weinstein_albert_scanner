@@ -797,3 +797,64 @@ y vendió todo). Con las 9 reglas: 2008 +17,7 %, 2000 +40,4 %, 2022 −16,8 %,
    esa elección es dentro de muestra.
 4. Pendiente: replicar sus cifras por año en los años comunes (2011-2025
    con el tramo 1; 2008 y 2000-02 cuando haya datos).
+
+## 2026-11-04 (5) — permaTicker de Tiingo gratis y primeros pasos de R0
+
+**Tiingo por permaTicker funciona con la cuenta gratuita.**
+- `/tiingo/fundamentals/meta` devuelve 20.401 empresas con su
+  identificador estable. Distingue, por ejemplo, Sprint
+  (`US000000000188`) de SentinelOne (`US000000095605`).
+- `/tiingo/daily/<permaTicker>/prices` devuelve los precios; probado con
+  CA Inc, ~43,8 $ en septiembre de 2018.
+- El directorio se guarda en `backtest/.cache/tiingo_fundamentals_meta.json`
+  (no se versiona).
+
+Con él se añadieron a `TIINGO_PRICE_SYMBOLS` 30 deslistados con nombre
+inequívoco (Anadarko, Staples, Tyco, Broadcom Corp, NYSE Euronext,
+SunTrust, CA, Monsanto, EMC, Sprint, Diamond Offshore antigua...). Se creó
+también `HISTORICAL_TICKER_PERIOD_ALIASES` para tickers actuales cuya
+empresa anterior también fue miembro: SNDK antes de 2016-06 →
+`SNDK-201605`, CEG antes de 2012-04 → `CEG-201203` y HWM antes de 2016-11
+→ `HWM-201610` (Alcoa Inc). No recuperables gratis: Altera, Peabody
+antigua, ADT 2012, Beam, Spectra, DeVry, Motorola Mobility, National
+Semiconductor, Pall, Dow Chemical y Dell Inc.
+
+Cobertura de precio del tramo 2011-2016 antes de los permaTicker: 89,0 %
+(2011), 90,7 %, 91,9 %, 93,3 %, 93,3 % y 95,4 % (2016). Descarga en curso
+para medirla de nuevo.
+
+**R0 (replicar el vídeo).** Con el universo de 10 años guardado (sin red)
+y la config de producción desde 2017-12:
+- **Patrón en 2022:** el Coppock 12/6/10 se pone "alcista" una sola
+  semana estando muy negativo (−10,1 el 2022-03-18, −11,8 el 06-03,
+  −17,3 el 07-15, −12,5 el 10-28). La entrada por "inicio alcista" solo
+  dura la semana del giro; el sistema compra 10 posiciones y S2 las vende
+  en la siguiente caída. Cinco ciclos de compra y venta con pérdidas en el
+  año: −21,8 %.
+- Variantes frente a las cifras del vídeo (2022 −5,6 %, 2025 +3,1 %):
+
+  | Variante | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | CAGR | DD | Ops |
+  |---|---|---|---|---|---|---|---|---|---|
+  | actual 12/6/10 | −10,5 | 11,1 | −21,8 | 14,7 | 22,0 | −1,0 | 1,60 % | −31,0 % | 209 |
+  | clásico 14/11/10 | −8,9 | 25,9 | −16,9 | 7,9 | 13,5 | 33,2 | 4,94 % | −27,2 % | 192 |
+  | "mensual" 61/48/43 | 8,7 | 25,9 | −11,6 | 23,1 | 18,3 | −6,0 | 7,08 % | −29,5 % | 107 |
+  | actual + MOM con SMA30 | −6,3 | 11,5 | −22,5 | 29,0 | 23,3 | −1,3 | 4,60 % | −28,3 % | 201 |
+  | clásico + MOM con SMA30 | −12,1 | 13,4 | −12,2 | 11,7 | 11,2 | 4,7 | 2,17 % | −25,8 % | 186 |
+  | SPY | 16,4 | 30,4 | −18,2 | 26,2 | 26,8 | 17,4 | | | |
+
+  Ninguna reproduce el −5,6 % de 2022. Los resultados son muy sensibles a
+  los parámetros (2025: −1,0 % frente a +33,2 % según el Coppock). Hay
+  que interpretarlos con la cautela de O2/O3.
+- **Hipótesis: membresía sin filtrar por fecha.** El vídeo no aclara si
+  el backtest filtra por la membresía de cada semana (Norgate lo permite).
+  Apagando nuestro filtro:
+
+  | Config | CAGR | DD | Ops | 2022 |
+  |---|---|---|---|---|
+  | producción con membresía | 1,60 % | −31,0 % | 209 | −21,8 % |
+  | producción sin membresía | 7,23 % | −28,3 % | 203 | −20,8 % |
+  | clásico 14/11/10 sin membresía | 9,19 % | −26,6 % | 185 | −12,8 % |
+
+  Son +5,6 pp/año solo por poder comprar acciones antes de que entren en
+  el índice, del orden de lo que mide Roskill (+6,3 %/año). Es una
+  hipótesis sobre el backtest del vídeo, no algo comprobado.

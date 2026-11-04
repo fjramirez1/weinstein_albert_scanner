@@ -226,6 +226,58 @@ TIINGO_PRICE_SYMBOLS: dict[str, str] = {
     "SHLD": "SHLDQ",   # Sears Holdings (quiebra 2018)
     "SLE":  "HSH",     # Sara Lee -> Hillshire Brands (2012)
     "SBNY": "SBNY",    # Signature Bank, ahora en OTC; yfinance da otra serie
+    # permaTicker de Tiingo (identificador estable; sirve en la cuenta gratuita,
+    # comprobado el 2026-11-04 con CA Inc). Sacados de /tiingo/fundamentals/meta
+    # (`backtest/.cache/tiingo_fundamentals_meta.json`), solo cuando el nombre
+    # identifica sin duda la empresa ANTIGUA (bitácora 2026-11-04 (5)).
+    "APC":  "US000000000125",   # Anadarko Petroleum
+    "APOL": "US000000000745",   # Apollo Education Group
+    "AYE":  "US000000012420",   # Allegheny Energy
+    "BMC":  "US000000008423",   # BMC Software
+    "BRCM": "US000000000520",   # Broadcom Corp (antes de Avago)
+    "BXLT": "US000000010496",   # Baxalta
+    "CA":   "US000000000517",   # CA Inc
+    "CBE":  "US000000008617",   # Cooper Industries
+    "CEPH": "US000000012477",   # Cephalon
+    "CPGX": "US000000011867",   # Columbia Pipeline Group
+    "CVC":  "US000000000518",   # Cablevision Systems
+    "DO":   "US000000000294",   # Diamond Offshore (la anterior a la quiebra de 2020)
+    "EMC":  "US000000000529",   # EMC Corporation
+    "FTR":  "US000000084388",   # Frontier Communications (antigua)
+    "HAR":  "US000000000464",   # Harman International
+    "LLTC": "US000000000901",   # Linear Technology
+    "LXK":  "US000000009045",   # Lexmark International
+    "MEE":  "US000000012809",   # Massey Energy
+    "MI":   "US000000012821",   # Marshall & Ilsley
+    "MOLX": "US000000009112",   # Molex
+    "MON":  "US000000000296",   # Monsanto
+    "NFX":  "US000000000459",   # Newfield Exploration
+    "NOVL": "US000000012837",   # Novell
+    "NYX":  "US000000009182",   # NYSE Euronext
+    "PCP":  "US000000002279",   # Precision Castparts
+    "POM":  "US000000002345",   # Pepco Holdings
+    "S":    "US000000000188",   # Sprint Corp
+    "SPLS": "US000000002661",   # Staples
+    "STI":  "US000000000420",   # SunTrust Banks
+    "TLAB": "US000000009465",   # Tellabs
+    "TYC":  "US000000000418",   # Tyco International
+    # Empresas antiguas de tickers que hoy usa otra empresa del índice (ver
+    # HISTORICAL_TICKER_PERIOD_ALIASES): ticker propio con sufijo -AAAAMM.
+    "SNDK-201605": "US000000000217",  # SanDisk Corp (comprada por WDC en 2016)
+    "CEG-201203":  "US000000012475",  # Constellation Energy Group (fusión con Exelon, 2012)
+    "HWM-201610":  "HWM",             # Alcoa Inc antes de separar Alcoa Corp (2016-11); Tiingo guarda su historia bajo HWM
+}
+
+# Tickers ACTUALES cuya empresa anterior con el mismo símbolo también estuvo
+# en el índice. En las fechas anteriores al corte, el calendario de membresía
+# usa un ticker propio (convención de Norgate: TICKER-AAAAMM, mes de salida)
+# para no mezclar dos empresas en una serie; sus precios salen de
+# TIINGO_PRICE_SYMBOLS. Dow Chemical (DOW) y Dell Inc (DELL) no están en el
+# directorio gratuito de Tiingo: no recuperables.
+HISTORICAL_TICKER_PERIOD_ALIASES: dict[str, list[tuple[str, str]]] = {
+    "SNDK": [("2016-06-01", "SNDK-201605")],
+    "CEG":  [("2012-04-01", "CEG-201203")],
+    "HWM":  [("2016-11-01", "HWM-201610")],
 }
 
 HISTORICAL_DELISTED_SECTORS: dict[str, str] = {
@@ -380,6 +432,9 @@ HISTORICAL_DELISTED_SECTORS: dict[str, str] = {
     "TFCF":  "Communication Services",  # 21st Century Fox clase A -> adquirida por Disney 2019
     "TFCFA": "Communication Services",  # 21st Century Fox -> adquirida por Disney 2019
     "TGNA":  "Communication Services",  # Tegna (Media; en su época, 2017, Consumer Discretionary) -> excluida del índice
+    "SNDK-201605": "Information Technology",  # SanDisk Corp antigua -> comprada por Western Digital 2016
+    "CEG-201203":  "Utilities",               # Constellation Energy Group antigua -> fusión con Exelon 2012
+    "HWM-201610":  "Materials",               # Alcoa Inc (aluminio) antes de la separación de 2016
     "TRIP":  "Communication Services",  # TripAdvisor (Interactive Media) -> excluida del índice
     "VIAB":  "Communication Services",  # Viacom -> fusión con CBS 2019
     "WBD":   "Communication Services",  # Warner Bros. Discovery -> excluida del índice

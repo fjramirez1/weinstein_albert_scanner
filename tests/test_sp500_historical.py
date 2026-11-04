@@ -299,3 +299,14 @@ class TestAliasDeTickers:
     def test_alias_por_defecto_apuntan_a_tickers_distintos(self):
         from weinstein.config import HISTORICAL_TICKER_ALIASES as A
         assert not set(A) & set(A.values())
+
+    def test_alias_por_fechas_separa_la_empresa_antigua(self):
+        antes, despues = pd.Timestamp("2015-01-02"), pd.Timestamp("2025-06-06")
+        cal = {antes: {"SNDK", "AAPL"}, despues: {"SNDK", "AAPL"}}
+        out = sh.apply_ticker_aliases(cal, {}, {"SNDK": [("2016-06-01", "SNDK-201605")]})
+        assert out == {antes: {"SNDK-201605", "AAPL"}, despues: {"SNDK", "AAPL"}}
+
+    def test_alias_por_fechas_se_aplica_tras_el_renombre(self):
+        f = pd.Timestamp("2014-01-03")
+        out = sh.apply_ticker_aliases({f: {"AA"}}, {"AA": "HWM"}, {"HWM": [("2016-11-01", "HWM-201610")]})
+        assert out == {f: {"HWM-201610"}}

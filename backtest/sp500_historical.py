@@ -106,7 +106,7 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 
-from weinstein.config import HISTORICAL_TICKER_ALIASES
+from weinstein.config import HISTORICAL_TICKER_ALIASES, HISTORICAL_TICKER_PERIOD_ALIASES
 from weinstein.data import load_sp500_tickers
 
 # La tabla de cambios (id="changes") ya no está en "List of S&P 500
@@ -436,9 +436,23 @@ def build_membership_calendar(
 def apply_ticker_aliases(
     calendar: dict[pd.Timestamp, set[str]],
     aliases: dict[str, str] = HISTORICAL_TICKER_ALIASES,
+    period_aliases: dict[str, list[tuple[str, str]]] = HISTORICAL_TICKER_PERIOD_ALIASES,
 ) -> dict[pd.Timestamp, set[str]]:
-    """Sustituye en cada fecha los tickers renombrados por su ticker actual."""
-    return {fecha: {aliases.get(t, t) for t in tickers} for fecha, tickers in calendar.items()}
+    """
+    Sustituye en cada fecha los tickers renombrados por su ticker actual y,
+    después, los tickers reutilizados por su ticker propio en las fechas
+    anteriores al corte (`HISTORICAL_TICKER_PERIOD_ALIASES`).
+    """
+    cortes = {t: sorted((pd.Timestamp(c), alias) for c, alias in lst) for t, lst in period_aliases.items()}
+
+    def nombre(t: str, fecha: pd.Timestamp) -> str:
+        t = aliases.get(t, t)
+        for corte, alias in cortes.get(t, ()):
+            if fecha < corte:
+                return alias
+        return t
+
+    return {fecha: {nombre(t, fecha) for t in tickers} for fecha, tickers in calendar.items()}
 
 
 def build_membership_calendar_cached(
