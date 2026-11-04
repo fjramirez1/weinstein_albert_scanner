@@ -898,3 +898,52 @@ y la config de producción desde 2017-12:
   miembros en 2011 en vez de 500. Son actuales cuya alta no está en la
   tabla y que se dan por miembros hacia atrás (p. ej. Q, Qnity, figura
   desde 2011). Se corrige al usar fja05680 en el tramo 2.
+
+## 2026-11-04 (7) — Membresía externa (Johnbrick123) como fuente principal
+
+**Fallo encontrado en la membresía de Wikipedia.** Al deshacer los cambios
+desde los constituyentes actuales, una empresa actual que entró en el
+índice con otro ticker no sale nunca hacia atrás. META entró en 2013-12
+como FB, pero nuestro calendario la daba como miembro desde 2011. Es un
+sesgo de mirar al futuro: daba ~506 miembros en 2011 en vez de 500. Afecta
+a O1-O3 en la medida en que esas empresas eran candidatas antes de su alta
+real.
+
+**Nueva fuente** (`HISTORICAL_MEMBERSHIP_SOURCE = "externa"`):
+- Datos: `membership_intervals.parquet` de Johnbrick123/sp500-data, en
+  `backtest/.cache/externo/johnbrick_membership_intervals.parquet`. Son
+  1.801 intervalos de alta y baja de 1970 a hoy, derivados de
+  fja05680/Norgate y Wikipedia, con tickers actuales para los vivos (META
+  desde 2013-12-23) y sufijo de mes de salida para los deslistados
+  (`HAR-201703`).
+- `external_names` quita el sufijo si el ticker base no se reutiliza. Así
+  se enlaza con los precios, sectores y alias ya configurados (HAR, STI,
+  BRCM...). Si se reutiliza, conserva la etiqueta (`DOW-201708`,
+  `CB-201601`).
+- Sin el fichero, se vuelve a Wikipedia con un aviso. La ruta se calcula
+  en cada llamada para que los tests, que redirigen `CACHE_DIR`, no lean
+  el fichero real.
+- Contraste con Wikipedia: 500 frente a 506 miembros en 2011. Las
+  diferencias son renombres (BFH/ADS, WTW/WLTW, GAP/GPS, DINO/HFC,
+  DAY/CDAY...) y empresas que Wikipedia mezclaba (WRK hasta 2024 y SW
+  después). Desde 2022 coinciden casi del todo.
+
+**Precios y sectores de los nombres nuevos:**
+- `python -m backtest.importar_externo --auto --desde 2011-01-01` importa
+  del mismo dataset las etiquetas sin datos: 26 de 48, entre ellas
+  `CB-201601`, `TWX-201806`, `DD-201708`, `S-202004`, `FOXA-201903`,
+  `GAS-201606`, WRK, AABA y BTUUQ.
+- `resolve_historical_sector`: una etiqueta con sufijo hereda el sector
+  de su ticker base. Se añaden 17 sectores a mano (AABA, BFH, GAP, DINO,
+  FBIN, WRK, WYND...).
+
+**Cobertura 2011-2026 con la membresía externa:**
+
+| Año | 2011 | 2012 | 2013 | 2014 | 2015 | 2016 | 2017-2026 |
+|---|---|---|---|---|---|---|---|
+| miembros medios | 500 | 500 | 500 | 501 | 503 | 505 | 503-505 |
+| % evaluable (precio + sector + ETF) | 97,1 | 98,3 | 99,1 | 99,6 | 99,6 | 99,7 | ≥ 99,6 |
+
+**Pendiente:** O1-O3 se hicieron con la membresía de Wikipedia, que tenía
+el sesgo de META y similares. Hay que rehacerlos con la nueva (H3 de la
+hoja de ruta).

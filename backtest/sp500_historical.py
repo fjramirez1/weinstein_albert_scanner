@@ -106,7 +106,11 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 
-from weinstein.config import HISTORICAL_TICKER_ALIASES, HISTORICAL_TICKER_PERIOD_ALIASES
+from weinstein.config import (
+    HISTORICAL_MEMBERSHIP_SOURCE,
+    HISTORICAL_TICKER_ALIASES,
+    HISTORICAL_TICKER_PERIOD_ALIASES,
+)
 from weinstein.data import load_sp500_tickers
 
 # La tabla de cambios (id="changes") ya no está en "List of S&P 500
@@ -455,6 +459,53 @@ def apply_ticker_aliases(
     return {fecha: {nombre(t, fecha) for t in tickers} for fecha, tickers in calendar.items()}
 
 
+# ── Membresía externa (intervalos de alta/baja) ──────────────────────
+
+def external_intervals_path() -> Path:
+    """Ruta del fichero de intervalos externo (se evalúa en cada llamada: los tests redirigen CACHE_DIR)."""
+    return CACHE_DIR / "externo" / "johnbrick_membership_intervals.parquet"
+
+
+def external_names(labels: list[str]) -> dict[str, str]:
+    """
+    Nombre que usa el backtest para cada etiqueta de la fuente externa. Las
+    etiquetas de deslistados llevan sufijo de mes de salida (`HAR-201703`,
+    convención de Norgate). Se quita el sufijo cuando ninguna otra etiqueta
+    comparte el ticker base, para enlazar con los precios, sectores y alias
+    ya configurados con el ticker simple. Si el ticker está reutilizado
+    (`DOW` y `DOW-201708`), se conserva la etiqueta completa.
+    """
+    def base(label: str) -> str:
+        partes = label.rsplit("-", 1)
+        return partes[0] if len(partes) == 2 and len(partes[1]) == 6 and partes[1].isdigit() else label
+
+    conteo: dict[str, int] = {}
+    for label in set(labels):
+        conteo[base(label)] = conteo.get(base(label), 0) + 1
+    return {label: (base(label) if conteo[base(label)] == 1 else label) for label in labels}
+
+
+def build_membership_calendar_external(
+    dates: list[pd.Timestamp],
+    intervals: pd.DataFrame,
+) -> dict[pd.Timestamp, set[str]]:
+    """
+    ``{fecha: tickers vigentes}`` a partir de intervalos [start, end) de
+    pertenencia al índice (`end` vacío = sigue hoy). Los nombres pasan por
+    `external_names`.
+    """
+    nombres = external_names(list(intervals["ticker"].astype(str)))
+    starts = pd.to_datetime(intervals["start"]).to_numpy()
+    ends = pd.to_datetime(intervals["end"]).fillna(pd.Timestamp.max).to_numpy()
+    labels = [nombres[t] for t in intervals["ticker"].astype(str)]
+    result = {}
+    for fecha in dates:
+        f = pd.Timestamp(fecha).to_datetime64()
+        vigentes = (starts <= f) & (f < ends)
+        result[pd.Timestamp(fecha)] = {labels[i] for i in vigentes.nonzero()[0]}
+    return result
+
+
 def build_membership_calendar_cached(
     dates: list[pd.Timestamp],
     refresh: bool = False,
@@ -464,6 +515,13 @@ def build_membership_calendar_cached(
     como los constituyentes actuales, y construye el calendario completo.
     Pensado para usarse directamente desde `portfolio_backtest.py`.
     """
+    externo = external_intervals_path()
+    if HISTORICAL_MEMBERSHIP_SOURCE == "externa" and externo.exists():
+        calendar = build_membership_calendar_external(dates, pd.read_parquet(externo))
+        return apply_ticker_aliases(calendar)
+    if HISTORICAL_MEMBERSHIP_SOURCE == "externa":
+        print(f"  ⚠ sp500_historical: falta {externo}; se usa la reconstrucción de "
+              "Wikipedia (incompleta antes de 2011)", file=sys.stderr)
     changes = fetch_changes_table(refresh=refresh)
     current = set(load_sp500_tickers()["Symbol"])
     calendar = build_membership_calendar(dates, changes=changes, current_constituents=current)

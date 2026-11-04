@@ -195,6 +195,17 @@ def resolve_sector_etf(sector_name: str | None) -> str | None:
 # Sector="Unknown" en una ejecución con `universe="historical"`, añadir
 # aquí su símbolo y sector GICS (con la empresa/fuente en el comentario)
 # en vez de dejarlo caer a Unknown en silencio.
+# Fuente de la membresía histórica del S&P 500 para el backtest:
+#   "externa"   → intervalos de alta/baja de Johnbrick123/sp500-data
+#                 (`backtest/.cache/externo/johnbrick_membership_intervals.parquet`,
+#                 1970-hoy, derivados de fja05680/Norgate y Wikipedia, con los
+#                 tickers ya normalizados). Si falta el fichero, se usa Wikipedia.
+#   "wikipedia" → reconstrucción desde la tabla de cambios de Wikipedia. Solo
+#                 es completa desde ~2011 y da por miembros desde siempre a los
+#                 actuales que entraron con otro ticker (p. ej. META como FB).
+# Ver bitácora 2026-11-04 (7).
+HISTORICAL_MEMBERSHIP_SOURCE = "externa"
+
 # Tickers que salieron del índice solo porque la empresa CAMBIÓ DE TICKER y
 # que hoy siguen en él con el nuevo. En el universo histórico se sustituyen
 # por el ticker actual (`sp500_historical.apply_ticker_aliases`): sus precios
@@ -437,6 +448,25 @@ HISTORICAL_DELISTED_SECTORS: dict[str, str] = {
     "SNDK-201605": "Information Technology",  # SanDisk Corp antigua -> comprada por Western Digital 2016
     "DOW-201708":  "Materials",               # Dow Chemical -> fusión con DuPont (DWDP) 2017
     "DELL-201310": "Information Technology",  # Dell Inc -> privatizada 2013
+    # Nombres de la membresía externa (tickers actuales de empresas ya fuera del
+    # índice, o símbolos de deslistados con sufijo propio). Estructura GICS actual.
+    "AABA":  "Communication Services",  # Yahoo -> Altaba (2017), liquidada 2019
+    "AIRC":  "Real Estate",             # Apartment Income REIT -> adquirida por Blackstone 2024
+    "ANRZQ": "Energy",                  # Alpha Natural Resources (quiebra 2015)
+    "ATGE":  "Consumer Discretionary",  # DeVry -> Adtalem (educación)
+    "BFH":   "Financials",              # Alliance Data -> Bread Financial
+    "BTUUQ": "Energy",                  # Peabody Energy antigua (quiebra 2016)
+    "DINO":  "Energy",                  # HollyFrontier -> HF Sinclair
+    "FBIN":  "Industrials",             # Fortune Brands Home & Security -> Fortune Brands Innovations
+    "GAP":   "Consumer Discretionary",  # Gap Inc. (antes GPS)
+    "HSH":   "Consumer Staples",        # Sara Lee -> Hillshire Brands
+    "MWV":   "Materials",               # MeadWestvaco -> fusión en WestRock 2015
+    "QLGC":  "Information Technology",  # QLogic -> adquirida por Cavium 2016
+    "RSHCQ": "Consumer Discretionary",  # RadioShack (quiebra 2015)
+    "SUNEQ": "Information Technology",  # MEMC Electronic Materials -> SunEdison (quiebra 2016)
+    "VIAV":  "Information Technology",  # JDS Uniphase -> Viavi Solutions
+    "WRK":   "Materials",               # WestRock -> fusión con Smurfit Kappa (SW) 2024
+    "WYND":  "Consumer Discretionary",  # Wyndham Worldwide -> Wyndham Destinations
     "CEG-201203":  "Utilities",               # Constellation Energy Group antigua -> fusión con Exelon 2012
     "HWM-201610":  "Materials",               # Alcoa Inc (aluminio) antes de la separación de 2016
     "TRIP":  "Communication Services",  # TripAdvisor (Interactive Media) -> excluida del índice
@@ -667,17 +697,23 @@ def resolve_historical_sector(symbol: str, current_sector_map: dict[str, str]) -
          usa ese sector — es la fuente más fiable disponible.
       2. Si no (ticker delistado), se busca en `HISTORICAL_DELISTED_SECTORS`
          (mapeo manual documentado arriba).
-      3. Si tampoco aparece ahí, se devuelve "Unknown" — igual que el
-         comportamiento anterior, pero ahora solo para tickers realmente
-         no cubiertos por ninguna de las dos fuentes, en vez de para
-         cualquier ticker delistado.
+      3. Si es una etiqueta con sufijo de mes de salida (`CB-201601`, la
+         Chubb antigua; convención de Norgate de la membresía externa), el
+         sector de su ticker base por los pasos 1-2. Es la misma empresa o
+         una que heredó el ticker; en los casos revisados, del mismo sector.
+      4. Si no, "Unknown" (F1 no se cumple nunca para ese ticker).
 
     Pure/testeable: no hace I/O, solo combina dos diccionarios ya
     cargados por el llamador.
     """
     if symbol in current_sector_map:
         return current_sector_map[symbol]
-    return HISTORICAL_DELISTED_SECTORS.get(symbol, "Unknown")
+    if symbol in HISTORICAL_DELISTED_SECTORS:
+        return HISTORICAL_DELISTED_SECTORS[symbol]
+    base, _, sufijo = symbol.rpartition("-")
+    if base and len(sufijo) == 6 and sufijo.isdigit():
+        return resolve_historical_sector(base, current_sector_map)
+    return "Unknown"
 
 
 # ── Rutas por defecto ─────────────────────────────────────────────────

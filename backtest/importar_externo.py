@@ -18,9 +18,18 @@ a velas semanales con la etiqueta del viernes (`normalize_weekly_bars`).
 calendario de membresía. Las etiquetas `TICKER-AAAAMM` son las del dataset
 (convención de Norgate: mes de salida del índice).
 
+Modo automático (`--auto --desde AAAA-MM-DD`): con la membresía externa
+(`HISTORICAL_MEMBERSHIP_SOURCE = "externa"`), los nombres del calendario
+salen de las mismas etiquetas que este dataset de precios. Recorre el
+universo del periodo y, para cada ticker que ya no está hoy en el índice y
+que no tiene datos en la caché, o cuyos datos no se solapan con su
+membresía (otra empresa con el mismo ticker), importa la etiqueta
+correspondiente si tiene filas de fuentes permitidas.
+
 Uso (el parquet debe estar en `backtest/.cache/externo/`, que no se versiona):
-    python -m backtest.importar_externo             # importa a la caché (period max)
-    python -m backtest.importar_externo --validar   # compara con series que ya tenemos
+    python -m backtest.importar_externo                           # IMPORTACIONES (period max)
+    python -m backtest.importar_externo --auto --desde 2006-01-01 # universo del periodo
+    python -m backtest.importar_externo --validar                 # compara con series que ya tenemos
 """
 from __future__ import annotations
 
@@ -113,21 +122,69 @@ def serie_semanal(precios: pd.DataFrame, etiqueta: str) -> tuple[pd.DataFrame | 
     return semanal, info
 
 
-def importar(period: str = "max") -> dict:
+def _leer_manifiesto() -> dict:
+    try:
+        return json.loads(MANIFIESTO.read_text(encoding="utf-8"))
+    except (FileNotFoundError, ValueError):
+        return {}
+
+
+def _guardar_manifiesto(manifiesto: dict) -> None:
+    MANIFIESTO.parent.mkdir(parents=True, exist_ok=True)
+    MANIFIESTO.write_text(json.dumps(manifiesto, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def candidatos_auto(desde: str, hasta: str | None = None, period: str = "max") -> dict[str, str]:
+    """
+    {nombre del calendario: etiqueta del dataset} de los tickers no actuales
+    del universo del periodo sin datos utilizables en la caché.
+    """
+    from backtest import sp500_historical as sh
+    from weinstein.data import load_sp500_tickers
+
+    intervalos = pd.read_parquet(sh.external_intervals_path())
+    nombres = sh.external_names(list(intervalos["ticker"].astype(str)))
+    etiqueta_de = {}
+    for etiqueta, nombre in nombres.items():
+        etiqueta_de.setdefault(nombre, etiqueta)
+    sp = data_cache.read_cached("^GSPC", period)
+    fechas = sp.index[sp.index >= pd.Timestamp(desde)]
+    if hasta is not None:
+        fechas = fechas[fechas <= pd.Timestamp(hasta)]
+    calendario = sh.build_membership_calendar_cached(list(fechas))
+    actuales = set(load_sp500_tickers()["Symbol"])
+    semanas: dict[str, list[pd.Timestamp]] = {}
+    for fecha in fechas:
+        for t in calendario.get(fecha, ()):
+            semanas.setdefault(t, []).append(fecha)
+    out = {}
+    for nombre, fs in semanas.items():
+        if nombre in actuales or nombre not in etiqueta_de:
+            continue
+        datos = data_cache.read_cached(nombre, period)
+        if datos is not None and not datos.empty and datos.index[0] <= fs[-1] and datos.index[-1] >= fs[0]:
+            continue  # ya hay datos que se solapan con su membresía
+        out[nombre] = etiqueta_de[nombre]
+    return out
+
+
+def importar(period: str = "max", importaciones: dict[str, str] | None = None) -> dict:
     precios = cargar()
-    manifiesto = {}
-    for ticker, etiqueta in IMPORTACIONES.items():
+    manifiesto = _leer_manifiesto()
+    importados = {}
+    for ticker, etiqueta in (importaciones if importaciones is not None else IMPORTACIONES).items():
         semanal, info = serie_semanal(precios, etiqueta)
         if semanal is None or data_cache.save_cached(ticker, period, semanal) is None:
             print(f"  ✗ {ticker:<12} {etiqueta}: sin datos utilizables {info}")
             continue
         data_cache._fail_marker_path(ticker, period).unlink(missing_ok=True)
         manifiesto[ticker] = info
+        importados[ticker] = info
         print(f"  ✓ {ticker:<12} {etiqueta:<12} {info['desde']} → {info['hasta']} ({info['velas']} velas) {info['fuentes']}")
-    MANIFIESTO.parent.mkdir(parents=True, exist_ok=True)
-    MANIFIESTO.write_text(json.dumps(manifiesto, indent=2, sort_keys=True), encoding="utf-8")
-    print(f"\n  {len(manifiesto)}/{len(IMPORTACIONES)} importados. Manifiesto: {MANIFIESTO}")
-    return manifiesto
+    _guardar_manifiesto(manifiesto)
+    total = len(importaciones if importaciones is not None else IMPORTACIONES)
+    print(f"\n  {len(importados)}/{total} importados. Manifiesto: {MANIFIESTO}")
+    return importados
 
 
 def validar(period: str = "max", etiquetas: dict[str, str] | None = None) -> pd.DataFrame:
@@ -170,8 +227,17 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Importa deslistados del dataset externo a la caché.")
     parser.add_argument("--period", default="max")
     parser.add_argument("--validar", action="store_true", help="Solo compara con series que ya tenemos.")
+    parser.add_argument("--auto", action="store_true", help="Importa lo que falte en el universo del periodo.")
+    parser.add_argument("--desde", default=None, metavar="AAAA-MM-DD")
+    parser.add_argument("--hasta", default=None, metavar="AAAA-MM-DD")
     args = parser.parse_args()
-    if args.validar:
+    if args.auto:
+        if not args.desde:
+            parser.error("--auto necesita --desde")
+        candidatos = candidatos_auto(args.desde, args.hasta, args.period)
+        print(f"  {len(candidatos)} tickers sin datos utilizables con etiqueta en el dataset")
+        importar(args.period, candidatos)
+    elif args.validar:
         pd.set_option("display.width", 200)
         print(validar(args.period).to_string(index=False))
     else:

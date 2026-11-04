@@ -68,3 +68,11 @@ class TestResolveHistoricalSector:
         """Guard-rail básico: si alguien vacía el diccionario por error,
         que un test falle en vez de degradar en silencio a 'todo Unknown'."""
         assert len(HISTORICAL_DELISTED_SECTORS) > 0
+
+
+def test_etiqueta_con_sufijo_hereda_el_sector_del_ticker_base():
+    from weinstein.config import resolve_historical_sector
+    assert resolve_historical_sector("CB-201601", {"CB": "Financials"}) == "Financials"
+    assert resolve_historical_sector("HAR-201703", {}) == resolve_historical_sector("HAR", {})
+    assert resolve_historical_sector("ZZZZ-201601", {}) == "Unknown"
+    assert resolve_historical_sector("BRK-B", {}) == "Unknown"     # guion de clase, no sufijo de fecha

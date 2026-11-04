@@ -310,3 +310,28 @@ class TestAliasDeTickers:
         f = pd.Timestamp("2014-01-03")
         out = sh.apply_ticker_aliases({f: {"AA"}}, {"AA": "HWM"}, {"HWM": [("2016-11-01", "HWM-201610")]})
         assert out == {f: {"HWM-201610"}}
+
+
+class TestMembresiaExterna:
+
+    def test_nombres_quitan_el_sufijo_solo_si_el_ticker_no_se_reutiliza(self):
+        out = sh.external_names(["HAR-201703", "DOW", "DOW-201708", "AAPL", "GAS-201112", "GAS-201606"])
+        assert out == {"HAR-201703": "HAR", "DOW": "DOW", "DOW-201708": "DOW-201708", "AAPL": "AAPL",
+                       "GAS-201112": "GAS-201112", "GAS-201606": "GAS-201606"}
+
+    def test_calendario_desde_intervalos(self):
+        iv = pd.DataFrame({
+            "ticker": ["AAA", "OLD-201203", "NEW"],
+            "start": pd.to_datetime(["2000-01-03", "2005-01-03", "2012-03-05"]),
+            "end": pd.to_datetime([None, "2012-03-02", None]),
+        })
+        fechas = [pd.Timestamp("2004-12-31"), pd.Timestamp("2012-03-02"), pd.Timestamp("2012-03-09")]
+        cal = sh.build_membership_calendar_external(fechas, iv)
+        assert cal[fechas[0]] == {"AAA"}
+        assert cal[fechas[1]] == {"AAA"}           # el día de la baja ya no es miembro
+        assert cal[fechas[2]] == {"AAA", "NEW"}
+
+    def test_sin_fichero_externo_usa_wikipedia(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(sh, "CACHE_DIR", tmp_path)
+        assert not sh.external_intervals_path().exists()
+        assert sh.external_intervals_path().parent.parent == tmp_path
