@@ -599,3 +599,52 @@ candidato. Como decisión de O4 se propone al usuario, que decide.
 **En ningún tramo la estrategia bate a SPY de forma robusta.** La mejor
 config de validación (F5b + VPM5, 19,67 %) se queda a 0,9 pp, y el tramo
 de validación ya está usado, así que elegirla ahora sería sobreajustar.
+
+## 2026-11-04 (1) — Fase 4b: ampliar el backtest hacia atrás por tramos
+
+**Acuerdo con el usuario.** El sistema de producción no se toca hasta
+terminar el estudio del backtest (O4 aplazada). El rango se amplía hacia
+atrás por tramos, todo lo que se pueda. Cada tramo se da por cerrado cuando
+sus años tienen datos fiables (membresía, precios, sector, ETF).
+
+**Infraestructura** (commits `1f6de68`, `3e1d5c2`, `dc5841f`):
+- Caché de histórico completo: `--period max`, con el universo acotado por
+  `--desde` (`prepare_universe(desde=...)`, `download_data --desde`,
+  `run_portfolio_backtest --desde`). Cada ticker se descarga una sola vez
+  con toda su historia; los tramos siguientes solo añaden tickers nuevos.
+  Tiingo pide ahora los años del periodo (`period_to_years`: "10y" → 11,
+  "max" → 60); antes pedía siempre 15.
+- Lector de la tabla de Wikipedia: recortaba mal tickers con restos de
+  formato ("ITT |", "JCP |", "ALLE |"). Corregido y regenerada la caché.
+- ETFs sustitutos antes de su lanzamiento (`SECTOR_ETF_PROXIES`): XLRE ←
+  IYR (desde 2000-06), XLC ← VOX (desde 2004-10), empalmados por escala
+  el primer día común. Sin ellos, Real Estate no podía pasar F1 antes de
+  2015-10 ni Communication Services antes de 2018-06.
+- `save_state` del descargador reintenta `os.replace` ante PermissionError
+  de Windows (fallo intermitente visto en los tests).
+- Nuevo `python -m backtest.estudios.cobertura --desde AAAA-MM-DD`:
+  cobertura por año (semanas-miembro con precio, sector y ETF) y tickers
+  problemáticos (sin datos, ticker reutilizado por otra empresa, parcial).
+
+**Fuente de membresía anterior a 2011** (un agente lo investigó; no tocó
+el repo):
+- Desde 2011, la tabla de Wikipedia y el dataset fja05680/sp500 (GitHub,
+  derivado de Norgate) coinciden casi exactamente en altas y bajas por año
+  (p. ej. 2012: 18/18 en ambas). Las diferencias de conjuntos son sobre
+  todo renombres (FB↔META, ANTM↔ELV, BLL↔BALL...).
+- Antes de 2011 Wikipedia solo recoge entre el 0 y el 35 % de los cambios
+  (2008: 8 frente a 35), y la reconstrucción da más de 500 miembros (516
+  en 2005). **Para ≤ 2010 hay que usar fja**: el fichero original
+  (1996 → 2019-01, tickers deslistados con sufijo `-YYYYMM`), no el
+  "Updated", que al quitar los sufijos fusiona empresas distintas (C /
+  C-199811, JCI / JCI-201609...).
+- Riesgos para los tramos antiguos: tickers reutilizados por otra empresa
+  (52 en fja), símbolos de 2019 en lugar de los actuales (hace falta un
+  mapa de alias) y, sobre todo, **cobertura de precios de los
+  deslistados**.
+
+**Tramo 1 (2011-2016), en curso:** membresía de Wikipedia.
+- `python -m backtest.download_data --period max --universe historical --desde 2011-01-01 --wait`
+- Un agente busca el sector GICS de los 123 tickers que salieron en
+  2011-2016 sin sector en `config.py`, en su época y con la estructura
+  actual.
