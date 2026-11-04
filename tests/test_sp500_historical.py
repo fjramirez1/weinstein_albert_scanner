@@ -180,6 +180,11 @@ class TestNormalizeTicker:
     def test_recorta_notas_al_pie(self):
         assert sh._normalize_ticker("AAPL[a]") == "AAPL"
 
+    def test_recorta_restos_de_formato_tras_el_ticker(self):
+        assert sh._normalize_ticker("ITT |") == "ITT"
+        assert sh._normalize_ticker("JCP | x") == "JCP"
+        assert sh._normalize_ticker("|") is None
+
     def test_valores_vacios_devuelven_none(self):
         assert sh._normalize_ticker("") is None
         assert sh._normalize_ticker("  ") is None

@@ -126,8 +126,11 @@ def _normalize_ticker(raw: str) -> str | None:
     val = str(raw).strip().upper()
     if val in ("", "NAN", "NONE", "—", "-"):
         return None
-    # Algunas celdas traen notas al pie o referencias entre corchetes.
-    val = val.split("[")[0].strip()
+    # Algunas celdas traen notas al pie o referencias entre corchetes, o
+    # restos de formato tras el ticker ("ITT |", "JCP |"): un ticker nunca
+    # contiene espacios, así que se queda la primera palabra.
+    val = val.split("[")[0].split("|")[0].strip()
+    val = val.split()[0] if val else val
     if not val:
         return None
     return val.replace(".", "-")
