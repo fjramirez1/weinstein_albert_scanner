@@ -56,7 +56,7 @@ python -m weinstein portfolio-backtest --universe historical --period 8y   # (re
   debe redirigir `CACHE_DIR` / rutas a `tmp_path` con `monkeypatch`. (Un
   fixture antiguo borró `backtest/.cache/` real; ver bitácora 2026-11-03.)
 - **No commitear** `backtest/.cache/`, `.env` ni datos de mercado descargados.
-- **`.env`** contiene las API keys de Tiingo (`TIINGO_API_KEY`, `TIINGO_API_KEY_2`): no leer su valor, no imprimirlo, no
+- **`.env`** contiene las API keys de Tiingo (`TIINGO_API_KEY`, `TIINGO_API_KEY_2`, `TIINGO_API_KEY_3`; 50 peticiones/hora cada una): no leer su valor, no imprimirlo, no
   enviarlo a ningún sitio.
 - **CSV de posiciones** (`posiciones.csv`): conservar columnas `Ticker`,
   `Sector`, `Precio_Entrada`, `Fecha_Entrada` salvo migración acordada.
