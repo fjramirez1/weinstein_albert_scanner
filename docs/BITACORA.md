@@ -648,3 +648,37 @@ el repo):
 - Un agente busca el sector GICS de los 123 tickers que salieron en
   2011-2016 sin sector en `config.py`, en su época y con la estructura
   actual.
+
+## 2026-11-04 (2) — Tramo 2011-2016: sectores, alias y primeros problemas de datos
+
+- **Fallo grave detectado y corregido** (`111e791`): la fase de Tiingo de
+  `download_data` llamaba a `download_weekly_tiingo` sin el periodo, así
+  que pedía siempre 15 años (desde ~2011-11) aunque fuera `--period max`.
+  Se paró la descarga y se borraron los 57 ficheros recortados (primera
+  vela a ±30 días de 2011-11-04); se pidieron de nuevo, con el coste de
+  ~57 peticiones de Tiingo desperdiciadas.
+- **Sectores de los 123 delistados de 2011-2016** (agente, revisiones
+  históricas de Wikipedia): 114 con confianza alta y 9 media. **Criterio
+  unificado: estructura GICS ACTUAL** (REIT → Real Estate, medios →
+  Communication Services). Es coherente con los constituyentes actuales,
+  que llevan su sector de hoy en todo el histórico, y con la composición
+  de los ETFs. Por el mismo criterio, TGNA, SNI y TWX pasan de Consumer
+  Discretionary (el de su época) a Communication Services.
+- **Alias de renombres** (`HISTORICAL_TICKER_ALIASES`, aplicados al
+  calendario de membresía): AA/ARNC→HWM, ACE→CB, CMCSK→CMCSA, KFT→MDLZ,
+  PCS→TMUS, SAI→LDOS. TYC no se une con JCI: Tyco y Johnson Controls
+  fueron miembros a la vez antes de fusionarse.
+- **Primera cobertura** (`python -m backtest.estudios.cobertura --desde
+  2011-01-01`, con Tiingo aún pendiente): precio en el 69,6 % de las
+  semanas-miembro de 2011, 80,7 % en 2016 y 98,8 % en 2026. Hay 176
+  tickers sin datos (la mayoría pendientes de Tiingo), 21 sospechosos (el
+  ticker lo usa hoy otra empresa y yfinance devuelve esa: S, STI, CA, DNB,
+  SE, DO, EMC, TE, ALTR, DTV, NE, BTU, ADT, BEAM, DV, SHLD, SLE, MMI, SBNY,
+  MI, INFO) y 8 parciales (DOW, SNDK, DELL y CEG fueron otras empresas
+  antes; HWM solo tiene datos desde 2016-11 en yfinance, así que el alias
+  AA→HWM no recupera Alcoa Inc).
+- Los sospechosos no producen operaciones falsas: sus velas no coinciden
+  con las semanas en que eran miembros, así que el motor nunca los
+  considera candidatos. Simplemente faltan.
+- Un agente investiga si Tiingo (o Stooq) distingue la empresa antigua de
+  un ticker reutilizado, sin gastar peticiones de la API.
