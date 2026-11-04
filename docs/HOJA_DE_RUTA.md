@@ -207,12 +207,14 @@ ampliar el catálogo y hacerlo cómodo de usar.
   cambio de ranking MOM → VPM5 es lo único robusto en los dos tramos.
 - **Acordado con el usuario (2026-11-04):** el sistema de producción no se
   toca hasta terminar todo el estudio del backtest; O4 queda aplazada.
-- **Siguiente paso:** ampliar el rango del backtest (Fase 4b). La tabla de
-  cambios de Wikipedia está incompleta antes de ~2011 (11, 8, 13 y 11
-  cambios en 2007-2010, casi nada antes de 2006, cuando lo normal son
-  20-30 al año), así que hace falta otra fuente de membresía histórica
-  para cubrir 2008. Pendiente de que el usuario elija rango y autorice las
-  descargas (~165 delistados nuevos vía Tiingo, ~3 h con dos claves).
+- **Hecho (Fase 4b):** caché `--period max`; membresía externa 1970-hoy
+  (corrige el sesgo de META/renombres de Wikipedia); permaTicker de Tiingo;
+  importador del dataset externo. Evaluable: 2011-2026 ≥ 97,1 %; 2006-2010
+  80,0-96,3 %; 2000-2005 solo 62,7-75,5 % (bitácora 2026-11-04 (1)-(8)).
+- **Siguiente paso:** el usuario decide el rango principal (propuesta:
+  desde 2006; 2000-2005 solo como contraste). Después: H1 (benchmarks RSP +
+  carteras aleatorias), rehacer O1-O3 con la membresía nueva y el rango
+  largo (H3), y seguir R0 (replicar el vídeo) con 2008 incluido.
 - **Sectores GICS de delistados:** verificados (bitácora 2026-11-03 (9)).
 - **V1:** ✅ contenido del vídeo leído de la transcripción de YouTube (bitácora 2026-11-04 (4)).
-- **Caché:** repoblada el 2026-11-03 (`backtest/.cache/`, periodo `10y`).
+- **Caché:** `backtest/.cache/` con periodos `10y` (O1-O3) y `max` (Fase 4b) + `externo/` (datasets de Johnbrick123, sin versionar).
