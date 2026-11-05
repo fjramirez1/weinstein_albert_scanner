@@ -1,0 +1,7 @@
+﻿reglas,azar_CAGR_p10,azar_CAGR_mediana,azar_CAGR_p90,azar_Sharpe_mediana,azar_DD_mediana,momentum_CAGR,momentum_pct,rsc_activo_CAGR,rsc_activo_pct,vpm5_CAGR,vpm5_pct
+produccion,4.76,7.88,10.43,0.56,-27.99,3.77,10,9.74,80,9.19,65
+coppock_clasico,4.75,7.04,8.13,0.53,-26.42,3.17,10,6.94,40,8.44,90
+coppock_lento,7.03,8.75,11.42,0.57,-32.38,7.85,35,10.03,70,12.3,100
+sin_mercado,7.72,10.6,12.57,0.62,-32.53,10.33,50,14.43,100,14.23,100
+f5b,4.85,8.8,11.8,0.6,-28.04,4.72,10,10.02,65,13.69,100
+sin_f4,7.06,9.38,11.93,0.62,-28.42,8.77,40,10.66,85,8.52,35

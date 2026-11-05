@@ -1018,3 +1018,81 @@ hoja de ruta).
   - Un cambio de **ranking** es candidato solo si supera la mediana del
     azar (percentil > 50) en ≥ 5 de los 6 conjuntos en W1 **y** en W2.
   - Todo se reporta frente a SPY y RSP, sea cual sea el resultado.
+
+## 2026-11-05 (2) — Resultado de O5 (2006-2026, pre-registrado en (1))
+
+**Comando:** `PYTHONIOENCODING=utf-8 venv/Scripts/python.exe -m backtest.estudios.o5_largo`
+(caché `max`, membresía externa, 948 tickers en el periodo, 856 con contexto,
+92 sin precio, 1 sin sector). Salidas en
+`historial/backtests/o5_largo_{w1,w2,completo}[_resumen].csv`.
+Nota: el mensaje de consola "Reconstruyendo membresía (Wikipedia…)" era una
+etiqueta antigua; la fuente usada es la externa (corregido el texto).
+
+**W1 = 2006-2016** (mediana / p10-p90 de 20 rankings aleatorios; percentil de cada ranking real):
+
+| reglas | CAGR med (p10-p90) | Sharpe med | DD med | MOM | RSC | VPM5 |
+|---|---|---|---|---|---|---|
+| produccion | 7,42 (5,73-8,38) | 0,64 | −19,8 | 8,00 (p70) | 9,07 (p100) | 5,86 (p15) |
+| coppock_clasico | 7,47 (6,02-8,71) | 0,64 | −19,0 | 9,46 (p100) | 6,74 (p35) | 5,33 (p0) |
+| coppock_lento | 7,52 (6,54-9,50) | 0,69 | −17,4 | 7,45 (p50) | 5,32 (p0) | 7,41 (p50) |
+| sin_mercado | 5,06 (3,05-7,24) | 0,38 | −47,9 | 3,26 (p20) | −1,50 (p0) | 1,40 (p0) |
+| f5b | 8,21 (6,21-9,47) | 0,66 | −16,8 | 9,66 (p90) | 10,40 (p100) | 6,34 (p20) |
+| sin_f4 | 7,32 (6,15-9,47) | 0,59 | −21,0 | 8,13 (p65) | 8,47 (p75) | 5,34 (p10) |
+| **SPY** | 7,37 | 0,48 | −54,6 | | | |
+| **RSP** | 8,21 | 0,49 | −59,6 | | | |
+
+**W2 = 2017-2026**:
+
+| reglas | CAGR med (p10-p90) | Sharpe med | DD med | MOM | RSC | VPM5 |
+|---|---|---|---|---|---|---|
+| produccion | 7,88 (4,76-10,43) | 0,56 | −28,0 | 3,77 (p10) | 9,74 (p80) | 9,19 (p65) |
+| coppock_clasico | 7,04 (4,75-8,13) | 0,53 | −26,4 | 3,17 (p10) | 6,94 (p40) | 8,44 (p90) |
+| coppock_lento | 8,75 (7,03-11,42) | 0,57 | −32,4 | 7,85 (p35) | 10,03 (p70) | 12,30 (p100) |
+| sin_mercado | 10,60 (7,72-12,57) | 0,62 | −32,5 | 10,33 (p50) | 14,43 (p100) | 14,23 (p100) |
+| f5b | 8,80 (4,85-11,80) | 0,60 | −28,0 | 4,72 (p10) | 10,02 (p65) | 13,69 (p100) |
+| sin_f4 | 9,38 (7,06-11,93) | 0,62 | −28,4 | 8,77 (p40) | 10,66 (p85) | 8,52 (p35) |
+| **SPY** | 14,79 | 0,89 | −31,8 | | | |
+| **RSP** | 11,59 | 0,69 | −36,8 | | | |
+
+**Completo 2006-2026** (solo rankings reales; CAGR / DD / Sharpe; % PnL top-5):
+- produccion: MOM 6,03 / −31,0 / 0,50; RSC 9,45 / −24,9 / 0,69; VPM5 7,90 / −23,8 / 0,61.
+- coppock_lento: MOM 7,87; RSC 7,49; VPM5 9,25 / −28,3 / 0,67 (top-5 56 %).
+- sin_mercado: 4,5-6,9 con DD −51 a −60.
+- f5b: MOM 7,40; RSC 10,26 / −27,4 / 0,70; VPM5 10,22 / −23,5 / 0,73 (top-5 40 %).
+- SPY 10,89 / −54,6 / 0,67; RSP 9,88 / −59,6 / 0,58.
+- 2008 (produccion|RSC +15,7 %, f5b|RSC +16,3 %; SPY −39,4 %) frente al
+  vídeo (+11,2 %). 2022 produccion|RSC −13,4 % frente al −5,6 % del vídeo.
+
+**Hipótesis:**
+- **H1 — SÍ.** En W1 todos los conjuntos con filtro tienen Sharpe mediano
+  0,64-0,69 frente a 0,38 de `sin_mercado`; en 2008 sin filtro se pierde
+  entre un 38 % y un 54 %. En W2 ocurre lo contrario (`sin_mercado` es el
+  mejor, como en O2): el filtro es un seguro que cuesta en mercados
+  alcistas y paga en bajistas largos, lo que coincide con la literatura.
+- **H2 — NO para VPM5.** Supera al azar en 0/6 conjuntos de W1 y en 5/6 de
+  W2: lo de O2/O3 era propio de 2017-2026. MOM, 4/6 en W1 y 0/6 en W2. RSC
+  del activo, 3/6 en W1 y 5/6 en W2. Ningún ranking es robusto en las dos
+  ventanas.
+- **H3 — NO.** Ningún conjunto supera a RSP con la mediana del azar en las
+  dos ventanas (RSP 8,21 % / 11,59 %). En W1 la estrategia iguala a SPY en
+  CAGR con Sharpe 0,64 frente a 0,48 y un DD de −20 % frente a −55 %; en W2
+  queda 6-7 pp/año por debajo de SPY.
+
+**Regla de decisión:**
+- Reglas candidatas: **`f5b`** (CAGR mediano +0,79 / +0,92 pp y Sharpe
+  +0,02 / +0,04 en W1 / W2) y **`coppock_lento`** (+0,10 / +0,87 pp;
+  +0,05 / +0,01). El margen de `coppock_lento` en W1 y en Sharpe en W2 es
+  mínimo, dentro del ruido del azar (p10-p90 de ±1,5 pp). `f5b` es el
+  candidato más claro.
+- No candidatas: `coppock_clasico`, `sin_mercado`, `sin_f4`.
+- Ningún cambio de ranking es candidato (MOM, RSC y VPM5 fallan el umbral
+  de 5/6 en las dos ventanas). Se mantiene MOM en producción por defecto,
+  aunque es el peor en W2.
+
+**Sesgos que siguen abiertos:** 2006-2008 es optimista (80-92 % de cobertura,
+faltan las quiebras de 2008 que solo existen en CRSP sin volumen); 20
+semillas de azar, no cientos; 2026 es un año parcial (hasta octubre).
+
+**Siguiente:** O4 con el usuario: ¿se pasa `f5b` (y/o `coppock_lento`) a
+producción, o se valida antes en otro tramo (T3 2000-2005 marcado, o
+walk-forward en H3)?

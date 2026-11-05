@@ -360,7 +360,7 @@ def _build_historical_universe_rows(
     # reconstruye desde `desde` (primera semana que se puede simular).
     index = sp500_close.index if desde is None else sp500_close.index[sp500_close.index >= pd.Timestamp(desde)]
     dates = list(index)
-    print("  → Reconstruyendo membresía histórica del S&P 500 (Wikipedia, con caché)...")
+    print("  → Reconstruyendo membresía histórica del S&P 500 (fuente según config, con caché)...")
     calendar = build_membership_calendar_cached(dates)
     union = universe_union(calendar)
     print(f"  ✓ {len(union)} tickers distintos pertenecieron al índice en algún momento del periodo")

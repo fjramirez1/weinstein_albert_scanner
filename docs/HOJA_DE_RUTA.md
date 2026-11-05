@@ -142,6 +142,11 @@ Investigación externa en [INVESTIGACION.md](INVESTIGACION.md).
       (Johnbrick123, 1970-hoy) y deslistados vía importador + Tiingo.
       Evaluable: 80,0 % (2006) → 96,3 % (2010); falta lo que solo existe en
       CRSP sin volumen (bitácora 2026-11-04 (8)).
+- [x] **O5.** Estudio largo 2006-2026 pre-registrado (bitácora 2026-11-05
+      (1)-(2)). H1 sí (el filtro de mercado protege en 2008); H2 no (VPM5
+      no se replica en 2006-2016); H3 no (nada bate a RSP en las dos
+      ventanas). Candidatos de reglas: `f5b` (claro) y `coppock_lento`
+      (marginal). Ningún ranking candidato.
 - [ ] **T3.** Tramo 2000-2005 y anteriores mientras haya precios gratis
       (Tiingo tiene pocos muertos antes de 2009).
 - [ ] **R0.** Replicar el backtest del vídeo (bitácora 2026-11-04 (4)):
@@ -149,8 +154,8 @@ Investigación externa en [INVESTIGACION.md](INVESTIGACION.md).
       +11,2 %...). Primero 2022, donde nuestro −21,9 % no cuadra. Probar
       definición y parámetros del Coppock, MA30 simple en el ranking y el
       índice de precios sin dividendos como benchmark.
-- [ ] **H1.** Benchmarks justos: RSP (igual peso) y carteras aleatorias
-      (cientos de semillas) además de SPY.
+- [~] **H1.** Benchmarks justos: RSP (igual peso) y carteras aleatorias
+      además de SPY. Hecho en O5 con 20 semillas; faltan cientos.
 - [ ] **H2.** IC semanal de cada señal (VPM5, MOM, MAD, máximo de 52
       semanas, RSC, 12-1) sobre todo el universo.
 - [ ] **H3.** Rehacer O2/O3 con el rango largo y las hipótesis de
@@ -212,13 +217,13 @@ ampliar el catálogo y hacerlo cómodo de usar.
   importador del dataset externo. Evaluable: 2011-2026 ≥ 97,1 %; 2006-2010
   80,0-96,3 %; 2000-2005 solo 62,7-75,5 % (bitácora 2026-11-04 (1)-(8)).
 - **Decidido (2026-11-05):** rango principal desde 2006.
-- **Siguiente paso:** ejecutar O5 tal como está pre-registrado (bitácora
-  2026-11-05 (1)). El script `backtest/estudios/o5_largo.py` está escrito,
-  validado (138 configs) y SIN ejecutar. RSP ya está en la caché `max`.
-  Lanzarlo en segundo plano (276 + 18 ejecuciones; puede tardar 30-60 min):
-  `PYTHONIOENCODING=utf-8 venv/Scripts/python.exe -m backtest.estudios.o5_largo > <scratchpad>/o5.log 2>&1`.
-  Al terminar, anotar en la bitácora las tablas de W1 y W2, H1-H3 y la
-  regla de decisión, y después O4 con el usuario.
+- **Hecho:** O5 (bitácora 2026-11-05 (2)). En 2006-2016 la estrategia
+  iguala a SPY en CAGR con mucho menos drawdown; en 2017-2026 queda
+  6-7 pp/año por debajo. Candidato de reglas: `f5b` (entrar con mercado
+  no bajista); `coppock_lento` marginal. VPM5 deja de ser candidato.
+- **Siguiente paso:** O4 con el usuario: decidir si `f5b` pasa a
+  producción ya o tras una validación extra (T3 2000-2005 marcado, o
+  walk-forward de H3). Sin decisión del usuario, no se toca `weinstein/`.
 - **Sectores GICS de delistados:** verificados (bitácora 2026-11-03 (9)).
 - **V1:** ✅ contenido del vídeo leído de la transcripción de YouTube (bitácora 2026-11-04 (4)).
 - **Caché:** `backtest/.cache/` con periodos `10y` (O1-O3) y `max` (Fase 4b) + `externo/` (datasets de Johnbrick123, sin versionar).
