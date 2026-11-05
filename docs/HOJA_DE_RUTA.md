@@ -211,10 +211,10 @@ ampliar el catálogo y hacerlo cómodo de usar.
   (corrige el sesgo de META/renombres de Wikipedia); permaTicker de Tiingo;
   importador del dataset externo. Evaluable: 2011-2026 ≥ 97,1 %; 2006-2010
   80,0-96,3 %; 2000-2005 solo 62,7-75,5 % (bitácora 2026-11-04 (1)-(8)).
-- **Siguiente paso:** el usuario decide el rango principal (propuesta:
-  desde 2006; 2000-2005 solo como contraste). Después: H1 (benchmarks RSP +
-  carteras aleatorias), rehacer O1-O3 con la membresía nueva y el rango
-  largo (H3), y seguir R0 (replicar el vídeo) con 2008 incluido.
+- **Decidido (2026-11-05):** rango principal desde 2006.
+- **Siguiente paso:** ejecutar O5 tal como está pre-registrado (bitácora
+  2026-11-05 (1)): `python -m backtest.estudios.o5_largo`. Después, O4 con
+  el usuario.
 - **Sectores GICS de delistados:** verificados (bitácora 2026-11-03 (9)).
 - **V1:** ✅ contenido del vídeo leído de la transcripción de YouTube (bitácora 2026-11-04 (4)).
 - **Caché:** `backtest/.cache/` con periodos `10y` (O1-O3) y `max` (Fase 4b) + `externo/` (datasets de Johnbrick123, sin versionar).

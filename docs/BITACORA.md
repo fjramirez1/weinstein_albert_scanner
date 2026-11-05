@@ -979,3 +979,42 @@ hoja de ruta).
   más, la cobertura de precio es del 62,7 % (2000) al 75,5 % (2005). Falta
   más de un tercio del índice. Propuesta al usuario: rango principal desde
   2006 y 2000-2005 solo como contraste marcado.
+
+## 2026-11-05 (1) — Rango principal desde 2006 y pre-registro de O5
+
+**Decisión del usuario:** el rango principal del backtest empieza en 2006.
+2000-2005 queda fuera; como mucho, se usaría de contraste marcado.
+
+**Pre-registro de O5** (escrito y commiteado antes de ejecutar nada):
+- **Datos:** caché `max`, universo histórico desde 2006-01-01, membresía
+  externa, `next_open`, 0,10 %/lado, 10 posiciones.
+- **Ventanas:**
+  - **W1** = 2006-01-06 → 2016-12-30. No se ha usado para nada, incluye
+    2008 y tiene una cobertura del 80-99,6 %.
+  - **W2** = 2017-01-06 → 2026-10-30. Se miró en O1-O3, entonces con la
+    membresía de Wikipedia, así que ya no cuenta como fuera de muestra.
+  - El periodo completo 2006-2026 solo se reporta.
+- **Conjuntos de reglas**, cada uno con los rankings MOM, RSC y VPM5 y
+  con 20 rankings aleatorios:
+  - `produccion`: F1-F5 + S1-S2, Coppock 12/6/10.
+  - `coppock_clasico`: 14/11/10 semanal, el que trae por defecto la
+    plataforma del vídeo.
+  - `coppock_lento`: 61/48/43, el equivalente semanal del original mensual.
+  - `sin_mercado`: sin F5 ni S2.
+  - `f5b`: entra con mercado no bajista, con S2.
+  - `sin_f4`: producción sin el tope del 8 % sobre la WMA30.
+- **Benchmarks:** SPY (con dividendos), RSP (S&P 500 de igual peso) y la
+  distribución de los rankings aleatorios.
+- **Hipótesis:**
+  - H1: en W1, con 2008, algún conjunto con filtro de mercado tiene un
+    Sharpe mediano con azar ≥ que `sin_mercado`. Es lo que predicen la
+    literatura (Zakamulin, Faber) y el vídeo.
+  - H2: VPM5 supera la mediana del azar en la mayoría de los conjuntos de
+    W1, que sería su tercera réplica tras O2 y O3; MOM no.
+  - H3: con un ranking típico, algún conjunto bate a RSP en W1 y en W2.
+- **Regla de decisión** (alimenta O4, que decide el usuario):
+  - Un cambio de **reglas** frente a `produccion` es candidato solo si
+    mejora la mediana con azar de CAGR **y** de Sharpe en W1 **y** en W2.
+  - Un cambio de **ranking** es candidato solo si supera la mediana del
+    azar (percentil > 50) en ≥ 5 de los 6 conjuntos en W1 **y** en W2.
+  - Todo se reporta frente a SPY y RSP, sea cual sea el resultado.
