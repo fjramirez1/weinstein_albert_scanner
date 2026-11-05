@@ -213,8 +213,12 @@ ampliar el catálogo y hacerlo cómodo de usar.
   80,0-96,3 %; 2000-2005 solo 62,7-75,5 % (bitácora 2026-11-04 (1)-(8)).
 - **Decidido (2026-11-05):** rango principal desde 2006.
 - **Siguiente paso:** ejecutar O5 tal como está pre-registrado (bitácora
-  2026-11-05 (1)): `python -m backtest.estudios.o5_largo`. Después, O4 con
-  el usuario.
+  2026-11-05 (1)). El script `backtest/estudios/o5_largo.py` está escrito,
+  validado (138 configs) y SIN ejecutar. RSP ya está en la caché `max`.
+  Lanzarlo en segundo plano (276 + 18 ejecuciones; puede tardar 30-60 min):
+  `PYTHONIOENCODING=utf-8 venv/Scripts/python.exe -m backtest.estudios.o5_largo > <scratchpad>/o5.log 2>&1`.
+  Al terminar, anotar en la bitácora las tablas de W1 y W2, H1-H3 y la
+  regla de decisión, y después O4 con el usuario.
 - **Sectores GICS de delistados:** verificados (bitácora 2026-11-03 (9)).
 - **V1:** ✅ contenido del vídeo leído de la transcripción de YouTube (bitácora 2026-11-04 (4)).
 - **Caché:** `backtest/.cache/` con periodos `10y` (O1-O3) y `max` (Fase 4b) + `externo/` (datasets de Johnbrick123, sin versionar).
